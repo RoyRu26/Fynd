@@ -27,6 +27,10 @@ export type SemanticColors = {
   favoriteActive: string;
   danger: string;
   dangerBg: string;
+  // Deliberately its own token, not reused from onAccent — even though both
+  // currently resolve to white, danger's foreground is defined by its own
+  // contrast needs against `danger`, never borrowed from accent's.
+  onDanger: string;
   success: string;
   successBg: string;
   warning: string;
@@ -56,6 +60,7 @@ export const lightColors: SemanticColors = {
   favoriteActive: magenta[600],
   danger: functional.danger,
   dangerBg: '#FDF0F0',
+  onDanger: '#FFFFFF',
   success: functional.success,
   successBg: '#EDF7F1',
   warning: functional.warning,
@@ -85,6 +90,7 @@ export const darkColors: SemanticColors = {
   favoriteActive: magenta[500],
   danger: functional.danger,
   dangerBg: '#3A1E1E',
+  onDanger: '#FFFFFF',
   success: functional.success,
   successBg: '#17301F',
   warning: functional.warning,

@@ -1,4 +1,4 @@
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 
 // Primitive design tokens. Transcribed verbatim from DESIGN.md — no values
 // here are invented; every number/hex traces back to a specific DESIGN.md
@@ -40,7 +40,10 @@ export const magenta = {
 } as const;
 
 export const functional = {
-  danger: '#DC3A3A',
+  // #D93A3A, not the originally-specified #DC3A3A: the minimum adjustment
+  // needed to bring white-foreground contrast above WCAG AA 4.5:1 (verified
+  // 4.55:1) — see DESIGN.md §3.
+  danger: '#D93A3A',
   success: '#2E9E63',
   warning: '#C87A16',
 } as const;
@@ -134,4 +137,5 @@ export const spring = {
 export const fontFamily = {
   displaySemiBold: 'Manrope_600SemiBold',
   displayBold: 'Manrope_700Bold',
+  mono: Platform.select({ ios: 'ui-monospace', android: 'monospace', default: 'monospace' }),
 } as const;

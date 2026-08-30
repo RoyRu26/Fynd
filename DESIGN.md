@@ -85,9 +85,11 @@ Functional:
 
 | Token | Hex | | Token | Hex |
 |---|---|---|---|---|
-| `magenta.500` | `#E8478F` | | `danger.500` | `#DC3A3A` |
+| `magenta.500` | `#E8478F` | | `danger.500` | `#D93A3A` |
 | `magenta.600` | `#D62E7A` | | `success.500` | `#2E9E63` |
 | | | | `warning.500` | `#C87A16` |
+
+`danger.500` is `#D93A3A`, not the originally-proposed `#DC3A3A` — the minimum adjustment needed to bring a white foreground above WCAG AA's `4.5:1` threshold (verified `4.55:1`; the original value measured `4.46:1`, a near-miss for normal-size text).
 
 ### Semantic tokens
 
@@ -113,6 +115,7 @@ Screens read **only** these. Never a primitive directly.
 | `accentText` | `violet.700` | `violet.400` |
 | `favoriteActive` | `magenta.600` | `magenta.500` |
 | `danger` / `dangerBg` | `danger.500` / `#FDF0F0` | `danger.500` / `#3A1E1E` |
+| `onDanger` | `#FFFFFF` | `#FFFFFF` |
 | `success` / `successBg` | `success.500` / `#EDF7F1` | `success.500` / `#17301F` |
 | `warning` / `warningBg` | `warning.500` / `#FDF6E8` | `warning.500` / `#332714` |
 | `overlayScrim` | `rgba(12,10,11,0.55)` | `rgba(12,10,11,0.55)` |
@@ -125,6 +128,7 @@ Screens read **only** these. Never a primitive directly.
 3. **`textOnMedia` is white in both schemes** and is only valid over a scrim. Text over user photography without a scrim is a defect — arbitrary images cannot guarantee contrast.
 4. **`favoriteActive` is magenta, not violet and not the gradient.** It is the one state allowed its own hue, because it is the product's core engagement signal and must not read as "selected."
 5. Never introduce a new color without adding it here first.
+6. **`onDanger` is its own token, decoupled from `onAccent`**, even though both currently resolve to `#FFFFFF`. Danger's foreground is defined by its own contrast needs against `danger`, never borrowed from accent's — a color surface must never assume another surface's foreground token happens to work for it too.
 
 ---
 
