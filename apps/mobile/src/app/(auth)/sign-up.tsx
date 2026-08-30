@@ -1,36 +1,52 @@
+import { zodResolver } from '@hookform/resolvers/zod';
 import { Link } from 'expo-router';
 import { useState } from 'react';
+import { Controller, useForm } from 'react-hook-form';
 import { Pressable, StyleSheet, TextInput } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { signUp } from '@/features/auth/api';
+import { mapAuthError } from '@/features/auth/errors';
+import { signUpSchema, type SignUpInput } from '@/features/auth/schemas';
 
 export default function SignUp() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   // Set when signUp() succeeds but returns no session — the email
   // confirmation is enabled branch. Local dev has confirmations off, so this
   // won't normally trigger, but the branch exists so enabling confirmations
   // later is a config change, not a rewrite.
-  const [checkEmail, setCheckEmail] = useState(false);
+  const [checkEmail, setCheckEmail] = useState<string | null>(null);
 
-  async function handleSubmit() {
-    setError(null);
-    setSubmitting(true);
+  const {
+    control,
+    handleSubmit,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<SignUpInput>({
+    resolver: zodResolver(signUpSchema),
+    defaultValues: { email: '', password: '', confirmPassword: '' },
+  });
+
+  async function onSubmit(input: SignUpInput) {
+    setFormError(null);
     try {
-      const data = await signUp(email, password);
+      const data = await signUp(input.email, input.password);
       if (!data.session) {
-        setCheckEmail(true);
+        setCheckEmail(input.email);
       }
       // Otherwise onAuthStateChange picks up the new session; root resolver redirects.
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.');
-    } finally {
-      setSubmitting(false);
+      if (__DEV__) {
+        console.error(err);
+      }
+      const mapped = mapAuthError(err);
+      if (mapped.field === 'email' || mapped.field === 'password') {
+        setError(mapped.field, { message: mapped.message });
+      } else {
+        setFormError(mapped.message);
+      }
     }
   }
 
@@ -38,7 +54,7 @@ export default function SignUp() {
     return (
       <ThemedView style={styles.container}>
         <ThemedText type="title">Check your email</ThemedText>
-        <ThemedText>We sent a confirmation link to {email}.</ThemedText>
+        <ThemedText>We sent a confirmation link to {checkEmail}.</ThemedText>
       </ThemedView>
     );
   }
@@ -47,27 +63,70 @@ export default function SignUp() {
     <ThemedView style={styles.container}>
       <ThemedText type="title">Create account</ThemedText>
 
-      <TextInput
-        autoCapitalize="none"
-        keyboardType="email-address"
-        placeholder="Email"
-        value={email}
-        onChangeText={setEmail}
-        style={styles.input}
+      <Controller
+        control={control}
+        name="email"
+        render={({ field }) => (
+          <TextInput
+            autoCapitalize="none"
+            autoComplete="email"
+            keyboardType="email-address"
+            placeholder="Email"
+            value={field.value}
+            onChangeText={field.onChange}
+            onBlur={field.onBlur}
+            style={styles.input}
+          />
+        )}
       />
-      <TextInput
-        autoCapitalize="none"
-        secureTextEntry
-        placeholder="Password"
-        value={password}
-        onChangeText={setPassword}
-        style={styles.input}
+      {errors.email ? (
+        <ThemedText themeColor="textSecondary">{errors.email.message}</ThemedText>
+      ) : null}
+
+      <Controller
+        control={control}
+        name="password"
+        render={({ field }) => (
+          <TextInput
+            autoCapitalize="none"
+            autoComplete="new-password"
+            secureTextEntry
+            placeholder="Password"
+            value={field.value}
+            onChangeText={field.onChange}
+            onBlur={field.onBlur}
+            style={styles.input}
+          />
+        )}
       />
+      {errors.password ? (
+        <ThemedText themeColor="textSecondary">{errors.password.message}</ThemedText>
+      ) : null}
 
-      {error ? <ThemedText themeColor="textSecondary">{error}</ThemedText> : null}
+      <Controller
+        control={control}
+        name="confirmPassword"
+        render={({ field }) => (
+          <TextInput
+            autoCapitalize="none"
+            autoComplete="new-password"
+            secureTextEntry
+            placeholder="Confirm password"
+            value={field.value}
+            onChangeText={field.onChange}
+            onBlur={field.onBlur}
+            style={styles.input}
+          />
+        )}
+      />
+      {errors.confirmPassword ? (
+        <ThemedText themeColor="textSecondary">{errors.confirmPassword.message}</ThemedText>
+      ) : null}
 
-      <Pressable onPress={handleSubmit} disabled={submitting} style={styles.button}>
-        <ThemedText type="link">{submitting ? 'Creating account…' : 'Create account'}</ThemedText>
+      {formError ? <ThemedText themeColor="textSecondary">{formError}</ThemedText> : null}
+
+      <Pressable onPress={handleSubmit(onSubmit)} disabled={isSubmitting} style={styles.button}>
+        <ThemedText type="link">{isSubmitting ? 'Creating account…' : 'Create account'}</ThemedText>
       </Pressable>
 
       <Link href="/(auth)/sign-in">

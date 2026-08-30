@@ -1,53 +1,118 @@
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { Pressable, StyleSheet, TextInput } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
+import { mapAuthError } from '@/features/auth/errors';
 import { useAuth } from '@/features/auth/auth-provider';
+import { useUsernameAvailability } from '@/features/profile/availability';
 import { useUpdateProfile } from '@/features/profile/queries';
+import { onboardingSchema, type OnboardingInput } from '@/features/profile/schemas';
 
 export default function OnboardingProfile() {
   const { session } = useAuth();
   const userId = session?.user.id;
   const updateProfile = useUpdateProfile(userId);
 
-  const [username, setUsername] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
-  async function handleSubmit() {
-    setError(null);
+  const {
+    control,
+    handleSubmit,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<OnboardingInput>({
+    resolver: zodResolver(onboardingSchema),
+    defaultValues: { username: '', displayName: '' },
+  });
+
+  const username = useWatch({ control, name: 'username' });
+  const availability = useUsernameAvailability(username);
+
+  async function onSubmit(input: OnboardingInput) {
+    setFormError(null);
     try {
-      await updateProfile.mutateAsync({ username, display_name: displayName });
+      await updateProfile.mutateAsync({
+        username: input.username,
+        display_name: input.displayName,
+      });
       // Query invalidation re-resolves the route via AuthRouteProvider.
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.');
+      if (__DEV__) {
+        console.error(err);
+      }
+      const mapped = mapAuthError(err);
+      if (mapped.field === 'username') {
+        setError('username', { message: mapped.message });
+      } else {
+        setFormError(mapped.message);
+      }
     }
   }
+
+  const showAvailability =
+    username.length > 0 &&
+    !errors.username &&
+    username === availability.debounced &&
+    availability.data !== undefined;
 
   return (
     <ThemedView style={styles.container}>
       <ThemedText type="title">Set up your profile</ThemedText>
 
-      <TextInput
-        autoCapitalize="none"
-        placeholder="Username"
-        value={username}
-        onChangeText={setUsername}
-        style={styles.input}
+      <Controller
+        control={control}
+        name="username"
+        render={({ field }) => (
+          <TextInput
+            autoCapitalize="none"
+            autoComplete="off"
+            autoCorrect={false}
+            placeholder="Username"
+            value={field.value}
+            onChangeText={field.onChange}
+            onBlur={field.onBlur}
+            style={styles.input}
+          />
+        )}
       />
-      <TextInput
-        placeholder="Display name"
-        value={displayName}
-        onChangeText={setDisplayName}
-        style={styles.input}
+      {errors.username ? (
+        <ThemedText themeColor="textSecondary">{errors.username.message}</ThemedText>
+      ) : availability.isFetching ? (
+        <ThemedText themeColor="textSecondary">Checking availability…</ThemedText>
+      ) : showAvailability ? (
+        <ThemedText themeColor="textSecondary">
+          {availability.data ? 'Username is available' : 'That username is taken'}
+        </ThemedText>
+      ) : null}
+
+      <Controller
+        control={control}
+        name="displayName"
+        render={({ field }) => (
+          <TextInput
+            placeholder="Display name"
+            value={field.value}
+            onChangeText={field.onChange}
+            onBlur={field.onBlur}
+            style={styles.input}
+          />
+        )}
       />
+      {errors.displayName ? (
+        <ThemedText themeColor="textSecondary">{errors.displayName.message}</ThemedText>
+      ) : null}
 
-      {error ? <ThemedText themeColor="textSecondary">{error}</ThemedText> : null}
+      {formError ? <ThemedText themeColor="textSecondary">{formError}</ThemedText> : null}
 
-      <Pressable onPress={handleSubmit} disabled={updateProfile.isPending} style={styles.button}>
-        <ThemedText type="link">{updateProfile.isPending ? 'Saving…' : 'Continue'}</ThemedText>
+      <Pressable
+        onPress={handleSubmit(onSubmit)}
+        disabled={isSubmitting}
+        style={styles.button}>
+        <ThemedText type="link">{isSubmitting ? 'Saving…' : 'Continue'}</ThemedText>
       </Pressable>
     </ThemedView>
   );
