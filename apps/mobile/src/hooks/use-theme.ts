@@ -1,14 +1,15 @@
-/**
- * Learn more about light and dark modes:
- * https://docs.expo.dev/guides/color-schemes/
- */
-
 import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useAppTheme } from '@/design/theme-provider';
 
+/**
+ * @deprecated Legacy compatibility only. Powers the existing starter
+ * `ThemedText`/`ThemedView` and the current (pre-rebuild) tab bars during the
+ * design-system migration. New primitives and all new Fynd UI must read
+ * `useAppTheme().colors` (src/design/theme-provider.tsx) directly — never
+ * import `Colors` from `@/constants/theme` in new code.
+ */
 export function useTheme() {
-  const scheme = useColorScheme();
-  const theme = scheme === 'unspecified' ? 'light' : scheme;
+  const { scheme } = useAppTheme();
 
-  return Colors[theme];
+  return Colors[scheme];
 }
