@@ -8,9 +8,15 @@ import { scheduleOnRN } from 'react-native-worklets';
 const INITIAL_SCALE_FACTOR = Dimensions.get('screen').height / 90;
 const DURATION = 600;
 
-export function AnimatedSplashOverlay() {
-  const [animate, setAnimate] = useState(false);
+export function AnimatedSplashOverlay({ isReady }: { isReady: boolean }) {
+  const [nativeSplashHidden, setNativeSplashHidden] = useState(false);
   const [visible, setVisible] = useState(true);
+
+  // Only start fading the JS overlay out once the native splash is actually
+  // hidden AND auth/profile resolution is genuinely done — otherwise this
+  // overlay would disappear on its own fixed timer regardless of app state.
+  // Purely derived from existing state, so no effect is needed to compute it.
+  const animate = nativeSplashHidden && isReady;
 
   if (!visible) return null;
 
@@ -50,7 +56,7 @@ export function AnimatedSplashOverlay() {
     <View
       onLayout={() => {
         SplashScreen.hideAsync().finally(() => {
-          setAnimate(true);
+          setNativeSplashHidden(true);
         });
       }}
       style={styles.splashOverlay}>
