@@ -57,7 +57,7 @@ Near-neutral, with **one accent**. The neutral ramp carries almost everything; t
 
 **The neutrals are warm.** This is what makes Fynd premium without being cold, and it is not optional. Neutrals are tinted toward red/yellow, never blue. Pure `#000000` and `#FFFFFF` are banned as surface colors.
 
-The accent is a **cool** violet, deliberately: the warmth lives in the neutrals, the energy lives in the accent, and neither has to do the other's job.
+**The palette is warm throughout** — a cream canvas and a brick-crimson accent, reading editorial and curated rather than utilitarian. Because brand and canvas now share a warm family, separation comes from *depth and saturation* rather than from hue opposition: deep brick against pale cream. Two consequences follow, and both are load-bearing rather than incidental — the accent cannot also serve as the focus ring (§3 rule 2a), and it cannot be relied on alone to distinguish a primary action from a destructive one (§8).
 
 ### Primitive ramps
 
@@ -67,19 +67,35 @@ Warm neutrals:
 |---|---|---|---|---|
 | `neutral.0` | `#FFFFFF` | | `neutral.500` | `#857E78` |
 | `neutral.25` | `#FAF9F8` | | `neutral.600` | `#655F5A` |
-| `neutral.50` | `#F5F3F1` | | `neutral.700` | `#4A4541` |
-| `neutral.100` | `#EDEAE7` | | `neutral.800` | `#2E2A28` |
-| `neutral.200` | `#E0DCD8` | | `neutral.900` | `#1A1716` |
-| `neutral.300` | `#CAC4BF` | | `neutral.950` | `#0C0A0B` |
+| `neutral.35` | `#F8F4EF` | | `neutral.700` | `#4A4541` |
+| `neutral.50` | `#F5F3F1` | | `neutral.800` | `#2E2A28` |
+| `neutral.100` | `#EDEAE7` | | `neutral.900` | `#1A1716` |
+| `neutral.200` | `#E0DCD8` | | `neutral.950` | `#0C0A0B` |
+| `neutral.300` | `#CAC4BF` | | | |
 | `neutral.400` | `#A8A19B` | | | |
 
-Violet / electric orchid:
+`neutral.35` is the light-scheme canvas (`bg`) — genuinely cream, not the near-gray-white `neutral.25` (a real 4–9pt RGB channel gap vs. `neutral.25`'s 1–2pt gap). `neutral.25` didn't change value; it moved role, to `bgElevated` — see below.
 
-| Token | Hex | | Token | Hex |
-|---|---|---|---|---|
-| `violet.300` | `#C89BF5` | | `violet.600` | `#7C2FD4` |
-| `violet.400` | `#B478F0` | | `violet.700` | `#6620B0` |
-| `violet.500` | `#9B4DEA` | | `violet.800` | `#4F1889` |
+Cream surfaces (light scheme only — the neutral steps above are near-white greys and read cold against a true cream, so surfaces get their own warm family):
+
+| Token | Hex | Role |
+|---|---|---|
+| `cream.50` | `#FDF8EA` | light `bgElevated` |
+| `cream.100` | `#FBF1D8` | **swatch anchor** — light `bg` |
+| `cream.200` | `#F5E9C9` | light `bgSunken` |
+
+Brick-crimson brand ramp (hue ≈1°, S 62–65%):
+
+| Token | Hex | Role |
+|---|---|---|
+| `red.300` | `#E48D8B` | — |
+| `red.400` | `#D65452` | dark `accentText`; ambient glow secondary |
+| `red.500` | `#B12B29` | **swatch anchor** — dark `accent`; ambient glow primary |
+| `red.600` | `#912321` | light `accent`, light `accentText`; dark `accentPressed` |
+| `red.700` | `#751B1A` | light `accentPressed` |
+| `red.800` | `#581413` | no consumer; retained so the ramp stays a regular 6-step scale |
+
+The light accent is `red.600`, not the raw `red.500` anchor: it keeps the brick-crimson character while giving white text 8.51:1 and 7.57:1 as text on cream. Its separation from `danger` is only **1.87:1** — deliberately accepted, and resolved structurally rather than chromatically (see §8).
 
 Functional:
 
@@ -97,9 +113,9 @@ Screens read **only** these. Never a primitive directly.
 
 | Semantic | Light | Dark |
 |---|---|---|
-| `bg` | `neutral.25` | `neutral.950` |
-| `bgElevated` | `neutral.0` | `neutral.900` |
-| `bgSunken` | `neutral.50` | `neutral.950` |
+| `bg` | `cream.100` | `neutral.950` |
+| `bgElevated` | `cream.50` | `neutral.900` |
+| `bgSunken` | `cream.200` | `neutral.950` |
 | `bgInverse` | `neutral.900` | `neutral.50` |
 | `text` | `neutral.900` | `neutral.25` |
 | `textSecondary` | `neutral.600` | `neutral.400` |
@@ -108,11 +124,11 @@ Screens read **only** these. Never a primitive directly.
 | `textOnMedia` | `#FFFFFF` | `#FFFFFF` |
 | `border` | `neutral.200` | `neutral.800` |
 | `borderStrong` | `neutral.300` | `neutral.700` |
-| `borderFocus` | `violet.700` | `violet.400` |
-| `accent` | `violet.700` | `violet.500` |
-| `accentPressed` | `violet.800` | `violet.600` |
+| `borderFocus` | `neutral.800` | `neutral.200` |
+| `accent` | `red.600` | `red.500` |
+| `accentPressed` | `red.700` | `red.600` |
 | `onAccent` | `#FFFFFF` | `#FFFFFF` |
-| `accentText` | `violet.700` | `violet.400` |
+| `accentText` | `red.600` | `red.400` |
 | `favoriteActive` | `magenta.600` | `magenta.500` |
 | `danger` / `dangerBg` | `danger.500` / `#FDF0F0` | `danger.500` / `#3A1E1E` |
 | `onDanger` | `#FFFFFF` | `#FFFFFF` |
@@ -123,12 +139,14 @@ Screens read **only** these. Never a primitive directly.
 
 ### Rules
 
-1. **`accent` is a per-scheme pair, never one hex.** A violet dark enough to pass contrast on white is unreadable on near-black, and vice versa. Same for `accentText` and `borderFocus`.
-2. **`accent` is reserved** for: primary buttons, the active tab, selected chips/filters, focus rings, and links. Nothing else.
+1. **`accent` is a per-scheme pair, never one hex.** A red dark enough to pass contrast on cream is muddy on near-black, and vice versa. Same for `accentText`.
+2. **`accent` is reserved** for: primary buttons, the active tab, selected chips/filters, and links. Nothing else.
+2a. **Focus rings are NOT an accent use.** `borderFocus` is charcoal (`neutral.800` light / `neutral.200` dark), deliberately decoupled from the brand. With a red brand, an accent-colored focus ring would collapse into the `danger` error border — `TextField`'s focused and focused+error states would become indistinguishable. Charcoal separates from `danger` on two axes at once, luminance (3.12:1 light / 3.34:1 dark) and chroma (achromatic vs. saturated), while reading 13.4:1 against the field fill. **Do not "restore" this to the accent color.** Focus is a system state, not a brand moment.
 3. **`textOnMedia` is white in both schemes** and is only valid over a scrim. Text over user photography without a scrim is a defect — arbitrary images cannot guarantee contrast.
 4. **`favoriteActive` is magenta, not violet and not the gradient.** It is the one state allowed its own hue, because it is the product's core engagement signal and must not read as "selected."
 5. Never introduce a new color without adding it here first.
 6. **`onDanger` is its own token, decoupled from `onAccent`**, even though both currently resolve to `#FFFFFF`. Danger's foreground is defined by its own contrast needs against `danger`, never borrowed from accent's — a color surface must never assume another surface's foreground token happens to work for it too.
+7. **`bgElevated` is never pure `#FFFFFF`/`#0C0A0B`** — it moved to `neutral.25` (light) specifically to stop violating the "no pure white/black as a surface" rule above; it was a standing violation until this pass. Dark `bgElevated` (`neutral.900`) was already compliant.
 
 ---
 
@@ -166,6 +184,22 @@ If a surface feels like it needs the gradient, it almost certainly needs better 
 
 ---
 
+## 4a. Ambient background
+
+A separate, distinct treatment from the signature gradient above — same color *family* (violet/magenta, from the primitive ramps), different construct, different rule. Where §4's gradient is a fixed brand mark reserved for a closed allowlist that explicitly excludes page/screen backgrounds, the ambient background is two soft, low-intensity radial washes meant specifically as atmosphere behind content — currently used on Sign In, Sign Up, and profile onboarding.
+
+**Mechanism**: `react-native` core's own `experimental_backgroundImage` radial-gradient support — no gradient library. Each wash fades to full alpha-0 transparency, not just low opacity, so its own geometric boundary is never visible — only a soft interior falloff. Centers sit substantially off-canvas (via the gradient's own `position`, offset beyond a corner), so the effect reads as light spilling in from outside the frame, never a discrete shape sitting on the screen.
+
+**Rules**:
+1. Two washes only — `ambientGlow.primary` (deep brick, `red.500`) and `ambientGlow.secondary` (dusty rose, `red.400`). Keys are palette-agnostic by design, so a future palette shift is a value change rather than a rename across consumers. This is deliberately not open-ended; a third color or a third wash needs the same explicit-agreement bar as a gradient allowlist addition.
+2. Extremely low intensity (low-single-digit-to-low-double-digit percent alpha at the core, fading to zero) — quiet atmosphere, never a visible tint competing with content.
+3. `pointerEvents="none"` always — never intercepts a touch.
+4. Motion is slow and continuous (see §10's ambient-motion note) — never the snappy interaction motion used elsewhere.
+5. **Progressive enhancement, not a hard dependency**: the surface's semantic `bg` color is always the base fill underneath the washes. If `experimental_backgroundImage` doesn't render on a given platform/renderer, the washes are simply invisible and the screen still reads correctly on the solid neutral background — no feature-detection or fallback branching is added for this; it falls out of the layering itself.
+6. Reserved for auth-shaped, otherwise-quiet screens today. Extending it elsewhere is a "does this screen genuinely want atmosphere over content" decision, not an automatic reuse.
+
+---
+
 ## 5. Typography
 
 **One custom display face, system body.**
@@ -180,6 +214,7 @@ If a surface feels like it needs the gradient, it almost certainly needs better 
 | `display` | 32 / 38 | 700 | Manrope |
 | `title` | 24 / 30 | 700 | Manrope |
 | `heading` | 19 / 25 | 600 | Manrope |
+| `wordmark` | 22 / 28 | 700 | Manrope, letter-spacing -0.3 |
 | `price` | 22 / 26 | 700 | Manrope, tabular |
 | `priceSm` | 15 / 19 | 700 | Manrope, tabular |
 | `body` | 16 / 24 | 400 | System |
@@ -191,7 +226,7 @@ If a surface feels like it needs the gradient, it almost certainly needs better 
 
 ### Rules
 
-1. The custom face is for `display`, `title`, `heading`, `price`, `priceSm` **only**. Everything else is system.
+1. The custom face is for `display`, `title`, `heading`, `wordmark`, `price`, `priceSm` **only**. Everything else is system.
 2. **Every custom-face variant declares an explicit `lineHeight`** — Manrope does not share system font metrics, and inherited line heights will be wrong.
 3. Price always uses **tabular numerals**, so prices align in the grid and don't jitter when values change.
 4. Fonts load before the splash hides. The existing `AnimatedSplashOverlay` already gates on an `isReady` flag — font loading joins auth resolution as a readiness input.
@@ -237,13 +272,26 @@ Crisp. Corners recede rather than draw attention.
 
 **Elevation — three levels, no more:**
 
-| Level | Use |
-|---|---|
-| `raised` | Cards, the bottom bar over content |
-| `overlay` | Sheets, popovers |
-| `modal` | Full modals |
+| Level | Use | Values |
+|---|---|---|
+| `raised` | Cards, the bottom bar over content, `TextField`, primary `Button` | iOS: `shadowColor #2E2A28 (neutral.800), offset {0,1}, opacity 0.08, radius 3`. Android: `elevation 2`. |
+| `overlay` | Sheets, popovers | **[OPEN]** — not yet specified |
+| `modal` | Full modals | **[OPEN]** — not yet specified |
 
-Each is a platform-split object (iOS `shadow*`, Android `elevation`). Shadows are subtle and warm-tinted, never neutral-blue-black. Prefer a border or a background-tone shift over a shadow where either will do.
+Each is a platform-split object (iOS `shadow*`, Android `elevation`). Shadows are subtle and warm-tinted (`neutral.800`), never neutral-blue-black. Prefer a border or a background-tone shift over a shadow where either will do — `raised` above is deliberately barely-there, not a visible drop shadow.
+
+### Destructive actions must differ by silhouette, not hue — REQUIRED, not yet implemented
+
+With `accent` at `red.600` and `danger` at `#D93A3A`, the two are separated by only **1.87:1** and are hue-identical (1° vs 0°). A solid primary CTA and a solid danger button are therefore **not reliably distinguishable** — a user cannot tell "Save" from "Delete" by color alone. This is a safety problem, not an aesthetic one.
+
+The required resolution is structural:
+
+- **primary** — solid brand-red fill, white label (current behavior, unchanged)
+- **destructive** — outlined/tonal: transparent or `dangerBg` fill, `danger` border and label
+
+This makes the two differ in shape, so the distinction holds regardless of how close the reds are. **This is a prerequisite for shipping any destructive action**, and was deliberately deferred out of the palette migration that introduced the constraint. Until it lands, no solid-filled danger button should reach a user-facing screen.
+
+**Primary `Button` also gets a top/bottom bevel highlight** — `borderTopColor rgba(255,255,255,0.18)` / `borderBottomColor rgba(0,0,0,0.12)`, 1px each, no left/right border. Alpha-based (`buttonHighlight` in `tokens.ts`), not a semantic color — it works unchanged over either scheme's `accent` fill. Top+bottom only, never all four edges: that's the specific choice that keeps this reading as a restrained native-control highlight rather than a skeuomorphic bevel. The highlight disappears while pressed (the fill also swaps to `accentPressed` at the same time), simulating the surface compressing under touch. Primary-only today — extending it to `danger` (the only other solid-fill variant) is a deliberate future decision, not an automatic follow-on.
 
 ---
 
@@ -284,6 +332,8 @@ easing     ease-out for entrances, ease-in for exits
 | Images | Fade in ~200ms from placeholder. |
 | Press states | Opacity or background shift within `fast`. |
 
+**Ambient/decorative background motion is a separate category from the table above**, not an extension of it. The interactive-feedback tokens (`duration` 100–320ms, `spring`) exist for responses to user action and top out at 320ms; ambient motion (see §4a) runs on 12–20 **second** cycles and is never used for interaction feedback. It uses its own constants (`ambientMotion` in `tokens.ts`) and the same no-spring, no-bounce discipline — smooth ease in/out, never `withSpring`.
+
 ---
 
 ## 11. Image treatment
@@ -323,9 +373,9 @@ The smallest useful set. Under `src/components/ui/`, one file each.
 | Primitive | Notes |
 |---|---|
 | `Text` | Variants per §5. Replaces `ThemedText`. `color` prop keyed to semantic tokens. |
-| `Button` | `primary` / `secondary` / `ghost` / `danger` × `sm` / `md` / `lg`. Loading and disabled built in. 44pt enforced. |
+| `Button` | `primary` / `secondary` / `ghost` / `danger` × `sm` / `md` / `lg`. Loading and disabled built in. 44pt enforced. `primary` carries `elevation.raised` and a top/bottom bevel highlight — see §8. |
 | `IconButton` | Icon-only, `hitSlop` to 44pt. `onMedia` variant carries its own scrim. |
-| `TextField` | Label + input + helper/error as one unit. Owns focus ring, error state, `color`, and `placeholderTextColor`. |
+| `TextField` | Label + input + helper/error as one unit. Owns focus ring, error state, `color`, and `placeholderTextColor`. Opaque `bgElevated` fill with `elevation.raised` — deliberately not translucent, see §8. |
 | `Avatar` | `xs`/`sm`/`md`/`lg`. Initials fallback — `avatar_path` is null for every user today. |
 | `Chip` | Static badge and interactive filter, one component via a `selectable` prop. Radius `sm`–`md`, never pill. |
 | `ListRow` | Leading slot / title + subtitle / trailing slot. |
@@ -420,5 +470,8 @@ Tracked deliberately. Each must be resolved explicitly, not by improvisation.
 | 1 | **Display typeface** | Manrope is the preferred candidate. Reviewable once rendered in Fynd. Nothing else depends on the specific face. |
 | 2 | **Listing detail dark treatment** | Media area dark + informational portion system-following is the leading idea. Decide with the real design. |
 | 3 | **One further gradient allowlist entry** | Reserved, unassigned. Must be agreed, not claimed. |
-| 4 | **Exact elevation shadow values** | Three levels agreed; the warm-tinted values are not yet specified. |
+| 6 | **`gradientBrand` palette migration** | Stops are still the original violet set, unmigrated and unconsumed. The §1/§4 rationale ("violet-weighted precisely so it does not read as Instagram's") is stale against a red brand and must be rewritten, not patched, when the stops are redefined. |
+| 7 | **`favoriteActive` under the red palette** | Still `magenta.600`/`magenta.500`. Measures 2.35:1 from the light accent (adequate) but 1.02:1 from `danger` — near-identical luminance, separated by hue alone (333° vs 0°). Tolerable only because favorite is always a filled-heart icon. Resolve on-device. |
+| 8 | **Destructive-button treatment** | Specified in §8, not implemented. Blocking for any destructive action. |
+| 4 | **Exact elevation shadow values** | `raised` now has concrete values (§8). `overlay`/`modal` remain unspecified. |
 | 5 | **Schema gaps blocking these patterns** | No `size` column, and no `categories`, `favorites`, or `follows` tables exist. The feed hierarchy (§14.1) and Search filters (§14.2) depend on them. |

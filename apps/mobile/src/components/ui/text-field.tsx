@@ -3,7 +3,7 @@ import { StyleSheet, TextInput, View, type StyleProp, type TextInputProps, type 
 
 import { Text } from '@/components/ui/text';
 import { getFieldBorderStyle, getFieldMessage } from '@/components/ui/text-field-state';
-import { border, radius, space } from '@/design/tokens';
+import { border, elevation, radius, space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 
 export type TextFieldProps = Omit<TextInputProps, 'style' | 'placeholderTextColor'> & {
@@ -59,8 +59,10 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
         placeholderTextColor={colors.textTertiary}
         style={[
           styles.input,
+          elevation.raised,
           {
             color: colors.text,
+            backgroundColor: colors.bgElevated,
             borderWidth,
             borderColor: colors[fieldBorder.colorKey],
             borderRadius: radius.md,

@@ -64,3 +64,19 @@ export const BUTTON_TEXT_VARIANT: Record<ButtonSize, TextVariant> = {
   md: 'bodyStrong',
   lg: 'bodyStrong',
 };
+
+// The top/bottom bevel highlight is primary-only (secondary/danger have
+// their own treatment or none yet — see DESIGN.md's button-bevel note) and
+// disappears while pressed, simulating the surface compressing under touch.
+// A named, tested function rather than an inline check so extending the
+// bevel to another variant later is a deliberate decision, not a silent
+// side effect of some other change.
+export function shouldShowButtonBevel({
+  variant,
+  pressed,
+}: {
+  variant: ButtonVariant;
+  pressed: boolean;
+}): boolean {
+  return variant === 'primary' && !pressed;
+}

@@ -1,17 +1,18 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Link } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { Pressable, StyleSheet, TextInput } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { AmbientBackground } from '@/components/ambient-background';
+import { Button, Screen, Text, TextField } from '@/components/ui';
+import { space } from '@/design/tokens';
 import { signUp } from '@/features/auth/api';
 import { mapAuthError } from '@/features/auth/errors';
 import { signUpSchema, type SignUpInput } from '@/features/auth/schemas';
 
 export default function SignUp() {
+  const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
   // Set when signUp() succeeds but returns no session — the email
   // confirmation is enabled branch. Local dev has confirmations off, so this
@@ -52,106 +53,137 @@ export default function SignUp() {
 
   if (checkEmail) {
     return (
-      <ThemedView style={styles.container}>
-        <ThemedText type="title">Check your email</ThemedText>
-        <ThemedText>We sent a confirmation link to {checkEmail}.</ThemedText>
-      </ThemedView>
+      <View style={styles.root}>
+        <AmbientBackground />
+        <Screen scroll style={styles.screen} contentContainerStyle={styles.contentContainer}>
+          <View style={styles.identity}>
+            <Text variant="wordmark">Fynd</Text>
+            <Text variant="title">Check your email</Text>
+            <Text variant="body" color="textSecondary">
+              We sent a confirmation link to {checkEmail}.
+            </Text>
+          </View>
+        </Screen>
+      </View>
     );
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <ThemedText type="title">Create account</ThemedText>
+    <View style={styles.root}>
+      <AmbientBackground />
+      <Screen
+        scroll
+        keyboardAvoiding
+        style={styles.screen}
+        contentContainerStyle={styles.contentContainer}>
+        <View style={styles.content}>
+          <View style={styles.identity}>
+            <Text variant="wordmark">Fynd</Text>
+            <Text variant="title">Create your account</Text>
+            <Text variant="body" color="textSecondary">
+              Join Fynd to discover, buy, and sell second-hand.
+            </Text>
+          </View>
 
-      <Controller
-        control={control}
-        name="email"
-        render={({ field }) => (
-          <TextInput
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            placeholder="Email"
-            value={field.value}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            style={styles.input}
-          />
-        )}
-      />
-      {errors.email ? (
-        <ThemedText themeColor="textSecondary">{errors.email.message}</ThemedText>
-      ) : null}
+          <View style={styles.fields}>
+            <Controller
+              control={control}
+              name="email"
+              render={({ field }) => (
+                <TextField
+                  label="Email"
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  keyboardType="email-address"
+                  value={field.value}
+                  onChangeText={field.onChange}
+                  onBlur={field.onBlur}
+                  error={errors.email?.message}
+                />
+              )}
+            />
 
-      <Controller
-        control={control}
-        name="password"
-        render={({ field }) => (
-          <TextInput
-            autoCapitalize="none"
-            autoComplete="new-password"
-            secureTextEntry
-            placeholder="Password"
-            value={field.value}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            style={styles.input}
-          />
-        )}
-      />
-      {errors.password ? (
-        <ThemedText themeColor="textSecondary">{errors.password.message}</ThemedText>
-      ) : null}
+            <Controller
+              control={control}
+              name="password"
+              render={({ field }) => (
+                <TextField
+                  label="Password"
+                  autoCapitalize="none"
+                  autoComplete="new-password"
+                  secureTextEntry
+                  value={field.value}
+                  onChangeText={field.onChange}
+                  onBlur={field.onBlur}
+                  error={errors.password?.message}
+                />
+              )}
+            />
 
-      <Controller
-        control={control}
-        name="confirmPassword"
-        render={({ field }) => (
-          <TextInput
-            autoCapitalize="none"
-            autoComplete="new-password"
-            secureTextEntry
-            placeholder="Confirm password"
-            value={field.value}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            style={styles.input}
-          />
-        )}
-      />
-      {errors.confirmPassword ? (
-        <ThemedText themeColor="textSecondary">{errors.confirmPassword.message}</ThemedText>
-      ) : null}
+            <Controller
+              control={control}
+              name="confirmPassword"
+              render={({ field }) => (
+                <TextField
+                  label="Confirm password"
+                  autoCapitalize="none"
+                  autoComplete="new-password"
+                  secureTextEntry
+                  value={field.value}
+                  onChangeText={field.onChange}
+                  onBlur={field.onBlur}
+                  error={errors.confirmPassword?.message}
+                />
+              )}
+            />
+          </View>
 
-      {formError ? <ThemedText themeColor="textSecondary">{formError}</ThemedText> : null}
+          {formError ? (
+            <Text
+              variant="caption"
+              color="danger"
+              accessibilityLiveRegion="polite"
+              accessibilityRole="alert">
+              {formError}
+            </Text>
+          ) : null}
 
-      <Pressable onPress={handleSubmit(onSubmit)} disabled={isSubmitting} style={styles.button}>
-        <ThemedText type="link">{isSubmitting ? 'Creating account…' : 'Create account'}</ThemedText>
-      </Pressable>
-
-      <Link href="/(auth)/sign-in">
-        <ThemedText type="link">Already have an account? Sign in</ThemedText>
-      </Link>
-    </ThemedView>
+          <View style={styles.actions}>
+            <Button onPress={handleSubmit(onSubmit)} loading={isSubmitting}>
+              Create account
+            </Button>
+            <Button variant="ghost" onPress={() => router.push('/(auth)/sign-in')}>
+              Already have an account? Sign in
+            </Button>
+          </View>
+        </View>
+      </Screen>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.three,
   },
-  input: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#88888855',
-    borderRadius: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
+  screen: {
+    backgroundColor: 'transparent',
   },
-  button: {
-    paddingVertical: Spacing.two,
-    alignItems: 'center',
+  contentContainer: {
+    flexGrow: 1,
+    justifyContent: 'flex-start',
+    paddingTop: space[10],
+  },
+  content: {
+    gap: space[8],
+  },
+  identity: {
+    gap: space[2],
+  },
+  fields: {
+    gap: space[3],
+  },
+  actions: {
+    gap: space[3],
   },
 });

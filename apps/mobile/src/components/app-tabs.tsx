@@ -20,6 +20,17 @@ export default function AppTabs() {
         />
       </NativeTabs.Trigger>
 
+      {/* Temporary icon: reuses the home PNG rather than sourcing new art,
+          per the approved plan (DESIGN.md §4/§12.7's custom bottom bar with
+          a gradient center action is a later phase). */}
+      <NativeTabs.Trigger name="sell">
+        <NativeTabs.Trigger.Label>Sell</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          src={require('@/assets/images/tabIcons/home.png')}
+          renderingMode="template"
+        />
+      </NativeTabs.Trigger>
+
       <NativeTabs.Trigger name="profile">
         <NativeTabs.Trigger.Label>Profile</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon

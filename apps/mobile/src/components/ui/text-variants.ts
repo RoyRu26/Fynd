@@ -16,6 +16,7 @@ export type TextVariant =
   | 'display'
   | 'title'
   | 'heading'
+  | 'wordmark'
   | 'price'
   | 'priceSm'
   | 'body'
@@ -54,6 +55,7 @@ export const textVariantFace: Record<TextVariant, TextFace> = {
   display: 'displayBold',
   title: 'displayBold',
   heading: 'displaySemiBold',
+  wordmark: 'displayBold',
   price: 'displayBold',
   priceSm: 'displayBold',
   body: 'system',
@@ -76,6 +78,11 @@ export const textVariantStyles: Record<TextVariant, Omit<TextStyle, 'fontFamily'
   display: { fontSize: 32, lineHeight: 38, fontWeight: '700' },
   title: { fontSize: 24, lineHeight: 30, fontWeight: '700' },
   heading: { fontSize: 19, lineHeight: 25, fontWeight: '600' },
+  // Sized close to but distinct from `title` so the wordmark never collides
+  // with the screen's actual headline directly beneath it. Slight negative
+  // letterSpacing for a more deliberate, set-not-typed feel — text only, no
+  // logo/graphic mark.
+  wordmark: { fontSize: 22, lineHeight: 28, fontWeight: '700', letterSpacing: -0.3 },
   price: { fontSize: 22, lineHeight: 26, fontWeight: '700', fontVariant: ['tabular-nums'] },
   priceSm: { fontSize: 15, lineHeight: 19, fontWeight: '700', fontVariant: ['tabular-nums'] },
   body: { fontSize: 16, lineHeight: 24, fontWeight: '400' },

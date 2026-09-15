@@ -1,6 +1,6 @@
 import { DefaultTheme as NavDefaultTheme, type Theme as NavigationTheme } from 'expo-router';
 
-import { functional, magenta, neutral, violet } from '@/design/tokens';
+import { cream, functional, magenta, neutral, red } from '@/design/tokens';
 
 // Semantic color layer. Screens read only these — never a primitive ramp
 // value directly (DESIGN.md §15, rule 1).
@@ -41,31 +41,36 @@ export type SemanticColors = {
 
 // DESIGN.md §3, "Light" column.
 export const lightColors: SemanticColors = {
-  bg: neutral[25],
-  bgElevated: neutral[0],
-  bgSunken: neutral[50],
+  bg: cream[100],
+  bgElevated: cream[50],
+  bgSunken: cream[200],
   bgInverse: neutral[900],
-  text: neutral[900],
+  text: neutral[800],
   textSecondary: neutral[600],
   textTertiary: neutral[500],
   textInverse: neutral[25],
-  textOnMedia: '#FFFFFF',
+  textOnMedia: "#FFFFFF",
   border: neutral[200],
   borderStrong: neutral[300],
-  borderFocus: violet[700],
-  accent: violet[700],
-  accentPressed: violet[800],
-  onAccent: '#FFFFFF',
-  accentText: violet[700],
+  // Charcoal, NOT the brand accent: with a red brand, an accent-colored
+  // focus ring would collapse into the danger error border. Charcoal
+  // separates from `danger` on two axes at once — luminance (3.12:1) and
+  // chroma (achromatic vs saturated) — and reads 13.39:1 against the field
+  // fill. See DESIGN.md §3.
+  borderFocus: neutral[800],
+  accent: "#c1121f",
+  accentPressed: red[700],
+  onAccent: "#FFFFFF",
+  accentText: red[600],
   favoriteActive: magenta[600],
   danger: functional.danger,
-  dangerBg: '#FDF0F0',
-  onDanger: '#FFFFFF',
+  dangerBg: "#FDF0F0",
+  onDanger: "#FFFFFF",
   success: functional.success,
-  successBg: '#EDF7F1',
+  successBg: "#EDF7F1",
   warning: functional.warning,
-  warningBg: '#FDF6E8',
-  overlayScrim: 'rgba(12,10,11,0.55)',
+  warningBg: "#FDF6E8",
+  overlayScrim: "rgba(12,10,11,0.55)",
   skeleton: neutral[100],
 };
 
@@ -82,11 +87,14 @@ export const darkColors: SemanticColors = {
   textOnMedia: '#FFFFFF',
   border: neutral[800],
   borderStrong: neutral[700],
-  borderFocus: violet[400],
-  accent: violet[500],
-  accentPressed: violet[600],
+  // Charcoal's dark-scheme counterpart — a light stone neutral. Same
+  // reasoning as the light scheme: 13.08:1 against the field fill, 3.34:1
+  // from `danger`, and achromatic against a saturated error border.
+  borderFocus: neutral[200],
+  accent: red[500],
+  accentPressed: red[600],
   onAccent: '#FFFFFF',
-  accentText: violet[400],
+  accentText: red[400],
   favoriteActive: magenta[500],
   danger: functional.danger,
   dangerBg: '#3A1E1E',

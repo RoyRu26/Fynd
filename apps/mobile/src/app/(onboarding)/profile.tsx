@@ -1,18 +1,26 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
-import { Pressable, StyleSheet, TextInput } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
-import { mapAuthError } from '@/features/auth/errors';
+import { AmbientBackground } from '@/components/ambient-background';
+import { Button, Icon, Screen, Text, TextField, type IconName } from '@/components/ui';
+import { space } from '@/design/tokens';
+import { useAppTheme } from '@/design/theme-provider';
 import { useAuth } from '@/features/auth/auth-provider';
+import { mapAuthError } from '@/features/auth/errors';
 import { useUsernameAvailability } from '@/features/profile/availability';
 import { useUpdateProfile } from '@/features/profile/queries';
 import { onboardingSchema, type OnboardingInput } from '@/features/profile/schemas';
 
+// Verified against the installed packages, not guessed: both SF Symbol names
+// exist in sf-symbols-typescript's types, and both Material Symbols names
+// exist in expo-symbols' android/symbols.json.
+const AVAILABLE_ICON: IconName = { ios: 'checkmark.circle.fill', android: 'check_circle', web: 'check_circle' };
+const TAKEN_ICON: IconName = { ios: 'xmark.circle.fill', android: 'cancel', web: 'cancel' };
+
 export default function OnboardingProfile() {
+  const { colors } = useAppTheme();
   const { session } = useAuth();
   const userId = session?.user.id;
   const updateProfile = useUpdateProfile(userId);
@@ -60,80 +68,124 @@ export default function OnboardingProfile() {
     availability.data !== undefined;
 
   return (
-    <ThemedView style={styles.container}>
-      <ThemedText type="title">Set up your profile</ThemedText>
+    <View style={styles.root}>
+      <AmbientBackground />
+      <Screen
+        scroll
+        keyboardAvoiding
+        style={styles.screen}
+        contentContainerStyle={styles.contentContainer}>
+        <View style={styles.content}>
+          <View style={styles.identity}>
+            <Text variant="wordmark">Fynd</Text>
+            <Text variant="title">Set up your profile</Text>
+            <Text variant="body" color="textSecondary">
+              Choose how other people see you on Fynd.
+            </Text>
+          </View>
 
-      <Controller
-        control={control}
-        name="username"
-        render={({ field }) => (
-          <TextInput
-            autoCapitalize="none"
-            autoComplete="off"
-            autoCorrect={false}
-            placeholder="Username"
-            value={field.value}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            style={styles.input}
-          />
-        )}
-      />
-      {errors.username ? (
-        <ThemedText themeColor="textSecondary">{errors.username.message}</ThemedText>
-      ) : availability.isFetching ? (
-        <ThemedText themeColor="textSecondary">Checking availability…</ThemedText>
-      ) : showAvailability ? (
-        <ThemedText themeColor="textSecondary">
-          {availability.data ? 'Username is available' : 'That username is taken'}
-        </ThemedText>
-      ) : null}
+          <View style={styles.fields}>
+            <View>
+              <Controller
+                control={control}
+                name="username"
+                render={({ field }) => (
+                  <TextField
+                    label="Username"
+                    autoCapitalize="none"
+                    autoComplete="off"
+                    autoCorrect={false}
+                    value={field.value}
+                    onChangeText={field.onChange}
+                    onBlur={field.onBlur}
+                    error={errors.username?.message}
+                  />
+                )}
+              />
+              <View style={styles.availabilityRegion} accessibilityLiveRegion="polite">
+                {errors.username ? null : availability.isFetching ? (
+                  <View style={styles.availabilityRow}>
+                    <ActivityIndicator size="small" color={colors.textTertiary} />
+                    <Text variant="caption" color="textTertiary">
+                      Checking availability…
+                    </Text>
+                  </View>
+                ) : showAvailability ? (
+                  <View style={styles.availabilityRow}>
+                    <Icon
+                      name={availability.data ? AVAILABLE_ICON : TAKEN_ICON}
+                      size="sm"
+                      color={availability.data ? colors.success : colors.danger}
+                    />
+                    <Text variant="caption" color={availability.data ? 'success' : 'danger'}>
+                      {availability.data ? 'Username is available' : 'That username is taken'}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </View>
 
-      <Controller
-        control={control}
-        name="displayName"
-        render={({ field }) => (
-          <TextInput
-            placeholder="Display name"
-            value={field.value}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            style={styles.input}
-          />
-        )}
-      />
-      {errors.displayName ? (
-        <ThemedText themeColor="textSecondary">{errors.displayName.message}</ThemedText>
-      ) : null}
+            <Controller
+              control={control}
+              name="displayName"
+              render={({ field }) => (
+                <TextField
+                  label="Display name"
+                  value={field.value}
+                  onChangeText={field.onChange}
+                  onBlur={field.onBlur}
+                  error={errors.displayName?.message}
+                />
+              )}
+            />
+          </View>
 
-      {formError ? <ThemedText themeColor="textSecondary">{formError}</ThemedText> : null}
+          {formError ? (
+            <Text
+              variant="caption"
+              color="danger"
+              accessibilityLiveRegion="polite"
+              accessibilityRole="alert">
+              {formError}
+            </Text>
+          ) : null}
 
-      <Pressable
-        onPress={handleSubmit(onSubmit)}
-        disabled={isSubmitting}
-        style={styles.button}>
-        <ThemedText type="link">{isSubmitting ? 'Saving…' : 'Continue'}</ThemedText>
-      </Pressable>
-    </ThemedView>
+          <Button onPress={handleSubmit(onSubmit)} loading={isSubmitting}>
+            Continue
+          </Button>
+        </View>
+      </Screen>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.three,
   },
-  input: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#88888855',
-    borderRadius: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
+  screen: {
+    backgroundColor: 'transparent',
   },
-  button: {
-    paddingVertical: Spacing.two,
+  contentContainer: {
+    flexGrow: 1,
+    justifyContent: 'flex-start',
+    paddingTop: space[10],
+  },
+  content: {
+    gap: space[8],
+  },
+  identity: {
+    gap: space[2],
+  },
+  fields: {
+    gap: space[3],
+  },
+  availabilityRegion: {
+    marginTop: space[1],
+  },
+  availabilityRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: space[1],
   },
 });

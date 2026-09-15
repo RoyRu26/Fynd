@@ -5,6 +5,7 @@ import {
   getButtonForegroundColor,
   getButtonOpacity,
   isButtonInteractive,
+  shouldShowButtonBevel,
 } from '@/components/ui/button-state';
 
 describe('isButtonInteractive', () => {
@@ -52,6 +53,23 @@ describe('getButtonOpacity', () => {
     for (const variant of ['secondary', 'ghost', 'danger'] as const) {
       expect(getButtonOpacity({ pressed: true, variant })).toBe(0.7);
       expect(getButtonOpacity({ pressed: false, variant })).toBe(1);
+    }
+  });
+});
+
+describe('shouldShowButtonBevel', () => {
+  it('shows on an unpressed primary button', () => {
+    expect(shouldShowButtonBevel({ variant: 'primary', pressed: false })).toBe(true);
+  });
+
+  it('hides while a primary button is pressed — the surface reads as compressed', () => {
+    expect(shouldShowButtonBevel({ variant: 'primary', pressed: true })).toBe(false);
+  });
+
+  it('never shows on non-primary variants, pressed or not', () => {
+    for (const variant of ['secondary', 'ghost', 'danger'] as const) {
+      expect(shouldShowButtonBevel({ variant, pressed: false })).toBe(false);
+      expect(shouldShowButtonBevel({ variant, pressed: true })).toBe(false);
     }
   });
 });

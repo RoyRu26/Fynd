@@ -5,12 +5,13 @@ import {
   getButtonForegroundColor,
   getButtonOpacity,
   isButtonInteractive,
+  shouldShowButtonBevel,
   type ButtonSize,
   type ButtonVariant,
 } from '@/components/ui/button-state';
 import { Text } from '@/components/ui/text';
 import { useAppTheme } from '@/design/theme-provider';
-import { minTouchTarget, radius, space } from '@/design/tokens';
+import { border, buttonHighlight, elevation, minTouchTarget, radius, space } from '@/design/tokens';
 import type { SemanticColors } from '@/design/theme';
 
 export type { ButtonSize, ButtonVariant };
@@ -90,8 +91,22 @@ function getVariantStyle({
   const opacity = getButtonOpacity({ disabled, pressed, variant });
 
   switch (variant) {
-    case 'primary':
-      return { backgroundColor: pressed ? colors.accentPressed : colors.accent, opacity };
+    case 'primary': {
+      // Top/bottom bevel highlight disappears while pressed — the surface
+      // reading as physically compressed, on top of the existing fill swap
+      // below. Shadow stays constant; only the highlight border responds
+      // to press, per shouldShowButtonBevel.
+      const showBevel = shouldShowButtonBevel({ variant, pressed });
+      return {
+        backgroundColor: pressed ? colors.accentPressed : colors.accent,
+        opacity,
+        ...elevation.raised,
+        borderTopWidth: showBevel ? border.thin : 0,
+        borderTopColor: buttonHighlight.top,
+        borderBottomWidth: showBevel ? border.thin : 0,
+        borderBottomColor: buttonHighlight.bottom,
+      };
+    }
     case 'secondary':
       return {
         backgroundColor: colors.bgElevated,

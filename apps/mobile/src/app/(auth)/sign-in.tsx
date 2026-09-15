@@ -1,17 +1,18 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Link } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { Pressable, StyleSheet, TextInput } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { AmbientBackground } from '@/components/ambient-background';
+import { Button, Screen, Text, TextField } from '@/components/ui';
+import { space } from '@/design/tokens';
 import { signIn } from '@/features/auth/api';
 import { mapAuthError } from '@/features/auth/errors';
 import { signInSchema, type SignInInput } from '@/features/auth/schemas';
 
 export default function SignIn() {
+  const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
   const {
     control,
@@ -42,78 +43,104 @@ export default function SignIn() {
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <ThemedText type="title">Sign in</ThemedText>
+    <View style={styles.root}>
+      <AmbientBackground />
+      <Screen
+        scroll
+        keyboardAvoiding
+        style={styles.screen}
+        contentContainerStyle={styles.contentContainer}>
+        <View style={styles.content}>
+          <View style={styles.identity}>
+            <Text variant="wordmark">Fynd</Text>
+            <Text variant="title">Welcome back</Text>
+            <Text variant="body" color="textSecondary">
+              Sign in to continue discovering.
+            </Text>
+          </View>
 
-      <Controller
-        control={control}
-        name="email"
-        render={({ field }) => (
-          <TextInput
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            placeholder="Email"
-            value={field.value}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            style={styles.input}
-          />
-        )}
-      />
-      {errors.email ? (
-        <ThemedText themeColor="textSecondary">{errors.email.message}</ThemedText>
-      ) : null}
+          <View style={styles.fields}>
+            <Controller
+              control={control}
+              name="email"
+              render={({ field }) => (
+                <TextField
+                  label="Email"
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  keyboardType="email-address"
+                  value={field.value}
+                  onChangeText={field.onChange}
+                  onBlur={field.onBlur}
+                  error={errors.email?.message}
+                />
+              )}
+            />
 
-      <Controller
-        control={control}
-        name="password"
-        render={({ field }) => (
-          <TextInput
-            autoCapitalize="none"
-            autoComplete="password"
-            secureTextEntry
-            placeholder="Password"
-            value={field.value}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            style={styles.input}
-          />
-        )}
-      />
-      {errors.password ? (
-        <ThemedText themeColor="textSecondary">{errors.password.message}</ThemedText>
-      ) : null}
+            <Controller
+              control={control}
+              name="password"
+              render={({ field }) => (
+                <TextField
+                  label="Password"
+                  autoCapitalize="none"
+                  autoComplete="password"
+                  secureTextEntry
+                  value={field.value}
+                  onChangeText={field.onChange}
+                  onBlur={field.onBlur}
+                  error={errors.password?.message}
+                />
+              )}
+            />
+          </View>
 
-      {formError ? <ThemedText themeColor="textSecondary">{formError}</ThemedText> : null}
+          {formError ? (
+            <Text
+              variant="caption"
+              color="danger"
+              accessibilityLiveRegion="polite"
+              accessibilityRole="alert">
+              {formError}
+            </Text>
+          ) : null}
 
-      <Pressable onPress={handleSubmit(onSubmit)} disabled={isSubmitting} style={styles.button}>
-        <ThemedText type="link">{isSubmitting ? 'Signing in…' : 'Sign in'}</ThemedText>
-      </Pressable>
-
-      <Link href="/(auth)/sign-up">
-        <ThemedText type="link">Create an account</ThemedText>
-      </Link>
-    </ThemedView>
+          <View style={styles.actions}>
+            <Button onPress={handleSubmit(onSubmit)} loading={isSubmitting}>
+              Sign in
+            </Button>
+            <Button variant="ghost" onPress={() => router.push('/(auth)/sign-up')}>
+              New to Fynd? Create an account
+            </Button>
+          </View>
+        </View>
+      </Screen>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.three,
   },
-  input: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#88888855',
-    borderRadius: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
+  screen: {
+    backgroundColor: 'transparent',
   },
-  button: {
-    paddingVertical: Spacing.two,
-    alignItems: 'center',
+  contentContainer: {
+    flexGrow: 1,
+    justifyContent: 'flex-start',
+    paddingTop: space[10],
+  },
+  content: {
+    gap: space[8],
+  },
+  identity: {
+    gap: space[2],
+  },
+  fields: {
+    gap: space[3],
+  },
+  actions: {
+    gap: space[3],
   },
 });
