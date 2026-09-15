@@ -30,6 +30,14 @@
         {
           "backgroundColor": "#0C0A0B"
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Fynd needs access to your photos so you can add pictures to your listings.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
       ]
     ],
     "experiments": {

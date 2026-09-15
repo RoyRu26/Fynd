@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   attachListingImage,
   createDraft,
+  createListingImageUrls,
   deleteDraft,
   fetchListing,
   fetchListingImages,
@@ -48,6 +49,23 @@ export function useListingImages(listingId: string | undefined) {
     queryKey: listingKeys.images(listingId),
     queryFn: () => fetchListingImages(listingId as string),
     enabled: !!listingId,
+  });
+}
+
+/**
+ * Signed URLs for a private-bucket listing's photos. Kept as its own hook
+ * (rather than folded into `useListingImages`) so a listing with no photos
+ * yet never fires a Storage call, and so the cache key can be exactly the
+ * paths in view.
+ */
+export function useListingImageUrls(storagePaths: string[]) {
+  return useQuery({
+    queryKey: [...listingKeys.all, 'signedUrls', storagePaths],
+    queryFn: () => createListingImageUrls(storagePaths),
+    enabled: storagePaths.length > 0,
+    // Signed URLs are minted for 1 hour (see createListingImageUrls); staying
+    // well under that avoids ever rendering with one that expired mid-session.
+    staleTime: 45 * 60 * 1000,
   });
 }
 

@@ -4,14 +4,22 @@ import { Colors } from '@/constants/theme';
 import { useAppTheme } from '@/design/theme-provider';
 
 export default function AppTabs() {
-  const { scheme } = useAppTheme();
+  const { scheme, colors: semanticColors } = useAppTheme();
   const colors = Colors[scheme];
 
   return (
     <NativeTabs
       backgroundColor={colors.background}
       indicatorColor={colors.backgroundElement}
-      labelStyle={{ selected: { color: colors.text } }}>
+      labelStyle={{ selected: { color: colors.text } }}
+      // The icon has no tint of its own (constants/theme.ts's legacy `Colors`
+      // has no accent concept at all), so without this iOS falls back to its
+      // own default systemBlue for the selected tab — which clashes with
+      // Fynd's olive brand. `iconColor` is NativeTabs' own prop for
+      // exactly this, in the same { default?, selected? } shape labelStyle
+      // above already uses; only `selected` is set here, same as labelStyle,
+      // leaving the unselected icon at its already-neutral native default.
+      iconColor={{ selected: semanticColors.accent }}>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon

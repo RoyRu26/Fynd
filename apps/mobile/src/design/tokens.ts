@@ -5,93 +5,24 @@ import { Platform, StyleSheet, type RadialGradientValue } from "react-native";
 // section. Screens must never import from this file directly — only
 // src/design/theme.ts (the semantic layer) and src/design/theme-provider.tsx
 // consume it. See DESIGN.md §15, rule 1.
+//
+// The color ramps live in src/design/palette.ts and are re-exported here.
+// They are kept in a separate, dependency-free module because this file
+// imports react-native at the top level, which makes it unimportable by the
+// test runner — and the contrast/color-vision harness has to assert against
+// the real shipped values. See palette.ts's header for the full reasoning.
 
-// DESIGN.md §3 — warm neutral ramp.
-export const neutral = {
-  0: "#FFFFFF",
-  25: "#FAF9F8",
-  // Genuinely cream, not a near-gray-white like 25 — a real 4-9pt channel
-  // gap (R248/G244/B239) rather than 25's 1-2pt gap. Light-scheme `bg` only;
-  // dark scheme and every other semantic mapping is untouched. See DESIGN.md §3.
-  // Superseded as `bg` by cream.100 in the cream/brick-crimson palette;
-  // retained for dark-scheme use and as a neutral step.
-  35: "#F8F4EF",
-  50: "#F5F3F1",
-  100: "#EDEAE7",
-  200: "#E0DCD8",
-  300: "#CAC4BF",
-  400: "#A8A19B",
-  500: "#857E78",
-  600: "#655F5A",
-  700: "#4A4541",
-  800: "#2E2A28",
-  900: "#1A1716",
-  950: "#0C0A0B",
-} as const;
-
-// DESIGN.md §3 — cream surface ramp. Light-scheme surfaces only. The
-// neutral steps above are near-white greys and read cold against a true
-// cream, so surfaces get their own warm family. Anchored on the #FBF1D8
-// swatch at the 100 step.
-export const cream = {
-  50: "#FDF8EA", // light bgElevated
-  100: "#FBF1D8", // swatch anchor — light bg
-  200: "#F5E9C9", // light bgSunken
-} as const;
-
-// DESIGN.md §3 — brick-crimson brand ramp. Anchored on the #B12B29 swatch
-// at the 500 step; hue ~1 degree throughout, S 62-65%.
-export const red = {
-  300: "#E48D8B",
-  400: "#D65452",
-  500: "#B12B29", // swatch anchor — dark accent, ambient glow primary
-  600: "#912321", // light accent, light accentText, dark accentPressed
-  700: "#751B1A", // light accentPressed
-  // No consumer under the current mapping (light pressed is 700, dark
-  // pressed is 600). Retained so the ramp stays a regular 6-step scale.
-  800: "#581413",
-} as const;
-
-// DESIGN.md §3 — favorite-active + functional colors.
-// Retained deliberately through the cream/brick-crimson migration:
-// favoriteActive is still magenta pending an on-device read of how it sits
-// against the new brand red. Measured 2.35:1 from the light accent
-// (adequate) but only 1.02:1 from `danger` — near-identical luminance,
-// separated by hue alone (333 degrees vs 0). Tolerable only because favorite
-// is always a filled-heart icon, never a text or fill color competing with
-// an error. Final value is an open decision.
-export const magenta = {
-  500: "#E8478F",
-  600: "#D62E7A",
-} as const;
-
-export const functional = {
-  // #D93A3A, not the originally-specified #DC3A3A: the minimum adjustment
-  // needed to bring white-foreground contrast above WCAG AA 4.5:1 (verified
-  // 4.55:1) — see DESIGN.md §3.
-  danger: "#D93A3A",
-  success: "#2E9E63",
-  warning: "#C87A16",
-} as const;
+export { neutral, oat, olive, rose, teal, crimson, amber } from "@/design/palette";
 
 // DESIGN.md §4 — signature gradient.
 //
-// PENDING PALETTE MIGRATION. These stops are the original violet-weighted
-// set and have NOT been migrated to the cream/brick-crimson palette. Left
-// unchanged deliberately: the gradient has no runtime consumer yet, and the
-// direction is being validated on-device before the stops are redefined.
-// Note the §1/§4 rationale ("violet-weighted precisely so it does not read
-// as Instagram's") is stale against a red brand and must be rewritten when
-// this is migrated — not silently patched.
-export const gradientBrand = {
-  angle: 135,
-  stops: [
-    { offset: 0, color: "#F2648F" },
-    { offset: 0.28, color: "#C93FA8" },
-    { offset: 0.62, color: "#8B34DC" },
-    { offset: 1, color: "#5B1FB0" },
-  ],
-} as const;
+// REMOVED in the Olive & Oat migration. The stops were the original
+// violet-weighted set, never migrated and never consumed at runtime; leaving
+// an obsolete violet token in an olive design system is worse than having no
+// token at all. DESIGN.md §16.6 requires the rationale be rewritten rather
+// than patched, and the only allowlisted consumer that would force the issue
+// — the custom bottom bar's gradient center action (§4) — is not built yet.
+// A new brand gradient gets defined when that work actually needs one.
 
 // Vertical scrim for media (feed, gallery) — transparent to near-black,
 // distinct from the flat overlayScrim semantic token used on sheets/dimming.
@@ -190,17 +121,21 @@ export const spring = {
 
 // DESIGN.md §4a — ambient background. Uses react-native core's own
 // `experimental_backgroundImage` radial-gradient support (no gradient
-// library needed). Deliberately distinct from `gradientBrand` above — not
-// the signature gradient's stops, not subject to its allowlist. Each stop
-// fades to full alpha-0 transparency, not just low opacity, so the shape's
-// own geometric boundary is never visible — only a soft interior falloff.
-// Keys are palette-agnostic (primary/secondary, not hue names) so a future
-// palette shift is a value change here rather than a rename across consumers.
+// library needed). Each stop fades to full alpha-0 transparency, not just
+// low opacity, so the shape's own geometric boundary is never visible — only
+// a soft interior falloff. Keys are palette-agnostic (primary/secondary, not
+// hue names), which is exactly why the Olive & Oat migration is a value
+// change here rather than a rename across consumers.
 //
-// The 0.45 / 0.30 core alphas are PHYSICAL-DEVICE TUNING VALUES, deliberately
-// conservative: the previous 0.70 / 0.50 were tuned for violet/magenta over a
-// near-white canvas, and red over a saturated cream reads far hotter at the
-// same alpha. Expect to retune these on-device.
+// Migrated to olive (primary, olive.500 #6B8A36 lightened toward #6B7F3A for
+// the wash) and oat-gold (secondary, #C9A87A). The previous values were
+// rgba(233,23,19) and rgba(214,84,82) — both within 1 degree of hue of
+// `danger`, so the auth screens were washed in the error color.
+//
+// These alphas are PHYSICAL-DEVICE TUNING VALUES and are deliberately
+// conservative. Olive over oat is far less assertive than red over cream at
+// the same alpha — a low-chroma green reads as a shadow rather than a glow
+// if it is too faint. Expect to retune upward on-device.
 export const ambientGlow: Record<"primary" | "secondary", RadialGradientValue> = {
   primary: {
     type: "radial-gradient",
@@ -209,15 +144,15 @@ export const ambientGlow: Record<"primary" | "secondary", RadialGradientValue> =
     position: { top: "-8%", right: "-8%" },
     colorStops: [
       {
-        color: "rgba(233,23,19,0.70)",
+        color: "rgba(107,127,58,0.70)",
         positions: ["0%"],
       },
       {
-        color: "rgba(233,23,19,0.62)",
+        color: "rgba(107,127,58,0.62)",
         positions: ["30%"],
       },
       {
-        color: "rgba(177,43,41,0)",
+        color: "rgba(107,127,58,0)",
         positions: ["58%"],
       },
     ],
@@ -229,19 +164,19 @@ export const ambientGlow: Record<"primary" | "secondary", RadialGradientValue> =
     position: { bottom: "-8%", left: "-10%" },
     colorStops: [
       {
-        color: "rgba(214,84,82,0.90)",
+        color: "rgba(201,168,122,0.90)",
         positions: ["0%"],
       },
       {
-        color: "rgba(214,84,82,0.78)",
+        color: "rgba(201,168,122,0.78)",
         positions: ["46%"],
       },
       {
-        color: "rgba(214,84,82,0.58)",
+        color: "rgba(201,168,122,0.58)",
         positions: ["56%"],
       },
       {
-        color: "rgba(214,84,82,0)",
+        color: "rgba(201,168,122,0)",
         positions: ["78%"],
       },
     ],

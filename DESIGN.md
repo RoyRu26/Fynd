@@ -2,7 +2,7 @@
 
 The source of truth for Fynd's visual and interaction design. Rules here are enforceable: if code and this document disagree, the code is wrong.
 
-Status: **approved direction, not yet implemented.** No tokens, primitives, or restyled screens exist yet. Items marked **[OPEN]** are deliberately undecided and must not be resolved by improvisation in a PR.
+Status: **implemented.** Primitives and semantic tokens live in `apps/mobile/src/design/palette.ts`, with `tokens.ts` and `theme.ts` re-exporting them; the contrast and color-vision floors below are enforced by `palette.test.ts` in CI, not by review. Screens are migrated as they are built. Items marked **[OPEN]** are deliberately undecided and must not be resolved by improvisation in a PR.
 
 ---
 
@@ -29,7 +29,7 @@ Instagram is a **quality and interaction reference, not a visual template.** We 
 
 - **Home** borrows the **Reels immersive interaction model** — full-viewport paging, overlay on scrim, edge action rail.
 - **Search/Explore** borrows the **dense, image-first Explore grid model**.
-- **Fynd's visual identity is its own.** Specifically: our gradient is violet-weighted with no orange/yellow terminus precisely so it does not read as Instagram's. Any change that moves us closer to Instagram's palette, gradient, or iconography is a regression.
+- **Fynd's visual identity is its own.** Specifically: our brand family is olive and oat — an earth palette that shares no hue with Instagram's magenta-violet sweep, and whose low chroma lets product photography stay the loudest thing on screen. Differentiation now comes from the palette itself rather than from a gradient's stops. Any change that moves us closer to Instagram's palette or iconography is a regression.
 
 ---
 
@@ -53,11 +53,15 @@ The status bar is pinned to light content on forced-dark surfaces and follows th
 
 ### Philosophy
 
-Near-neutral, with **one accent**. The neutral ramp carries almost everything; the violet accent appears only on primary actions, active navigation, and selected states. Photography supplies the rest of the color on screen.
+Near-neutral, with **one accent**. The neutral ramp carries almost everything; the olive accent appears only on primary actions, active navigation, and selected states. Photography supplies the rest of the color on screen.
 
 **The neutrals are warm.** This is what makes Fynd premium without being cold, and it is not optional. Neutrals are tinted toward red/yellow, never blue. Pure `#000000` and `#FFFFFF` are banned as surface colors.
 
-**The palette is warm throughout** — a cream canvas and a brick-crimson accent, reading editorial and curated rather than utilitarian. Because brand and canvas now share a warm family, separation comes from *depth and saturation* rather than from hue opposition: deep brick against pale cream. Two consequences follow, and both are load-bearing rather than incidental — the accent cannot also serve as the focus ring (§3 rule 2a), and it cannot be relied on alone to distinguish a primary action from a destructive one (§8).
+**The palette is warm throughout** — an oat canvas and a deep olive accent, reading editorial and curated rather than utilitarian. Olive also carries meaning here: it is the hue of workwear, army surplus and vintage, which is what second-hand actually looks like.
+
+**The brand is deliberately outside the red sector.** This is the load-bearing structural decision of the palette. The previous brick-crimson accent sat 1° of hue and 1.87:1 from `danger`, which meant a user could not tell "Save" from "Delete" by color — a safety problem, not an aesthetic one (§8). Red now belongs to `danger` alone, and pink to `favoriteActive` alone. Every signal color is verified against the accent in `palette.test.ts`, including under deuteranopia and protanopia.
+
+**The accent is low-chroma on purpose.** A saturated accent competes with product photography; §1's "the interface recedes" is a constraint on the palette, not just on layout.
 
 ### Primitive ramps
 
@@ -66,46 +70,50 @@ Warm neutrals:
 | Token | Hex | | Token | Hex |
 |---|---|---|---|---|
 | `neutral.0` | `#FFFFFF` | | `neutral.500` | `#857E78` |
-| `neutral.25` | `#FAF9F8` | | `neutral.600` | `#655F5A` |
-| `neutral.35` | `#F8F4EF` | | `neutral.700` | `#4A4541` |
-| `neutral.50` | `#F5F3F1` | | `neutral.800` | `#2E2A28` |
-| `neutral.100` | `#EDEAE7` | | `neutral.900` | `#1A1716` |
-| `neutral.200` | `#E0DCD8` | | `neutral.950` | `#0C0A0B` |
-| `neutral.300` | `#CAC4BF` | | | |
+| `neutral.25` | `#FAF9F8` | | `neutral.550` | `#726B65` |
+| `neutral.35` | `#F8F4EF` | | `neutral.600` | `#655F5A` |
+| `neutral.50` | `#F5F3F1` | | `neutral.700` | `#4A4541` |
+| `neutral.100` | `#EDEAE7` | | `neutral.800` | `#2E2A28` |
+| `neutral.200` | `#E0DCD8` | | `neutral.900` | `#1A1716` |
+| `neutral.300` | `#CAC4BF` | | `neutral.950` | `#0C0A0B` |
 | `neutral.400` | `#A8A19B` | | | |
+| `neutral.450` | `#8C857E` | | | |
 
-`neutral.35` is the light-scheme canvas (`bg`) — genuinely cream, not the near-gray-white `neutral.25` (a real 4–9pt RGB channel gap vs. `neutral.25`'s 1–2pt gap). `neutral.25` didn't change value; it moved role, to `bgElevated` — see below.
+`neutral.450` and `neutral.550` exist because `textTertiary` was `neutral.500` in both schemes and measured **3.56:1** — below the 4.5:1 floor for the normal-sized text it actually carries (`TextField` placeholder, `TextField` helper text, the onboarding availability caption). `neutral.500` now has no consumer and is retained only so the ramp stays a regular scale.
 
-Cream surfaces (light scheme only — the neutral steps above are near-white greys and read cold against a true cream, so surfaces get their own warm family):
-
-| Token | Hex | Role |
-|---|---|---|
-| `cream.50` | `#FDF8EA` | light `bgElevated` |
-| `cream.100` | `#FBF1D8` | **swatch anchor** — light `bg` |
-| `cream.200` | `#F5E9C9` | light `bgSunken` |
-
-Brick-crimson brand ramp (hue ≈1°, S 62–65%):
+Oat surfaces (light scheme only — the neutral steps above are near-white greys and read cold against a warm canvas, so surfaces get their own family):
 
 | Token | Hex | Role |
 |---|---|---|
-| `red.300` | `#E48D8B` | — |
-| `red.400` | `#D65452` | dark `accentText`; ambient glow secondary |
-| `red.500` | `#B12B29` | **swatch anchor** — dark `accent`; ambient glow primary |
-| `red.600` | `#912321` | light `accent`, light `accentText`; dark `accentPressed` |
-| `red.700` | `#751B1A` | light `accentPressed` |
-| `red.800` | `#581413` | no consumer; retained so the ramp stays a regular 6-step scale |
+| `oat.50` | `#FCFAF3` | light `bgElevated` |
+| `oat.100` | `#F6F2E8` | **swatch anchor** — light `bg` |
+| `oat.200` | `#EAE4D4` | light `bgSunken` |
 
-The light accent is `red.600`, not the raw `red.500` anchor: it keeps the brick-crimson character while giving white text 8.51:1 and 7.57:1 as text on cream. Its separation from `danger` is only **1.87:1** — deliberately accepted, and resolved structurally rather than chromatically (see §8).
+Softened from the previous cream anchor (`#FBF1D8`, S 72%) to roughly S 44%: at full cream saturation the canvas tints every thumbnail in a 3-up Search grid and competes with the photography §1 makes the hero.
 
-Functional:
+Olive brand ramp (hue ≈78–83°, S 33–45%):
 
-| Token | Hex | | Token | Hex |
-|---|---|---|---|---|
-| `magenta.500` | `#E8478F` | | `danger.500` | `#D93A3A` |
-| `magenta.600` | `#D62E7A` | | `success.500` | `#2E9E63` |
-| | | | `warning.500` | `#C87A16` |
+| Token | Hex | Role |
+|---|---|---|
+| `olive.300` | `#B8CC8A` | — |
+| `olive.400` | `#8FA855` | dark `accentText` |
+| `olive.500` | `#6B8A36` | ambient glow primary |
+| `olive.600` | `#5E7A2E` | dark `accent` |
+| `olive.700` | `#4A5D28` | **swatch anchor** — light `accent`, light `accentText`; dark `accentPressed` |
+| `olive.800` | `#33421A` | light `accentPressed` |
 
-`danger.500` is `#D93A3A`, not the originally-proposed `#DC3A3A` — the minimum adjustment needed to bring a white foreground above WCAG AA's `4.5:1` threshold (verified `4.55:1`; the original value measured `4.46:1`, a near-miss for normal-size text).
+White text reads **7.27:1** on `olive.700` and **4.88:1** on `olive.600`, so `onAccent` stays white in both schemes.
+
+Signal ramps. Each is a per-scheme pair for the same reason `accent` is (rule 1) — a value dark enough to read on oat is muddy on near-black:
+
+| Token | Hex | Role | | Token | Hex | Role |
+|---|---|---|---|---|---|---|
+| `rose.500` | `#FF6FA5` | dark `favoriteActive` | | `crimson.400` | `#E8564B` | dark `danger` |
+| `rose.600` | `#E93A7D` | light `favoriteActive` | | `crimson.700` | `#BF2A22` | light `danger` |
+| `teal.400` | `#63CDBC` | dark `success` | | `amber.400` | `#C87A16` | dark `warning` |
+| `teal.700` | `#0B5F55` | light `success` | | `amber.700` | `#9A5D0E` | light `warning` |
+
+Three of these are corrections, not restyles. The old single `danger.500 #D93A3A` was tuned so a *white foreground on it* cleared AA — but `danger`'s real consumers use it as a foreground (error captions), where it measured **4.07:1** light and **4.34:1** dark. `warning.500` measured **3.00:1** as light-scheme text. `success` moved from a yellow-green `#2E9E63` to teal because with an olive brand a green success would reproduce the exact collision this palette exists to remove; the first teal candidate (`#12796B`) was rejected for measuring **1.21:1** from the accent under protanopia.
 
 ### Semantic tokens
 
@@ -113,58 +121,57 @@ Screens read **only** these. Never a primitive directly.
 
 | Semantic | Light | Dark |
 |---|---|---|
-| `bg` | `cream.100` | `neutral.950` |
-| `bgElevated` | `cream.50` | `neutral.900` |
-| `bgSunken` | `cream.200` | `neutral.950` |
+| `bg` | `oat.100` | `neutral.950` |
+| `bgElevated` | `oat.50` | `neutral.900` |
+| `bgSunken` | `oat.200` | `neutral.950` |
 | `bgInverse` | `neutral.900` | `neutral.50` |
 | `text` | `neutral.900` | `neutral.25` |
 | `textSecondary` | `neutral.600` | `neutral.400` |
-| `textTertiary` | `neutral.500` | `neutral.500` |
+| `textTertiary` | `neutral.550` | `neutral.450` |
 | `textInverse` | `neutral.25` | `neutral.900` |
 | `textOnMedia` | `#FFFFFF` | `#FFFFFF` |
 | `border` | `neutral.200` | `neutral.800` |
 | `borderStrong` | `neutral.300` | `neutral.700` |
-| `borderFocus` | `neutral.800` | `neutral.200` |
-| `accent` | `red.600` | `red.500` |
-| `accentPressed` | `red.700` | `red.600` |
+| `borderFocus` | `neutral.950` | `neutral.50` |
+| `accent` | `olive.700` | `olive.600` |
+| `accentPressed` | `olive.800` | `olive.700` |
 | `onAccent` | `#FFFFFF` | `#FFFFFF` |
-| `accentText` | `red.600` | `red.400` |
-| `favoriteActive` | `magenta.600` | `magenta.500` |
-| `danger` / `dangerBg` | `danger.500` / `#FDF0F0` | `danger.500` / `#3A1E1E` |
-| `onDanger` | `#FFFFFF` | `#FFFFFF` |
-| `success` / `successBg` | `success.500` / `#EDF7F1` | `success.500` / `#17301F` |
-| `warning` / `warningBg` | `warning.500` / `#FDF6E8` | `warning.500` / `#332714` |
+| `accentText` | `olive.700` | `olive.400` |
+| `favoriteActive` | `rose.600` | `rose.500` |
+| `danger` / `dangerBg` | `crimson.700` / `#FDF0F0` | `crimson.400` / `#3A1E1E` |
+| `onDanger` | `#FFFFFF` | `neutral.900` |
+| `success` / `successBg` | `teal.700` / `#E4F1EE` | `teal.400` / `#0F2E29` |
+| `warning` / `warningBg` | `amber.700` / `#FDF6E8` | `amber.400` / `#332714` |
 | `overlayScrim` | `rgba(12,10,11,0.55)` | `rgba(12,10,11,0.55)` |
 | `skeleton` | `neutral.100` | `neutral.800` |
 
 ### Rules
 
-1. **`accent` is a per-scheme pair, never one hex.** A red dark enough to pass contrast on cream is muddy on near-black, and vice versa. Same for `accentText`.
+1. **`accent` is a per-scheme pair, never one hex.** A value dark enough to pass contrast on oat is muddy on near-black, and vice versa. The same applies to `accentText`, `favoriteActive`, `danger`, `success` and `warning` — every signal token is a pair.
 2. **`accent` is reserved** for: primary buttons, the active tab, selected chips/filters, and links. Nothing else.
-2a. **Focus rings are NOT an accent use.** `borderFocus` is charcoal (`neutral.800` light / `neutral.200` dark), deliberately decoupled from the brand. With a red brand, an accent-colored focus ring would collapse into the `danger` error border — `TextField`'s focused and focused+error states would become indistinguishable. Charcoal separates from `danger` on two axes at once, luminance (3.12:1 light / 3.34:1 dark) and chroma (achromatic vs. saturated), while reading 13.4:1 against the field fill. **Do not "restore" this to the accent color.** Focus is a system state, not a brand moment.
+2a. **Focus rings are NOT an accent use.** `borderFocus` is achromatic (`neutral.950` light / `neutral.50` dark), deliberately decoupled from the brand. An accent-colored focus ring would make `TextField`'s focused and focused+error states hard to separate, and the ring must also not read as a brand moment on a control the user is merely typing in. It separates from `danger` on two axes at once — luminance (3.36:1 light / 3.24:1 dark) and chroma (achromatic vs. saturated) — while reading 18.9:1 / 16.1:1 against the field fill. It was deepened from `neutral.800`/`neutral.200` when the `danger` correction moved the error border closer to it. **Do not "restore" this to the accent color.** Focus is a system state, not a brand moment.
 3. **`textOnMedia` is white in both schemes** and is only valid over a scrim. Text over user photography without a scrim is a defect — arbitrary images cannot guarantee contrast.
-4. **`favoriteActive` is magenta, not violet and not the gradient.** It is the one state allowed its own hue, because it is the product's core engagement signal and must not read as "selected."
+4. **`favoriteActive` is rose, and never the accent.** It is the one state allowed its own hue, because it is the product's core engagement signal and must not read as "selected." It sits 104° from `accent` and is verified to separate from `danger` on luminance as well as hue — the previous magenta measured 1.02:1 from `danger`, distinguishable by hue alone.
 5. Never introduce a new color without adding it here first.
-6. **`onDanger` is its own token, decoupled from `onAccent`**, even though both currently resolve to `#FFFFFF`. Danger's foreground is defined by its own contrast needs against `danger`, never borrowed from accent's — a color surface must never assume another surface's foreground token happens to work for it too.
-7. **`bgElevated` is never pure `#FFFFFF`/`#0C0A0B`** — it moved to `neutral.25` (light) specifically to stop violating the "no pure white/black as a surface" rule above; it was a standing violation until this pass. Dark `bgElevated` (`neutral.900`) was already compliant.
+6. **`onDanger` is its own token, decoupled from `onAccent`.** This is no longer hypothetical: on the dark scheme a red light enough to read as text cannot carry a white foreground, so `onDanger` is ink there while `onAccent` stays white. A color surface must never assume another surface's foreground token happens to work for it too.
+7. **`bgElevated` is never pure `#FFFFFF`/`#0C0A0B`** — light `bgElevated` is `oat.50`, dark is `neutral.900`. Enforced by `palette.test.ts`, not by review.
+8. **Contrast floors are tested, not asserted.** `palette.test.ts` holds every pair in this section to its floor, in both schemes, plus deuteranopia/protanopia separation for `accent` against `danger` and `success`. A palette change that breaks a floor fails CI. Do not weaken a threshold to make a color fit — change the color.
 
 ---
 
 ## 4. Signature gradient policy
 
-Fynd's signature gradient is **coral → magenta → orchid → violet, heavily weighted toward the violet end, with no orange or yellow terminus.**
+**There is currently no signature gradient.** `gradientBrand` was removed in the Olive & Oat migration.
 
-```
-gradient.brand   (135°)
-  0%    #F2648F   coral rose
-  28%   #C93FA8   magenta
-  62%   #8B34DC   orchid
-  100%  #5B1FB0   deep violet
-```
+The previous stops were coral → magenta → orchid → violet, justified as "violet-weighted precisely so it does not read as Instagram's." That rationale died with the red palette and was already flagged for rewrite rather than patching; the stops were never migrated and never had a runtime consumer. An obsolete violet token sitting in an olive design system is worse than no token — it invites someone to use it.
 
-The violet weighting and the absent orange/yellow are what keep this from reading as Instagram's gradient. **Do not rebalance the stops toward the coral end. Do not add a warm terminus.**
+Differentiation from Instagram now comes from the palette itself (§1): an olive-and-oat earth family shares no hue with a magenta-violet sweep, and its low chroma keeps photography the loudest thing on screen.
 
-### Allowlist — the gradient may appear ONLY here
+### Reintroducing one
+
+A brand gradient gets defined when an allowlisted use actually needs it — realistically the Sell tab's center action, when the custom bottom bar is built. Until then this section is deliberately empty rather than speculatively filled.
+
+When it is defined, the allowlist below applies from the start and is **closed** (§15 rule 6):
 
 - The wordmark and app icon
 - The splash screen
@@ -178,20 +185,20 @@ The violet weighting and the absent orange/yellow are what keep this from readin
 - ❌ Normal CTAs, primary buttons, active tabs, selected chips — these use solid `accent`.
 - ❌ Any page, screen, card, or section background.
 - ❌ Text fills, borders, dividers, icons outside the allowlist.
-- ❌ As the sole carrier of contrast for text, or the sole signal of a state. Text on the gradient needs a guaranteed-contrast foreground; a gradient-filled state still needs a shape or icon change.
+- ❌ As the sole carrier of contrast for text, or the sole signal of a state.
 
-If a surface feels like it needs the gradient, it almost certainly needs better hierarchy instead.
+If a surface feels like it needs a gradient, it almost certainly needs better hierarchy instead.
 
 ---
 
 ## 4a. Ambient background
 
-A separate, distinct treatment from the signature gradient above — same color *family* (violet/magenta, from the primitive ramps), different construct, different rule. Where §4's gradient is a fixed brand mark reserved for a closed allowlist that explicitly excludes page/screen backgrounds, the ambient background is two soft, low-intensity radial washes meant specifically as atmosphere behind content — currently used on Sign In, Sign Up, and profile onboarding.
+Two soft, low-intensity radial washes used as atmosphere behind content — currently on Sign In, Sign Up, and profile onboarding. Distinct from a signature gradient in construct and in rule: a gradient is a fixed brand mark for a closed allowlist that explicitly excludes screen backgrounds; this is a background and nothing else.
 
 **Mechanism**: `react-native` core's own `experimental_backgroundImage` radial-gradient support — no gradient library. Each wash fades to full alpha-0 transparency, not just low opacity, so its own geometric boundary is never visible — only a soft interior falloff. Centers sit substantially off-canvas (via the gradient's own `position`, offset beyond a corner), so the effect reads as light spilling in from outside the frame, never a discrete shape sitting on the screen.
 
 **Rules**:
-1. Two washes only — `ambientGlow.primary` (deep brick, `red.500`) and `ambientGlow.secondary` (dusty rose, `red.400`). Keys are palette-agnostic by design, so a future palette shift is a value change rather than a rename across consumers. This is deliberately not open-ended; a third color or a third wash needs the same explicit-agreement bar as a gradient allowlist addition.
+1. Two washes only — `ambientGlow.primary` (olive, `rgba(107,127,58,…)`) and `ambientGlow.secondary` (oat-gold, `rgba(201,168,122,…)`). Keys are palette-agnostic by design, which is exactly why the Olive & Oat migration was a value change here rather than a rename across consumers. The previous values were within 1° of hue of `danger` — the auth screens were washed in the error color. This is deliberately not open-ended; a third color or a third wash needs the same explicit-agreement bar as a gradient allowlist addition.
 2. Extremely low intensity (low-single-digit-to-low-double-digit percent alpha at the core, fading to zero) — quiet atmosphere, never a visible tint competing with content.
 3. `pointerEvents="none"` always — never intercepts a touch.
 4. Motion is slow and continuous (see §10's ambient-motion note) — never the snappy interaction motion used elsewhere.
@@ -280,16 +287,19 @@ Crisp. Corners recede rather than draw attention.
 
 Each is a platform-split object (iOS `shadow*`, Android `elevation`). Shadows are subtle and warm-tinted (`neutral.800`), never neutral-blue-black. Prefer a border or a background-tone shift over a shadow where either will do — `raised` above is deliberately barely-there, not a visible drop shadow.
 
-### Destructive actions must differ by silhouette, not hue — REQUIRED, not yet implemented
+### Destructive actions must differ by silhouette, not hue — STILL REQUIRED
 
-With `accent` at `red.600` and `danger` at `#D93A3A`, the two are separated by only **1.87:1** and are hue-identical (1° vs 0°). A solid primary CTA and a solid danger button are therefore **not reliably distinguishable** — a user cannot tell "Save" from "Delete" by color alone. This is a safety problem, not an aesthetic one.
+This rule was written when `accent` and `danger` were hue-identical (1° apart, 1.87:1) and a user could not tell "Save" from "Delete" by color alone. The Olive & Oat palette removes that specific collision — `accent` now sits **82°** from `danger`, and the pair is verified under deuteranopia and protanopia — but **the rule stands**, for two reasons:
+
+- §12.4 forbids color-only status outright. Color may reinforce a destructive action; it may never be the only thing carrying it.
+- The dark-scheme margin is the thinner one. Olive and red separate mostly by hue there, and hue is exactly what a dichromat loses.
 
 The required resolution is structural:
 
-- **primary** — solid brand-red fill, white label (current behavior, unchanged)
+- **primary** — solid `accent` fill, white label (current behavior, unchanged)
 - **destructive** — outlined/tonal: transparent or `dangerBg` fill, `danger` border and label
 
-This makes the two differ in shape, so the distinction holds regardless of how close the reds are. **This is a prerequisite for shipping any destructive action**, and was deliberately deferred out of the palette migration that introduced the constraint. Until it lands, no solid-filled danger button should reach a user-facing screen.
+This makes the two differ in shape, so the distinction never depends on color vision. **This remains a prerequisite for shipping any destructive action.** Until it lands, no solid-filled danger button should reach a user-facing screen.
 
 **Primary `Button` also gets a top/bottom bevel highlight** — `borderTopColor rgba(255,255,255,0.18)` / `borderBottomColor rgba(0,0,0,0.12)`, 1px each, no left/right border. Alpha-based (`buttonHighlight` in `tokens.ts`), not a semantic color — it works unchanged over either scheme's `accent` fill. Top+bottom only, never all four edges: that's the specific choice that keeps this reading as a restrained native-control highlight rather than a skeuomorphic bevel. The highlight disappears while pressed (the fill also swaps to `accentPressed` at the same time), simulating the surface compressing under touch. Primary-only today — extending it to `danger` (the only other solid-fill variant) is a deliberate future decision, not an automatic follow-on.
 
@@ -469,9 +479,10 @@ Tracked deliberately. Each must be resolved explicitly, not by improvisation.
 |---|---|---|
 | 1 | **Display typeface** | Manrope is the preferred candidate. Reviewable once rendered in Fynd. Nothing else depends on the specific face. |
 | 2 | **Listing detail dark treatment** | Media area dark + informational portion system-following is the leading idea. Decide with the real design. |
-| 3 | **One further gradient allowlist entry** | Reserved, unassigned. Must be agreed, not claimed. |
-| 6 | **`gradientBrand` palette migration** | Stops are still the original violet set, unmigrated and unconsumed. The §1/§4 rationale ("violet-weighted precisely so it does not read as Instagram's") is stale against a red brand and must be rewritten, not patched, when the stops are redefined. |
-| 7 | **`favoriteActive` under the red palette** | Still `magenta.600`/`magenta.500`. Measures 2.35:1 from the light accent (adequate) but 1.02:1 from `danger` — near-identical luminance, separated by hue alone (333° vs 0°). Tolerable only because favorite is always a filled-heart icon. Resolve on-device. |
-| 8 | **Destructive-button treatment** | Specified in §8, not implemented. Blocking for any destructive action. |
+| 3 | **One further gradient allowlist entry** | Reserved, unassigned. Must be agreed, not claimed. Moot until a gradient exists again (§4). |
+| 6 | ~~**`gradientBrand` palette migration**~~ | **Closed.** Resolved by deletion, not redefinition — see §4. The stale §1/§4 rationale was rewritten rather than patched, as this item required. A gradient gets defined when an allowlisted use needs one. |
+| 7 | ~~**`favoriteActive` vs `danger`**~~ | **Closed.** Now `rose.600`/`rose.500`, a per-scheme pair. 1.02:1 → **1.75:1** from `danger` with 22° of hue, and 104° from `accent`. Enforced by `palette.test.ts`. The on-device read of the new rose is still worth doing, but it is a tuning question, not an open decision. |
+| 8 | **Destructive-button treatment** | Specified in §8, **still not implemented, still blocking.** The Olive & Oat palette removed the hue collision that motivated it (1° → 82°), which lowers the urgency but not the requirement: §12.4 forbids color-only status, and the dark-scheme margin leans on hue, which dichromats lose. |
 | 4 | **Exact elevation shadow values** | `raised` now has concrete values (§8). `overlay`/`modal` remain unspecified. |
+| 9 | **Ambient glow intensity on oat** | Alphas were carried over from the red-on-cream tuning and are almost certainly wrong for olive-on-oat — a low-chroma green reads as a shadow rather than a glow if too faint. Retune on device (§4a). |
 | 5 | **Schema gaps blocking these patterns** | No `size` column, and no `categories`, `favorites`, or `follows` tables exist. The feed hierarchy (§14.1) and Search filters (§14.2) depend on them. |
