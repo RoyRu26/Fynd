@@ -68,39 +68,39 @@ export type Database = {
       }
       listings: {
         Row: {
-          condition: Database["public"]["Enums"]["listing_condition"]
+          condition: Database["public"]["Enums"]["listing_condition"] | null
           created_at: string
           currency: string
           description: string
           id: string
-          price_amount: number
+          price_amount: number | null
           seller_id: string
           status: Database["public"]["Enums"]["listing_status"]
-          title: string
+          title: string | null
           updated_at: string
         }
         Insert: {
-          condition: Database["public"]["Enums"]["listing_condition"]
+          condition?: Database["public"]["Enums"]["listing_condition"] | null
           created_at?: string
           currency?: string
           description?: string
           id?: string
-          price_amount: number
+          price_amount?: number | null
           seller_id: string
           status?: Database["public"]["Enums"]["listing_status"]
-          title: string
+          title?: string | null
           updated_at?: string
         }
         Update: {
-          condition?: Database["public"]["Enums"]["listing_condition"]
+          condition?: Database["public"]["Enums"]["listing_condition"] | null
           created_at?: string
           currency?: string
           description?: string
           id?: string
-          price_amount?: number
+          price_amount?: number | null
           seller_id?: string
           status?: Database["public"]["Enums"]["listing_status"]
-          title?: string
+          title?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -145,7 +145,47 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      attach_listing_image: {
+        Args: { p_listing_id: string; p_storage_path: string }
+        Returns: {
+          created_at: string
+          id: string
+          listing_id: string
+          position: number
+          storage_path: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "listing_images"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      publish_listing: {
+        Args: { p_listing_id: string }
+        Returns: {
+          condition: Database["public"]["Enums"]["listing_condition"] | null
+          created_at: string
+          currency: string
+          description: string
+          id: string
+          price_amount: number | null
+          seller_id: string
+          status: Database["public"]["Enums"]["listing_status"]
+          title: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "listings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      set_listing_image_order: {
+        Args: { p_image_ids: string[]; p_listing_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       listing_condition: "new" | "like_new" | "very_good" | "good" | "fair"
