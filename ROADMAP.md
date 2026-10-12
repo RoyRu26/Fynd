@@ -18,8 +18,9 @@ Source of truth for what gets built next. The `autopilot` skill works through th
 - [x] **1.1 Missing UI primitives** — Build `ListRow`, `Sheet`, `Skeleton`, `EmptyState` per DESIGN.md §13, only as far as items in this milestone need them (second-caller rule).
   Done when: each has state-logic tests where it has logic, and is used by at least one screen below.
   Note: `ListRow`/`Skeleton`/`EmptyState` are in real use (My Listings retrofit). `Sheet` is fully built and tested but has no real screen caller yet — its first consumer lands with 1.6 or 1.7.
-- [ ] **1.2 Inbox** — Inbox tab listing conversations (DESIGN.md §14.5) using the existing chat RPCs: other party avatar + name, listing thumbnail, last message, unread (weight + dot + accessibility label).
+- [x] **1.2 Inbox** — Inbox tab listing conversations (DESIGN.md §14.5) using the existing chat RPCs: other party avatar + name, listing thumbnail, last message, unread (weight + dot + accessibility label).
   Done when: conversations sort by latest message, unread clears on open, empty state shows when there are none.
+  Note: `inbox/[id].tsx` is a deliberate minimal stub (marks read, shows header, placeholder body) — 1.3 fills in the real thread UI.
 - [ ] **1.3 Conversation screen** — Message thread with realtime updates, send box, optimistic send, pagination of older messages, listing header that links to the listing.
   Done when: two signed-in users can chat live; sending fails gracefully offline.
 - [ ] **1.4 "Message seller"** — Primary action on listing detail opens (or creates) the conversation for that listing. Hidden on your own listing.
@@ -79,3 +80,4 @@ Source of truth for what gets built next. The `autopilot` skill works through th
 Autopilot appends one line per finished item: date, item, commit hash, notes.
 
 - 2026-10-12 — 1.1 Missing UI primitives — `98d3f30` — Built ListRow, Sheet, Skeleton(+SkeletonRow/SkeletonListingCard), EmptyState(+ErrorState) and retrofitted My Listings to use them. Sheet has no real screen caller yet; deferred to 1.6/1.7. One review round found and fixed a stale-drag-offset bug in Sheet plus two should-fix items (keyboard avoidance, a duplicated DISABLED_OPACITY constant); re-review passed clean.
+- 2026-10-12 — 1.2 Inbox — `ef72b0d` — Added the Inbox tab and list, consuming existing chat RPCs (no new migration). Added a minimal inbox/[id].tsx stub for 1.3 to build on. One review round found two must-fix items (missing test coverage for a normalizer, a detail query bypassing the inboxKeys convention) and two should-fix items (a misleading RPC doc comment, DESIGN.md §14.5 not documenting the listing thumbnail the roadmap requires); all fixed, re-review passed clean.
