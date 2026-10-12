@@ -8,7 +8,7 @@ import { useAppTheme } from '@/design/theme-provider';
 import { useAuth } from '@/features/auth/auth-provider';
 import type { ListingRow } from '@/features/listings/api';
 import { mapListingError } from '@/features/listings/errors';
-import { formatMinorUnitsForInput } from '@/features/listings/price';
+import { formatMoney } from '@/features/listings/price';
 import { useCreateDraft, useDeleteDraft, useMyListings } from '@/features/listings/queries';
 
 // Verified against the installed packages: 'trash' exists in
@@ -30,7 +30,7 @@ export default function SellIndex() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   function openListing(listingId: string) {
-    router.push({ pathname: '/(app)/sell/[id]', params: { id: listingId } });
+    router.push({ pathname: '/(app)/(tabs)/sell/[id]', params: { id: listingId } });
   }
 
   async function handleNewListing() {
@@ -190,7 +190,8 @@ function ListingListRow({
   deleteDisabled?: boolean;
 }) {
   const { colors } = useAppTheme();
-  const price = formatMinorUnitsForInput(listing.price_amount);
+  const price =
+    listing.price_amount === null ? null : formatMoney(listing.price_amount, listing.currency);
   const statusLabel = listing.status.charAt(0).toUpperCase() + listing.status.slice(1);
 
   return (
@@ -206,7 +207,7 @@ function ListingListRow({
           {listing.title ?? 'Untitled draft'}
         </Text>
         <Text variant="caption" color="textSecondary">
-          {price ? `€${price}` : 'No price set'}
+          {price ?? 'No price set'}
         </Text>
       </View>
       <View style={styles.rowMeta}>

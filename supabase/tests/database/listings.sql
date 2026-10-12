@@ -20,7 +20,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(77);
+select plan(83);
 
 -- ============================================================
 -- FIXTURES
@@ -72,7 +72,7 @@ select throws_ok(
 select throws_ok(
   $$insert into public.listings (seller_id, currency) values ('f2000000-0000-0000-0000-00000000000a', 'USD')$$,
   '42501', null,
-  'explicit INSERT of currency is rejected -- this slice relies on the EUR default'
+  'explicit INSERT of currency is rejected -- the ILS column default is the whole mechanism'
 );
 
 -- ============================================================
@@ -119,6 +119,62 @@ select throws_ok(
   '23514', null,
   'promoting an incomplete listing to active fails listings_complete_when_not_draft, even for a privileged writer'
 );
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+-- ============================================================
+-- 3a. size -- nullable on drafts, required on everything else
+-- ============================================================
+-- ROW_GAMMA above already proves a draft may carry no size at all (it has
+-- no size and was accepted). These cover the column privilege and the
+-- rebuilt completeness invariant.
+
+select is(
+  (select size from public.listings where description = 'ROW_GAMMA'),
+  null,
+  'a draft may hold size = NULL, exactly like title/price/condition'
+);
+
+update public.listings set size = 'alpha_m' where description = 'ROW_ALPHA';
+
+select is(
+  (select size from public.listings where description = 'ROW_ALPHA'),
+  'alpha_m'::listing_size,
+  'a seller can set size on their own draft -- the column grant landed'
+);
+
+-- The footwear escape path: the reason this is a prefixed enum rather than
+-- an alpha-only set. The fixture inventory that motivated it was a shirt
+-- and a pair of Vans.
+update public.listings set size = 'eu_shoe_42' where description = 'ROW_ALPHA';
+
+select is(
+  (select size from public.listings where description = 'ROW_ALPHA'),
+  'eu_shoe_42'::listing_size,
+  'a numeric shoe size is representable, not just alpha clothing sizes'
+);
+
+select throws_ok(
+  $$update public.listings set size = 'M' where description = 'ROW_ALPHA'$$,
+  '22P02', null,
+  'an uncontrolled free-text size is rejected by the enum -- "M" never becomes its own semantic size'
+);
+
+-- The invariant the migration's demote-to-draft step existed to protect:
+-- once size is required for non-drafts, an active listing cannot lack one,
+-- and this holds even for a privileged writer bypassing RLS entirely.
+reset role;
+
+update public.listings set size = null where description = 'ROW_ALPHA';
+
+select throws_ok(
+  $$update public.listings set status = 'active' where description = 'ROW_ALPHA'$$,
+  '23514', null,
+  'a listing with every other field set but no size still cannot become active'
+);
+
+update public.listings set size = 'alpha_m' where description = 'ROW_ALPHA';
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000a","role":"authenticated"}';
@@ -310,52 +366,59 @@ select throws_ok(
 
 reset role;
 
-insert into public.listings (id, seller_id, title, description, price_amount, condition, status)
+-- Every ACTIVE row must now carry a size: listings_complete_when_not_draft
+-- requires it. Drafts are free to omit it, and the PUB_* fixtures below
+-- exercise exactly that boundary.
+insert into public.listings (id, seller_id, title, description, price_amount, condition, size, status)
 values
   -- Storage policy fixtures
   ('aaaa0001-0000-0000-0000-000000000001', 'f2000000-0000-0000-0000-00000000000a',
-   'A draft for storage',  'SA_DRAFT',  1000, 'good', 'draft'),
+   'A draft for storage',  'SA_DRAFT',  1000, 'good', 'alpha_m', 'draft'),
   ('aaaa0001-0000-0000-0000-000000000002', 'f2000000-0000-0000-0000-00000000000a',
-   'A active for storage', 'SA_ACTIVE', 1000, 'good', 'active'),
+   'A active for storage', 'SA_ACTIVE', 1000, 'good', 'alpha_m', 'active'),
   ('aaaa0001-0000-0000-0000-000000000003', 'f2000000-0000-0000-0000-00000000000a',
-   'A doomed draft',       'SA_DOOMED', 1000, 'good', 'draft'),
+   'A doomed draft',       'SA_DOOMED', 1000, 'good', 'alpha_m', 'draft'),
   ('bbbb0001-0000-0000-0000-000000000001', 'f2000000-0000-0000-0000-00000000000b',
-   'B draft for storage',  'SB_DRAFT',  1000, 'good', 'draft'),
+   'B draft for storage',  'SB_DRAFT',  1000, 'good', 'alpha_m', 'draft'),
   ('bbbb0001-0000-0000-0000-000000000002', 'f2000000-0000-0000-0000-00000000000b',
-   'B active for storage', 'SB_ACTIVE', 1000, 'good', 'active'),
+   'B active for storage', 'SB_ACTIVE', 1000, 'good', 'alpha_m', 'active'),
   -- attach_listing_image fixtures
   ('aaaa0002-0000-0000-0000-000000000001', 'f2000000-0000-0000-0000-00000000000a',
-   'A attach draft',       'AT_A',      1000, 'good', 'draft'),
+   'A attach draft',       'AT_A',      1000, 'good', 'alpha_m', 'draft'),
   ('aaaa0002-0000-0000-0000-000000000002', 'f2000000-0000-0000-0000-00000000000a',
-   'A photo cap draft',    'AT_CAP',    1000, 'good', 'draft'),
+   'A photo cap draft',    'AT_CAP',    1000, 'good', 'alpha_m', 'draft'),
   ('aaaa0002-0000-0000-0000-000000000003', 'f2000000-0000-0000-0000-00000000000a',
-   'A attach active',      'AT_ACTIVE', 1000, 'good', 'active'),
+   'A attach active',      'AT_ACTIVE', 1000, 'good', 'alpha_m', 'active'),
   -- set_listing_image_order fixtures
   ('aaaa0003-0000-0000-0000-000000000001', 'f2000000-0000-0000-0000-00000000000a',
-   'A reorder draft',      'OR_A',      1000, 'good', 'draft'),
+   'A reorder draft',      'OR_A',      1000, 'good', 'alpha_m', 'draft'),
   ('aaaa0003-0000-0000-0000-000000000002', 'f2000000-0000-0000-0000-00000000000a',
-   'A other draft',        'OR_OTHER',  1000, 'good', 'draft'),
+   'A other draft',        'OR_OTHER',  1000, 'good', 'alpha_m', 'draft'),
   ('aaaa0003-0000-0000-0000-000000000003', 'f2000000-0000-0000-0000-00000000000a',
-   'A reorder active',     'OR_ACTIVE', 1000, 'good', 'active'),
-  -- publish_listing fixtures
+   'A reorder active',     'OR_ACTIVE', 1000, 'good', 'alpha_m', 'active'),
+  -- publish_listing fixtures. A numeric shoe size on the happy path, so the
+  -- publish flow is proven against the escape-path half of the enum too.
   ('aaaa0004-0000-0000-0000-000000000001', 'f2000000-0000-0000-0000-00000000000a',
-   'A publishable draft',  'PUB_OK',    2500, 'good', 'draft'),
+   'A publishable draft',  'PUB_OK',    2500, 'good', 'eu_shoe_42', 'draft'),
   ('aaaa0004-0000-0000-0000-000000000005', 'f2000000-0000-0000-0000-00000000000a',
-   'A draft no photos',    'PUB_NOIMG', 2500, 'good', 'draft'),
+   'A draft no photos',    'PUB_NOIMG', 2500, 'good', 'alpha_m', 'draft'),
   ('aaaa0004-0000-0000-0000-000000000006', 'f2000000-0000-0000-0000-00000000000a',
-   'A ghost photo draft',  'PUB_GHOST', 2500, 'good', 'draft'),
+   'A ghost photo draft',  'PUB_GHOST', 2500, 'good', 'alpha_m', 'draft'),
   ('bbbb0004-0000-0000-0000-000000000001', 'f2000000-0000-0000-0000-00000000000b',
-   'B publishable draft',  'PUB_B',     2500, 'good', 'draft');
+   'B publishable draft',  'PUB_B',     2500, 'good', 'alpha_m', 'draft');
 
--- The three incomplete drafts, each missing exactly one required field.
-insert into public.listings (id, seller_id, title, description, price_amount, condition)
+-- The four incomplete drafts, each missing exactly one required field.
+insert into public.listings (id, seller_id, title, description, price_amount, condition, size)
 values
   ('aaaa0004-0000-0000-0000-000000000002', 'f2000000-0000-0000-0000-00000000000a',
-   null,                'PUB_NOTITLE', 2500, 'good'),
+   null,                'PUB_NOTITLE', 2500, 'good', 'alpha_m'),
   ('aaaa0004-0000-0000-0000-000000000003', 'f2000000-0000-0000-0000-00000000000a',
-   'A draft no price',  'PUB_NOPRICE', null, 'good'),
+   'A draft no price',  'PUB_NOPRICE', null, 'good', 'alpha_m'),
   ('aaaa0004-0000-0000-0000-000000000004', 'f2000000-0000-0000-0000-00000000000a',
-   'A draft no cond',   'PUB_NOCOND',  2500, null);
+   'A draft no cond',   'PUB_NOCOND',  2500, null,   'alpha_m'),
+  -- Complete in every respect EXCEPT size -- the new publish requirement.
+  ('aaaa0004-0000-0000-0000-000000000007', 'f2000000-0000-0000-0000-00000000000a',
+   'A draft no size',   'PUB_NOSIZE',  2500, 'good', null);
 
 -- Storage objects the RPC tests need to already exist. Only (bucket_id,
 -- name) is written: path_tokens is GENERATED ALWAYS and must never appear
@@ -883,6 +946,12 @@ select throws_ok(
   $$select public.publish_listing('aaaa0004-0000-0000-0000-000000000004')$$,
   'P0001', null,
   'publishing a draft with no condition is rejected'
+);
+
+select throws_ok(
+  $$select public.publish_listing('aaaa0004-0000-0000-0000-000000000007')$$,
+  'P0001', null,
+  'publishing a draft with no size is rejected -- the server, not the client, is authoritative'
 );
 
 select throws_ok(

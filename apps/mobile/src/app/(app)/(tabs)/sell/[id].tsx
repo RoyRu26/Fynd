@@ -1,8 +1,10 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
+import * as ImagePicker from 'expo-image-picker';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
 
 import {
@@ -12,11 +14,13 @@ import {
   ListingImage,
   Screen,
   Text,
+  TextField,
   type IconName,
 } from '@/components/ui';
 import { radius, space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 import { useAuth } from '@/features/auth/auth-provider';
+import type { ListingImageRow, ListingRow } from '@/features/listings/api';
 import { mapListingError } from '@/features/listings/errors';
 import { uploadAndAttachListingImage } from '@/features/listings/images';
 import { createImageId, MAX_LISTING_PHOTOS } from '@/features/listings/paths';
@@ -30,14 +34,35 @@ import {
   type LocalPhotoItem,
 } from '@/features/listings/photo-state';
 import {
+  currencySymbol,
+  formatMinorUnitsForInput,
+  parsePriceToMinorUnits,
+} from '@/features/listings/price';
+import {
   listingKeys,
   useListing,
   useListingImageUrls,
   useListingImages,
   useRemoveListingImage,
   useReorderListingImages,
+  useUpdateDraft,
+  usePublishListing,
 } from '@/features/listings/queries';
-import type { ListingImageRow } from '@/features/listings/api';
+import { CONDITION_LABELS } from '@/features/listings/condition';
+import {
+  draftListingSchema,
+  LISTING_CONDITIONS,
+  publishBlockers,
+  type DraftListingInput,
+  type ListingFormInput,
+  type PublishBlocker,
+} from '@/features/listings/schemas';
+import {
+  formatSizeLabel,
+  listingSizesBySystem,
+  SIZE_SYSTEM_LABELS,
+  type SizeSystem,
+} from '@/features/listings/size';
 
 // Verified against the installed packages: every name below exists in
 // sf-symbols-typescript's types and in expo-symbols' android/symbols.json.
@@ -104,11 +129,14 @@ export default function SellEditor() {
   } else {
     body = (
       <View style={styles.body}>
-        <Text variant="title">{listing.title ?? 'Untitled draft'}</Text>
+        <Text variant="title">Edit draft</Text>
+        {/* Photos first and largest, per DESIGN.md §14.4. */}
         <PhotoSection listingId={listing.id} sellerId={listing.seller_id} />
-        <Text variant="body" color="textSecondary">
-          Title, price, condition, description and publishing are coming in a later step.
-        </Text>
+        {/* Keyed by listing id: a fresh mount (and fresh RHF defaultValues)
+            only when the displayed listing actually changes, never on an
+            incidental background refetch of the same one — which would
+            otherwise silently discard in-progress edits. */}
+        <ListingFieldsSection key={listing.id} listing={listing} />
       </View>
     );
   }
@@ -348,6 +376,307 @@ function PhotoSection({ listingId, sellerId }: { listingId: string; sellerId: st
   );
 }
 
+// ============================================================
+// Fields section
+// ============================================================
+
+const PUBLISH_BLOCKER_LABELS: Record<PublishBlocker, string> = {
+  title: 'Add a title (at least 3 characters)',
+  price: 'Set a price',
+  condition: 'Choose a condition',
+  size: 'Choose a size',
+  photos: 'Add at least one photo',
+  status: 'This listing has already been published',
+};
+
+// Display order the user actually asked for (Clothing, then Footwear, then
+// One size) — independent of listingSizesBySystem's own Record key order.
+const SIZE_SYSTEM_ORDER: SizeSystem[] = ['alpha', 'eu_shoe', 'one_size'];
+// Derived once from the generated enum, same as LISTING_CONDITIONS above —
+// not component state, since the grouping never changes at runtime.
+const SIZE_GROUPS = listingSizesBySystem();
+
+type PendingAction = 'save' | 'publish' | null;
+
+function ListingFieldsSection({ listing }: { listing: ListingRow }) {
+  const sellerId = listing.seller_id;
+  const updateDraft = useUpdateDraft(listing.id, sellerId);
+  const publish = usePublishListing(sellerId);
+  // Shares its cache entry with PhotoSection's own useListingImages(listing.id)
+  // call — same query key, same TanStack Query cache, no duplicate fetch.
+  // Needed here only for the client-side publish-blocker preview below; the
+  // RPC re-derives the real count itself.
+  const imagesQuery = useListingImages(listing.id);
+  const imageCount = imagesQuery.data?.length ?? 0;
+
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [shownBlockers, setShownBlockers] = useState<PublishBlocker[]>([]);
+
+  const form = useForm<ListingFormInput, unknown, DraftListingInput>({
+    resolver: zodResolver(draftListingSchema),
+    defaultValues: {
+      title: listing.title ?? '',
+      description: listing.description,
+      price: formatMinorUnitsForInput(listing.price_amount),
+      condition: listing.condition,
+      size: listing.size,
+    },
+  });
+  const { control, handleSubmit, formState } = form;
+
+  // Live preview of what's still missing, recomputed from the form's raw
+  // (untransformed) values on every change — so the list updates as the
+  // seller types, before they ever tap Publish. Purely advisory, exactly
+  // like publishBlockers itself: the RPC is what actually decides.
+  const watched = useWatch({ control });
+  const liveBlockers = publishBlockers(
+    {
+      title: watched.title?.trim() || null,
+      price_amount: watched.price ? parsePriceToMinorUnits(watched.price) : null,
+      condition: watched.condition ?? null,
+      size: watched.size ?? null,
+      status: listing.status,
+    },
+    imageCount,
+  );
+
+  function applySavedValues(saved: ListingRow) {
+    // Resets to the server's canonical values (trimmed title, price
+    // reformatted to two decimals, etc.) and clears `isDirty` — the "this is
+    // now saved" signal doubles as the reset, rather than a separate toast.
+    form.reset({
+      title: saved.title ?? '',
+      description: saved.description,
+      price: formatMinorUnitsForInput(saved.price_amount),
+      condition: saved.condition,
+      size: saved.size,
+    });
+  }
+
+  async function onSaveDraft(input: DraftListingInput) {
+    setFormError(null);
+    setShownBlockers([]);
+    setPendingAction('save');
+    try {
+      const saved = await updateDraft.mutateAsync(input);
+      applySavedValues(saved);
+    } catch (err) {
+      if (__DEV__) {
+        console.error(err);
+      }
+      setFormError(mapListingError(err).message);
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function onPublish(input: DraftListingInput) {
+    setFormError(null);
+    setShownBlockers([]);
+    setPendingAction('publish');
+    try {
+      // Publishing always saves first, so whatever the seller just typed is
+      // what gets evaluated and, if complete, published — never a stale
+      // server copy from before their last keystroke.
+      const saved = await updateDraft.mutateAsync(input);
+      applySavedValues(saved);
+
+      const blockers = publishBlockers(saved, imageCount);
+      if (blockers.length > 0) {
+        setShownBlockers(blockers);
+        return;
+      }
+
+      await publish.mutateAsync(saved.id);
+      // On success the cached listing's status flips to 'active'; the
+      // parent's isEditableDraft check picks that up on its own next render
+      // and swaps to the read-only "published" branch — no extra wiring.
+    } catch (err) {
+      if (__DEV__) {
+        console.error(err);
+      }
+      setFormError(mapListingError(err).message);
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  const busy = pendingAction !== null;
+  const blockedAttempt = shownBlockers.length > 0;
+  const blockersToDisplay = blockedAttempt ? shownBlockers : liveBlockers;
+
+  return (
+    <View style={styles.fields}>
+      <Controller
+        control={control}
+        name="title"
+        render={({ field, fieldState }) => (
+          <TextField
+            label="Title"
+            value={field.value}
+            onChangeText={field.onChange}
+            onBlur={field.onBlur}
+            error={fieldState.error?.message}
+            disabled={busy}
+          />
+        )}
+      />
+
+      <Controller
+        control={control}
+        name="price"
+        render={({ field, fieldState }) => (
+          <TextField
+            label={`Price (${currencySymbol(listing.currency)})`}
+            keyboardType="decimal-pad"
+            value={field.value}
+            onChangeText={field.onChange}
+            onBlur={field.onBlur}
+            error={fieldState.error?.message}
+            disabled={busy}
+          />
+        )}
+      />
+
+      <View style={styles.conditionField}>
+        <Text variant="label" color="textSecondary">
+          Condition
+        </Text>
+        <Controller
+          control={control}
+          name="condition"
+          render={({ field }) => (
+            <View style={styles.conditionChips}>
+              {LISTING_CONDITIONS.map((value) => (
+                <Chip
+                  key={value}
+                  label={CONDITION_LABELS[value]}
+                  selectable
+                  selected={field.value === value}
+                  disabled={busy}
+                  onPress={() => field.onChange(field.value === value ? null : value)}
+                />
+              ))}
+            </View>
+          )}
+        />
+      </View>
+
+      <View style={styles.sizeField}>
+        <Text variant="label" color="textSecondary">
+          Size
+        </Text>
+        <Controller
+          control={control}
+          name="size"
+          render={({ field }) => (
+            <View style={styles.sizeGroups}>
+              {SIZE_SYSTEM_ORDER.map((system) => (
+                <View key={system} style={styles.sizeGroup}>
+                  <Text variant="caption" color="textTertiary">
+                    {SIZE_SYSTEM_LABELS[system]}
+                  </Text>
+                  <View style={styles.sizeChips}>
+                    {SIZE_GROUPS[system].map((value) => (
+                      <Chip
+                        key={value}
+                        label={formatSizeLabel(value)}
+                        selectable
+                        selected={field.value === value}
+                        disabled={busy}
+                        onPress={() => field.onChange(field.value === value ? null : value)}
+                      />
+                    ))}
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        />
+      </View>
+
+      <Controller
+        control={control}
+        name="description"
+        render={({ field, fieldState }) => (
+          <TextField
+            label="Description"
+            multiline
+            numberOfLines={4}
+            value={field.value}
+            onChangeText={field.onChange}
+            onBlur={field.onBlur}
+            error={fieldState.error?.message}
+            disabled={busy}
+          />
+        )}
+      />
+
+      {/* shownBlockers only ever fills after a blocked publish attempt — which
+          the now-disabled Publish button prevents in the normal case — so in
+          practice this is the server-authoritative fallback for a race (e.g.
+          the image count changing between render and submit), and liveBlockers
+          is what the seller sees while still editing. Never both at once, so
+          one block covers both instead of two near-duplicate lists. */}
+      {blockersToDisplay.length > 0 ? (
+        <View style={styles.blockersList}>
+          <Text
+            variant="caption"
+            color={blockedAttempt ? 'danger' : 'textTertiary'}
+            accessibilityLiveRegion={blockedAttempt ? 'polite' : undefined}
+            accessibilityRole={blockedAttempt ? 'alert' : undefined}>
+            {blockedAttempt ? "Can't publish yet:" : 'Before you publish:'}
+          </Text>
+          {blockersToDisplay
+            .filter((blocker) => blocker !== 'status')
+            .map((blocker) => (
+              <Text key={blocker} variant="caption" color={blockedAttempt ? 'danger' : 'textTertiary'}>
+                • {PUBLISH_BLOCKER_LABELS[blocker]}
+              </Text>
+            ))}
+        </View>
+      ) : null}
+
+      {formError ? (
+        <Text variant="caption" color="danger" accessibilityLiveRegion="polite" accessibilityRole="alert">
+          {formError}
+        </Text>
+      ) : null}
+
+      <View style={styles.fieldsFooter}>
+        <Text variant="caption" color="textTertiary">
+          {pendingAction === 'save'
+            ? 'Saving…'
+            : pendingAction === 'publish'
+              ? 'Publishing…'
+              : formState.isDirty
+                ? 'Unsaved changes'
+                : ' '}
+        </Text>
+        <View style={styles.fieldsActions}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onPress={handleSubmit(onSaveDraft)}
+            loading={pendingAction === 'save'}
+            disabled={busy || !formState.isDirty}>
+            Save draft
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            onPress={handleSubmit(onPublish)}
+            loading={pendingAction === 'publish'}
+            disabled={busy || liveBlockers.length > 0}>
+            Publish
+          </Button>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 const CELL_GAP = space[2];
 const CELL_BASIS = '31%';
 
@@ -486,6 +815,41 @@ const styles = StyleSheet.create({
   },
   photoSection: {
     gap: space[2],
+  },
+  fields: {
+    gap: space[4],
+  },
+  conditionField: {
+    gap: space[1],
+  },
+  conditionChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: space[2],
+  },
+  sizeField: {
+    gap: space[1],
+  },
+  sizeGroups: {
+    gap: space[3],
+  },
+  sizeGroup: {
+    gap: space[1],
+  },
+  sizeChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: space[2],
+  },
+  blockersList: {
+    gap: space[1],
+  },
+  fieldsFooter: {
+    gap: space[2],
+  },
+  fieldsActions: {
+    flexDirection: 'row',
+    gap: space[3],
   },
   photoHeaderRow: {
     flexDirection: 'row',

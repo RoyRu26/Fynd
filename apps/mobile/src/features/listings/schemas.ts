@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { parsePriceToMinorUnits } from '@/features/listings/price';
+import { LISTING_SIZES } from '@/features/listings/size';
 import { Constants, type Enums, type Tables } from '@/types/database';
 
 /**
@@ -29,6 +30,13 @@ export const LISTING_CONDITIONS = Constants.public.Enums.listing_condition;
 
 export const listingConditionSchema = z.enum(LISTING_CONDITIONS);
 
+/**
+ * Same discipline for size. `LISTING_SIZES` lives in size.ts alongside the
+ * label/grouping helpers, and is itself derived from the generated enum, so
+ * this schema cannot drift from what the database accepts.
+ */
+export const listingSizeSchema = z.enum(LISTING_SIZES);
+
 const PRICE_MESSAGE = 'Enter a price like 24.50';
 const TITLE_SHORT_MESSAGE = `Use at least ${TITLE_MIN_LENGTH} characters`;
 const TITLE_LONG_MESSAGE = `Keep it under ${TITLE_MAX_LENGTH} characters`;
@@ -46,6 +54,7 @@ export type ListingFormInput = {
   description: string;
   price: string;
   condition: Enums<'listing_condition'> | null;
+  size: Enums<'listing_size'> | null;
 };
 
 /**
@@ -76,6 +85,10 @@ export const draftListingSchema = z.object({
       return minorUnits;
     }),
   condition: listingConditionSchema.nullable(),
+  // Nullable for the same reason title/price/condition are: a draft may be
+  // incomplete, and `listings_complete_when_not_draft` only requires size
+  // once the listing stops being a draft.
+  size: listingSizeSchema.nullable(),
 });
 
 export type DraftListingInput = z.infer<typeof draftListingSchema>;
@@ -104,11 +117,12 @@ export const publishableListingSchema = z.object({
       return minorUnits;
     }),
   condition: listingConditionSchema,
+  size: listingSizeSchema,
 });
 
 export type PublishableListingInput = z.infer<typeof publishableListingSchema>;
 
-export type PublishBlocker = 'title' | 'price' | 'condition' | 'photos' | 'status';
+export type PublishBlocker = 'title' | 'price' | 'condition' | 'size' | 'photos' | 'status';
 
 /**
  * The reasons a saved listing cannot be published yet, in the order
@@ -120,7 +134,7 @@ export type PublishBlocker = 'title' | 'price' | 'condition' | 'photos' | 'statu
  * still exists, which the client cannot check.
  */
 export function publishBlockers(
-  listing: Pick<Tables<'listings'>, 'title' | 'price_amount' | 'condition' | 'status'>,
+  listing: Pick<Tables<'listings'>, 'title' | 'price_amount' | 'condition' | 'size' | 'status'>,
   imageCount: number,
 ): PublishBlocker[] {
   const blockers: PublishBlocker[] = [];
@@ -136,6 +150,9 @@ export function publishBlockers(
   }
   if (listing.condition === null) {
     blockers.push('condition');
+  }
+  if (listing.size === null) {
+    blockers.push('size');
   }
   if (imageCount < 1) {
     blockers.push('photos');

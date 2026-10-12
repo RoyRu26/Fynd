@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatMinorUnitsForInput, parsePriceToMinorUnits } from '@/features/listings/price';
+import {
+  formatMinorUnitsForInput,
+  formatMoney,
+  parsePriceToMinorUnits,
+} from '@/features/listings/price';
 
 describe('parsePriceToMinorUnits', () => {
   it('parses whole numbers', () => {
@@ -113,5 +117,72 @@ describe('formatMinorUnitsForInput', () => {
   it('returns an empty string rather than rendering impossible values', () => {
     expect(formatMinorUnitsForInput(-1)).toBe('');
     expect(formatMinorUnitsForInput(1.5)).toBe('');
+  });
+});
+
+describe('formatMoney', () => {
+  // The headline case: a marketplace price reads '₪50', not '₪50.00'.
+  it('formats a whole ILS amount with the shekel sign and no decimals', () => {
+    expect(formatMoney(5000, 'ILS')).toBe('₪50');
+  });
+
+  it('formats an ILS amount with agorot', () => {
+    expect(formatMoney(5025, 'ILS')).toBe('₪50.25');
+  });
+
+  // A non-zero minor part keeps its full width — never '₪50.2'.
+  it('keeps both minor digits when the trailing one is zero', () => {
+    expect(formatMoney(5020, 'ILS')).toBe('₪50.20');
+  });
+
+  it('formats zero', () => {
+    expect(formatMoney(0, 'ILS')).toBe('₪0');
+  });
+
+  it('formats sub-major amounts', () => {
+    expect(formatMoney(5, 'ILS')).toBe('₪0.05');
+    expect(formatMoney(50, 'ILS')).toBe('₪0.50');
+  });
+
+  it('groups thousands', () => {
+    expect(formatMoney(1234567, 'ILS')).toBe('₪12,345.67');
+    expect(formatMoney(100000000, 'ILS')).toBe('₪1,000,000');
+  });
+
+  // The stored currency is what decides the symbol — nothing hardcodes ₪.
+  it('formats other supported currencies from the stored code', () => {
+    expect(formatMoney(5000, 'EUR')).toBe('€50');
+    expect(formatMoney(5025, 'USD')).toBe('$50.25');
+    expect(formatMoney(5000, 'GBP')).toBe('£50');
+  });
+
+  // JPY has no minor unit, so 5000 is five thousand yen, not fifty. It has
+  // no symbol in the map either, so it also exercises the code-prefix path.
+  it('respects zero-decimal currencies', () => {
+    expect(formatMoney(5000, 'JPY')).toBe('JPY 5,000');
+    expect(formatMoney(0, 'JPY')).toBe('JPY 0');
+  });
+
+  // Never throws on an unexpected code: a feed card must still render.
+  it('falls back to the ISO code for an unknown currency', () => {
+    expect(formatMoney(5000, 'CHF')).toBe('CHF 50');
+    expect(formatMoney(5025, 'CHF')).toBe('CHF 50.25');
+  });
+
+  // price_amount > 0 is a DB constraint, so these are unreachable from a
+  // real listing — asserted only so the function is total rather than
+  // crashing a card if one ever appeared.
+  it('is total for inputs the database makes unreachable', () => {
+    expect(formatMoney(-5000, 'ILS')).toBe('-₪50');
+    expect(formatMoney(5000.7, 'ILS')).toBe('₪50');
+  });
+
+  it('never performs floating-point arithmetic on the amount', () => {
+    // 2450/100 and 1/3-style errors would surface as a wrong minor part.
+    // These are the values that break a naive `minor / 100` implementation.
+    expect(formatMoney(2450, 'ILS')).toBe('₪24.50');
+    expect(formatMoney(110, 'ILS')).toBe('₪1.10');
+    expect(formatMoney(70, 'ILS')).toBe('₪0.70');
+    expect(formatMoney(1, 'ILS')).toBe('₪0.01');
   });
 });

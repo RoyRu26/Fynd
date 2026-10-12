@@ -8,12 +8,14 @@ import {
   publishableListingSchema,
   TITLE_MAX_LENGTH,
 } from '@/features/listings/schemas';
+import { LISTING_SIZES } from '@/features/listings/size';
 
 const validForm = {
   title: 'Vintage denim jacket',
   description: 'Barely worn.',
   price: '24.50',
   condition: 'good' as const,
+  size: 'alpha_m' as const,
 };
 
 describe('draftListingSchema', () => {
@@ -24,6 +26,7 @@ describe('draftListingSchema', () => {
       description: 'Barely worn.',
       price: 2450,
       condition: 'good',
+      size: 'alpha_m',
     });
   });
 
@@ -34,8 +37,15 @@ describe('draftListingSchema', () => {
       description: '',
       price: '',
       condition: null,
+      size: null,
     });
-    expect(result).toEqual({ title: null, description: '', price: null, condition: null });
+    expect(result).toEqual({
+      title: null,
+      description: '',
+      price: null,
+      condition: null,
+      size: null,
+    });
   });
 
   it('trims the title, matching the trimmed DB constraint', () => {
@@ -92,6 +102,24 @@ describe('draftListingSchema', () => {
       expect(draftListingSchema.safeParse({ ...validForm, condition }).success).toBe(true);
     }
   });
+
+  // The draft half of the size contract: a seller can save progress before
+  // they have decided on a size, exactly as with title/price/condition.
+  it('accepts a draft with no size', () => {
+    expect(draftListingSchema.safeParse({ ...validForm, size: null }).success).toBe(true);
+  });
+
+  it('rejects a size outside the database enum', () => {
+    expect(draftListingSchema.safeParse({ ...validForm, size: 'M' }).success).toBe(false);
+    expect(draftListingSchema.safeParse({ ...validForm, size: 'medium' }).success).toBe(false);
+    expect(draftListingSchema.safeParse({ ...validForm, size: 'eu_shoe_99' }).success).toBe(false);
+  });
+
+  it('accepts every size the database defines', () => {
+    for (const size of LISTING_SIZES) {
+      expect(draftListingSchema.safeParse({ ...validForm, size }).success).toBe(true);
+    }
+  });
 });
 
 describe('publishableListingSchema', () => {
@@ -101,6 +129,7 @@ describe('publishableListingSchema', () => {
       description: 'Barely worn.',
       price: 2450,
       condition: 'good',
+      size: 'alpha_m',
     });
   });
 
@@ -120,6 +149,22 @@ describe('publishableListingSchema', () => {
     );
   });
 
+  it('requires a size', () => {
+    expect(publishableListingSchema.safeParse({ ...validForm, size: null }).success).toBe(false);
+  });
+
+  it('accepts a valid normalized size, including the numeric escape path', () => {
+    expect(publishableListingSchema.safeParse({ ...validForm, size: 'alpha_xl' }).success).toBe(
+      true,
+    );
+    expect(publishableListingSchema.safeParse({ ...validForm, size: 'eu_shoe_42' }).success).toBe(
+      true,
+    );
+    expect(publishableListingSchema.safeParse({ ...validForm, size: 'one_size' }).success).toBe(
+      true,
+    );
+  });
+
   it('still allows an empty description, which is NOT NULL DEFAULT in the DB', () => {
     expect(publishableListingSchema.safeParse({ ...validForm, description: '' }).success).toBe(
       true,
@@ -132,6 +177,7 @@ describe('publishBlockers', () => {
     title: 'Vintage denim jacket',
     price_amount: 2450,
     condition: 'good' as const,
+    size: 'alpha_m' as const,
     status: 'draft' as const,
   };
 
@@ -143,6 +189,21 @@ describe('publishBlockers', () => {
     expect(publishBlockers({ ...completeDraft, title: null }, 1)).toEqual(['title']);
     expect(publishBlockers({ ...completeDraft, price_amount: null }, 1)).toEqual(['price']);
     expect(publishBlockers({ ...completeDraft, condition: null }, 1)).toEqual(['condition']);
+  });
+
+  // The new publish requirement. An otherwise-complete listing with a photo
+  // is still blocked purely for want of a size, matching publish_listing's
+  // own guard — the DB remains authoritative, this just explains it first.
+  it('reports a missing size on an otherwise-complete listing', () => {
+    expect(publishBlockers({ ...completeDraft, size: null }, 1)).toEqual(['size']);
+  });
+
+  it('accepts a numeric shoe size as satisfying the size requirement', () => {
+    expect(publishBlockers({ ...completeDraft, size: 'eu_shoe_42' }, 1)).toEqual([]);
+  });
+
+  it('accepts one_size as satisfying the size requirement', () => {
+    expect(publishBlockers({ ...completeDraft, size: 'one_size' }, 1)).toEqual([]);
   });
 
   it('reports zero photos', () => {
@@ -163,7 +224,12 @@ describe('publishBlockers', () => {
 
   it('reports every blocker at once', () => {
     expect(
-      publishBlockers({ title: null, price_amount: null, condition: null, status: 'draft' }, 0),
-    ).toEqual(['title', 'price', 'condition', 'photos']);
+      publishBlockers(
+        { title: null, price_amount: null, condition: null, size: null, status: 'draft' },
+        0,
+      ),
+      // Order matches publish_listing's own guard order, so the first
+      // blocker a seller is shown is the first one the server would hit.
+    ).toEqual(['title', 'price', 'condition', 'size', 'photos']);
   });
 });

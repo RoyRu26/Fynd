@@ -12,7 +12,7 @@ import type { Tables } from '@/types/database';
  *     changed by `publish_listing`. Sending it — even its own default value —
  *     fails with 42501.
  *   * `currency` likewise has no client write privilege; it relies on the
- *     `'EUR'` column default.
+ *     `'ILS'` column default.
  *   * `created_at`/`updated_at` are server-owned.
  *   * `seller_id` may be sent on INSERT but never on UPDATE.
  *   * `listing_images` has no client INSERT or UPDATE privilege at all.
@@ -136,11 +136,16 @@ export async function updateDraft(
 ): Promise<ListingRow> {
   const { data, error } = await supabase
     .from('listings')
+    // `status` is deliberately absent, as is `currency`: neither has a client
+    // column grant, so sending either fails with 42501 even when the value
+    // matches the column's own default. status only ever changes through
+    // publish_listing; currency relies entirely on its 'ILS' default.
     .update({
       title: input.title,
       description: input.description,
       price_amount: input.price,
       condition: input.condition,
+      size: input.size,
     })
     .eq('id', listingId)
     .select();
