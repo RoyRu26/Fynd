@@ -42,3 +42,38 @@ Payments will use Stripe Connect.
 - Money must be stored as integer minor units.
 - Critical operations must be transactional and server-controlled.
 - Run type checking and linting after changes.
+## Repo layout
+
+- pnpm monorepo. App lives in `apps/mobile`, database in `supabase/`.
+- `apps/mobile/src/app/` — Expo Router screens only (thin: render + wire hooks).
+- `apps/mobile/src/features/<feature>/` — one folder per feature:
+  - `api.ts` — Supabase calls only. Throws on `error`.
+  - `queries.ts` — TanStack Query hooks + a `<feature>Keys` query-key object.
+  - `<feature>.ts` (pure logic) — row normalization, derivations. NO react-native or `@/lib/supabase` imports, so it is unit-testable.
+  - `<name>.test.ts` — Vitest tests for the pure module.
+  - `schemas.ts` / `errors.ts` when needed (Zod schemas, error mapping).
+- `apps/mobile/src/components/ui/` — design-system primitives; UI state logic lives in `*-state.ts` with tests.
+- `apps/mobile/src/types/database.ts` — GENERATED. Never hand-edit; regenerate after migrations.
+- `supabase/migrations/` — one file per change, timestamped. `supabase/tests/database/` — pgTAP suites, one per domain.
+
+## Commands
+
+Run from `apps/mobile` unless noted:
+- Typecheck: `pnpm exec tsc --noEmit`
+- Lint: `pnpm lint`
+- Unit tests: `pnpm test`
+- Regenerate DB types: `pnpm gen:types`
+- New migration (repo root): `pnpm exec supabase migration new <snake_case_name>`
+- Apply migrations locally (repo root): `pnpm exec supabase db reset`
+- DB tests (repo root): `pnpm exec supabase test db --local`
+
+## Design
+
+`DESIGN.md` is the design system and is binding. Screens use semantic tokens only (no hex, no magic numbers). Follow §15 contribution rules; accessibility (§12) is part of "done".
+
+## Workflow
+
+- Plan before building anything that touches more than one layer (DB + API + UI).
+- A task is done only when typecheck, lint, unit tests (and DB tests if SQL changed) pass.
+- After a feature, run the `code-reviewer` agent; for any SQL change, also run `supabase-security-reviewer`.
+- Repeatable procedures live in `.claude/skills/` (new-migration, new-feature, verify).
