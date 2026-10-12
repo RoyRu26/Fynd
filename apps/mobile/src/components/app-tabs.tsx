@@ -55,6 +55,16 @@ export default function AppTabs() {
         />
       </NativeTabs.Trigger>
 
+      {/* Verified against the installed packages, not guessed:
+          'bubble.left.and.bubble.right' exists in sf-symbols-typescript's
+          dist/index.d.ts, and 'chat_bubble_outline' exists in expo-symbols'
+          android/symbols.json. A real icon pair, unlike the two PNG
+          placeholders above. */}
+      <NativeTabs.Trigger name="inbox">
+        <NativeTabs.Trigger.Label>Inbox</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="bubble.left.and.bubble.right" md="chat_bubble_outline" />
+      </NativeTabs.Trigger>
+
       <NativeTabs.Trigger name="profile">
         <NativeTabs.Trigger.Label>Profile</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon

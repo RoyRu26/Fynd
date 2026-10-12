@@ -28,6 +28,9 @@ export default function AppTabs() {
           <TabTrigger name="sell" href="/(app)/(tabs)/sell" asChild>
             <TabButton>Sell</TabButton>
           </TabTrigger>
+          <TabTrigger name="inbox" href="/(app)/(tabs)/inbox" asChild>
+            <TabButton>Inbox</TabButton>
+          </TabTrigger>
           <TabTrigger name="profile" href="/(app)/(tabs)/profile" asChild>
             <TabButton>Profile</TabButton>
           </TabTrigger>

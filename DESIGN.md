@@ -446,7 +446,7 @@ One step per screen, generous spacing, large touch targets. The photo grid is th
 
 ### 14.5 Inbox
 
-Pure `ListRow` + `Avatar`. The calmest surface in the app — it is the negative space that makes the feed feel loud. Unread is indicated by weight, a dot, **and** an accessible label; never color alone.
+Pure `ListRow` + `Avatar`, with a small listing cover thumbnail in the row's trailing slot. The calmest surface in the app — it is the negative space that makes the feed feel loud. Unread is indicated by weight, a dot, **and** an accessible label; never color alone.
 
 ### 14.6 Listing detail
 
