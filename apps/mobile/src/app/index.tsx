@@ -22,7 +22,7 @@ export default function Index() {
     case 'onboarding':
       return <Redirect href="/(onboarding)/profile" />;
     case 'app':
-      return <Redirect href="/(app)" />;
+      return <Redirect href="/(app)/(tabs)" />;
   }
 }
 

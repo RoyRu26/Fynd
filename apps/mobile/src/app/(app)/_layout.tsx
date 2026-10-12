@@ -1,6 +1,5 @@
-import { Redirect } from 'expo-router';
+import { Redirect, Stack } from 'expo-router';
 
-import AppTabs from '@/components/app-tabs';
 import { useAuthRouteState } from '@/features/auth/auth-route-provider';
 
 export default function AppLayout() {
@@ -16,6 +15,16 @@ export default function AppLayout() {
     case 'onboarding':
       return <Redirect href="/(onboarding)/profile" />;
     case 'app':
-      return <AppTabs />;
+      // (tabs) is the NativeTabs group (Home/Sell/Profile); listing/[id] and
+      // seller/[id] are plain pushed Stack screens that sit outside it, so
+      // opening either hides the floating tab bar automatically instead of
+      // needing a 4th tab or any custom bottom-nav of its own.
+      return (
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="listing/[id]" />
+          <Stack.Screen name="seller/[id]" />
+        </Stack>
+      );
   }
 }

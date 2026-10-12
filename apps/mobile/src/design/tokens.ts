@@ -1,4 +1,4 @@
-import { Platform, StyleSheet, type RadialGradientValue } from "react-native";
+import { Platform, StyleSheet, type LinearGradientValue, type RadialGradientValue } from "react-native";
 
 // Primitive design tokens. Transcribed verbatim from DESIGN.md — no values
 // here are invented; every number/hex traces back to a specific DESIGN.md
@@ -26,14 +26,29 @@ export { neutral, oat, olive, rose, teal, crimson, amber } from "@/design/palett
 
 // Vertical scrim for media (feed, gallery) — transparent to near-black,
 // distinct from the flat overlayScrim semantic token used on sheets/dimming.
-// Data only — no expo-linear-gradient consumer exists yet; see Dependencies.
-export const gradientScrim = {
-  angle: 180,
-  stops: [
-    { offset: 0, color: "rgba(12,10,11,0)" },
-    { offset: 1, color: "rgba(12,10,11,0.75)" },
+// Its first consumer is the Home feed card, behind the price/title/seller
+// overlay at the bottom of each full-bleed photo.
+//
+// Shaped as RN core's own `experimental_backgroundImage` LinearGradientValue
+// (no gradient library needed) — the same mechanism `ambientGlow` already
+// uses for its radial gradients. `direction: '180deg'` is the standard CSS
+// gradient-angle syntax for top-to-bottom, matching the original numeric
+// `angle: 180` this replaces exactly.
+//
+// The bottom stop is a plateau (65%-100%, both at 0.75 opacity), not a single
+// point at 100%. The overlay content it sits behind is pushed up from the
+// true bottom edge by a safe-area-derived amount that varies per device, so
+// the darkest band has to cover a range of possible resting positions, not
+// just the literal last pixel row.
+export const gradientScrim: LinearGradientValue = {
+  type: "linear-gradient",
+  direction: "180deg",
+  colorStops: [
+    { color: "rgba(12,10,11,0)", positions: ["0%"] },
+    { color: "rgba(12,10,11,0.75)", positions: ["65%"] },
+    { color: "rgba(12,10,11,0.75)", positions: ["100%"] },
   ],
-} as const;
+};
 
 // DESIGN.md §6 — 4pt spacing scale.
 export const space = {

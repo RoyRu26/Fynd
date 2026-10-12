@@ -15,7 +15,7 @@ export default function AuthLayout() {
     case 'onboarding':
       return <Redirect href="/(onboarding)/profile" />;
     case 'app':
-      return <Redirect href="/(app)" />;
+      return <Redirect href="/(app)/(tabs)" />;
     case 'unauthenticated':
       return <Stack screenOptions={{ headerShown: false }} />;
   }

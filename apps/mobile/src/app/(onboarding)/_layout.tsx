@@ -13,7 +13,7 @@ export default function OnboardingLayout() {
     case 'unauthenticated':
       return <Redirect href="/(auth)/sign-in" />;
     case 'app':
-      return <Redirect href="/(app)" />;
+      return <Redirect href="/(app)/(tabs)" />;
     case 'onboarding':
       return <Stack screenOptions={{ headerShown: false }} />;
   }

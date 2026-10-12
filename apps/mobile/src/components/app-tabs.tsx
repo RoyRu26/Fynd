@@ -1,25 +1,41 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 
-import { Colors } from '@/constants/theme';
-import { useAppTheme } from '@/design/theme-provider';
+import { getColors } from '@/design/theme';
+
+// The tab bar is pinned to the dark appearance app-wide, independent of the
+// system scheme and independent of any individual screen's own theme —
+// Sell and Profile still render their own content following the system
+// scheme; only Home additionally forces its own content dark on top (via
+// AppThemeProvider). This keeps the chrome around Home's always-dark
+// full-viewport photography from ever showing a light bar underneath it.
+//
+// A plain module-scope constant, not a hook: `getColors('dark')` never
+// changes at runtime, so there is nothing to react to. DESIGN.md §14.1's
+// "single gradient serving both the overlay and the bottom bar" stays
+// deferred to the custom bottom bar (§16); this is the smallest change that
+// stops the bar from clashing with Home in the meantime.
+const colors = getColors('dark');
+
+// Measured on device: the native bar's actual rendered material stays light
+// regardless of the `backgroundColor`/`indicatorColor` pin above — those
+// tint the bar but do not flip its underlying (light) text-legibility
+// material. `colors.text` (near-white, meant for a dark surface) is nearly
+// invisible there, which is the exact "selected Sell label is nearly
+// invisible" symptom. The selected label needs a color chosen for that
+// actual light material, so it borrows the light scheme's own `text`
+// (near-black) rather than extending the dark-bar assumption further.
+const selectedLabelColor = getColors('light').text;
 
 export default function AppTabs() {
-  const { scheme, colors: semanticColors } = useAppTheme();
-  const colors = Colors[scheme];
-
   return (
     <NativeTabs
-      backgroundColor={colors.background}
-      indicatorColor={colors.backgroundElement}
-      labelStyle={{ selected: { color: colors.text } }}
-      // The icon has no tint of its own (constants/theme.ts's legacy `Colors`
-      // has no accent concept at all), so without this iOS falls back to its
-      // own default systemBlue for the selected tab — which clashes with
-      // Fynd's olive brand. `iconColor` is NativeTabs' own prop for
-      // exactly this, in the same { default?, selected? } shape labelStyle
-      // above already uses; only `selected` is set here, same as labelStyle,
-      // leaving the unselected icon at its already-neutral native default.
-      iconColor={{ selected: semanticColors.accent }}>
+      backgroundColor={colors.bg}
+      indicatorColor={colors.bgElevated}
+      // Unselected stays on the dark-scheme pin (unaffected — it already read
+      // fine on the actual bar); only the selected label needed the
+      // light-scheme color above.
+      labelStyle={{ default: { color: colors.textSecondary }, selected: { color: selectedLabelColor } }}
+      iconColor={{ default: colors.textSecondary, selected: colors.accent }}>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon

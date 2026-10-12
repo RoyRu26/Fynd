@@ -1,5 +1,6 @@
 import { Image, type ImageContentFit } from 'expo-image';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import { duration } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
@@ -28,8 +29,17 @@ import { useAppTheme } from '@/design/theme-provider';
 export type ListingImageProps = {
   /** undefined while a signed URL is still loading — renders the skeleton alone. */
   uri: string | undefined;
-  /** Reserves layout space before load. Defaults to 1 (square), this phase's only use. */
+  /** Reserves layout space before load (the Sell grid's mode). Ignored when `fill` is true. Defaults to 1 (square). */
   aspectRatio?: number;
+  /**
+   * Full-bleed mode (the Home feed): no `aspectRatio` is applied at all —
+   * the container is `{ flex: 1 }` and fills whatever size the parent's own
+   * layout already establishes (e.g. a FlatList page sized from a measured
+   * viewport height). This component never hardcodes or guesses a feed
+   * page's dimensions; the parent owns that entirely.
+   * @default false
+   */
+  fill?: boolean;
   contentFit?: ImageContentFit;
   recyclingKey?: string;
   accessibilityLabel?: string;
@@ -39,22 +49,32 @@ export type ListingImageProps = {
 export function ListingImage({
   uri,
   aspectRatio = 1,
+  fill = false,
   contentFit = 'cover',
   recyclingKey,
   accessibilityLabel,
   style,
 }: ListingImageProps) {
   const { colors } = useAppTheme();
+  // DESIGN.md §10 rule 3 / §12.5: reduced motion disables this image's own
+  // fade-in outright (0ms) rather than merely shortening it — the same
+  // mechanism AmbientBackground already uses for its own motion.
+  const reducedMotion = useReducedMotion();
 
   return (
     <View
-      style={[styles.container, { aspectRatio, backgroundColor: colors.skeleton }, style]}>
+      style={[
+        styles.container,
+        fill ? styles.fill : { aspectRatio },
+        { backgroundColor: colors.skeleton },
+        style,
+      ]}>
       {uri ? (
         <Image
           source={{ uri }}
           style={StyleSheet.absoluteFill}
           contentFit={contentFit}
-          transition={duration.normal}
+          transition={reducedMotion ? 0 : duration.normal}
           cachePolicy="memory-disk"
           recyclingKey={recyclingKey}
           accessible={Boolean(accessibilityLabel)}
@@ -68,5 +88,8 @@ export function ListingImage({
 const styles = StyleSheet.create({
   container: {
     overflow: 'hidden',
+  },
+  fill: {
+    flex: 1,
   },
 });
