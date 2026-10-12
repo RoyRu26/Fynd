@@ -1,10 +1,9 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 
-import { Button, Chip, IconButton, Screen, Text, type IconName } from '@/components/ui';
+import { Button, Chip, EmptyState, IconButton, ListRow, Screen, SkeletonRow, Text, type IconName } from '@/components/ui';
 import { space } from '@/design/tokens';
-import { useAppTheme } from '@/design/theme-provider';
 import { useAuth } from '@/features/auth/auth-provider';
 import type { ListingRow } from '@/features/listings/api';
 import { mapListingError } from '@/features/listings/errors';
@@ -15,10 +14,14 @@ import { useCreateDraft, useDeleteDraft, useMyListings } from '@/features/listin
 // sf-symbols-typescript's types, and 'delete' exists in expo-symbols'
 // android/symbols.json.
 const DELETE_ICON: IconName = { ios: 'trash', android: 'delete', web: 'delete' };
+// Verified the same way: 'exclamationmark.triangle'/'warning' and
+// 'bag'/'shopping_bag' both exist in sf-symbols-typescript and expo-symbols'
+// android/symbols.json respectively.
+const ERROR_ICON: IconName = { ios: 'exclamationmark.triangle', android: 'warning', web: 'warning' };
+const EMPTY_ICON: IconName = { ios: 'bag', android: 'shopping_bag', web: 'shopping_bag' };
 
 export default function SellIndex() {
   const router = useRouter();
-  const { colors } = useAppTheme();
   const { session } = useAuth();
   const sellerId = session?.user.id;
 
@@ -91,24 +94,22 @@ export default function SellIndex() {
       {deleteError ? <ErrorText message={deleteError} /> : null}
 
       {listingsQuery.isPending ? (
-        <View style={styles.centered}>
-          <ActivityIndicator color={colors.textTertiary} />
+        <View style={styles.rows}>
+          <SkeletonRow />
+          <SkeletonRow />
+          <SkeletonRow />
         </View>
       ) : listingsQuery.isError ? (
-        <View style={styles.centered}>
-          <Text variant="body" color="danger">
-            {mapListingError(listingsQuery.error).message}
-          </Text>
-          <Button variant="secondary" size="sm" onPress={() => listingsQuery.refetch()}>
-            Try again
-          </Button>
-        </View>
+        <EmptyState
+          variant="error"
+          icon={ERROR_ICON}
+          title="Something went wrong"
+          body={mapListingError(listingsQuery.error).message}
+          actionLabel="Try again"
+          onAction={() => listingsQuery.refetch()}
+        />
       ) : listings.length === 0 ? (
-        <View style={styles.centered}>
-          <Text variant="body" color="textSecondary">
-            You haven&apos;t listed anything yet.
-          </Text>
-        </View>
+        <EmptyState variant="empty" icon={EMPTY_ICON} title="You haven't listed anything yet." />
       ) : (
         <View style={styles.sections}>
           {drafts.length > 0 ? (
@@ -189,43 +190,33 @@ function ListingListRow({
   onDelete?: () => void;
   deleteDisabled?: boolean;
 }) {
-  const { colors } = useAppTheme();
   const price =
     listing.price_amount === null ? null : formatMoney(listing.price_amount, listing.currency);
   const statusLabel = listing.status.charAt(0).toUpperCase() + listing.status.slice(1);
 
   return (
-    <Pressable
+    <ListRow
+      title={listing.title ?? 'Untitled draft'}
+      subtitle={price ?? 'No price set'}
       onPress={onPress}
-      accessibilityRole="button"
-      style={({ pressed }) => [
-        styles.row,
-        { backgroundColor: colors.bgElevated, opacity: pressed ? 0.7 : 1 },
-      ]}>
-      <View style={styles.rowMain}>
-        <Text variant="bodyStrong" numberOfLines={1}>
-          {listing.title ?? 'Untitled draft'}
-        </Text>
-        <Text variant="caption" color="textSecondary">
-          {price ?? 'No price set'}
-        </Text>
-      </View>
-      <View style={styles.rowMeta}>
-        <Chip label={statusLabel} />
-        {/* Delete is never offered here for anything but a draft: the RLS
-            DELETE policy would reject an active listing anyway, but the
-            button is withheld rather than shown-then-failing. */}
-        {onDelete ? (
-          <IconButton
-            icon={DELETE_ICON}
-            accessibilityLabel="Delete draft"
-            onPress={onDelete}
-            disabled={deleteDisabled}
-            color="danger"
-          />
-        ) : null}
-      </View>
-    </Pressable>
+      trailing={
+        <View style={styles.rowMeta}>
+          <Chip label={statusLabel} />
+          {/* Delete is never offered here for anything but a draft: the RLS
+              DELETE policy would reject an active listing anyway, but the
+              button is withheld rather than shown-then-failing. */}
+          {onDelete ? (
+            <IconButton
+              icon={DELETE_ICON}
+              accessibilityLabel="Delete draft"
+              onPress={onDelete}
+              disabled={deleteDisabled}
+              color="danger"
+            />
+          ) : null}
+        </View>
+      }
+    />
   );
 }
 
@@ -241,11 +232,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: space[3],
   },
-  centered: {
-    alignItems: 'center',
-    gap: space[3],
-    paddingVertical: space[10],
-  },
   sections: {
     gap: space[6],
   },
@@ -254,19 +240,6 @@ const styles = StyleSheet.create({
   },
   rows: {
     gap: space[2],
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: space[3],
-    paddingVertical: space[3],
-    paddingHorizontal: space[4],
-    borderRadius: space[3],
-  },
-  rowMain: {
-    flex: 1,
-    gap: space[1],
   },
   rowMeta: {
     flexDirection: 'row',
