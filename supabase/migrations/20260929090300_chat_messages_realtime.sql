@@ -1,0 +1,54 @@
+-- Turns on Realtime delivery for chat messages.
+--
+-- One statement, and deliberately nothing else. This is the first table this
+-- project has ever published, so the surrounding notes record the decisions
+-- rather than leaving the next person to re-derive them.
+--
+-- WHY POSTGRES CHANGES AND NOT BROADCAST. Broadcast-from-database would need
+-- an AFTER INSERT trigger calling realtime.send plus the first-ever policy on
+-- a realtime-schema table (realtime.messages has RLS enabled with ZERO
+-- policies today, so private channels are currently denied outright), and
+-- that policy would have to re-derive conversation membership from a
+-- stringly-typed topic name. That is a SECOND place membership lives, free to
+-- drift from the messages table's own RLS. Postgres Changes needs exactly the
+-- line below and reuses the one authorization model we already have and test.
+-- Broadcast is the documented scaling path if per-subscriber RLS evaluation
+-- ever becomes the bottleneck; at this volume it is not.
+--
+-- PUBLICATION MEMBERSHIP IS NOT AUTHORIZATION. Realtime reads the WAL and
+-- hands every change to realtime.apply_rls(), which -- inside Postgres, per
+-- subscriber, per row -- sets the subscriber's role and request.jwt.claims
+-- and runs a probe SELECT restricted to the changed row. If the table's
+-- SELECT policies do not admit that row for that subscriber, the change is
+-- dropped for them. So "Participants read conversation messages" remains the
+-- entire authorization boundary, and a client cannot widen what it receives
+-- by tampering with or omitting its channel filter -- the filter is an
+-- efficiency knob, nothing more. No grant or policy is added here, and none
+-- is needed: authenticated already holds table-level SELECT on messages,
+-- which is what apply_rls evaluates against.
+--
+-- REPLICA IDENTITY STAYS DEFAULT. v1 needs INSERT events only, and an INSERT
+-- WAL record already carries the complete new tuple -- so conversation_id,
+-- sender_id, body, client_nonce and created_at all arrive without a refetch.
+-- `replica identity full` would additionally write OLD tuples for every
+-- UPDATE/DELETE, i.e. put private message bodies on the WAL, in exchange for
+-- nothing: this table is append-only and holds no client UPDATE or DELETE
+-- grant. messages.id is the primary key, which is all DEFAULT needs for
+-- apply_rls to re-identify a row.
+--
+-- CONVERSATIONS IS DELIBERATELY NOT PUBLISHED. Publishing it would broadcast
+-- every last_message_* UPDATE the trigger makes -- the same information
+-- twice, from two streams, with no ordering guarantee between them. The
+-- messages stream alone is sufficient to derive every conversations change a
+-- client cares about (bump to top, update preview, increment unread), which
+-- the client does with a pure reducer in a later phase. It would also leak
+-- buyer_last_read_at / seller_last_read_at, which every read RPC was
+-- deliberately shaped to keep off the wire.
+--
+-- The publication's own pubinsert/pubupdate/pubdelete/pubtruncate flags are
+-- left exactly as they are. They are publication-WIDE, not per-table, so
+-- narrowing them to insert-only here would silently constrain every table
+-- added to this publication later. Append-only plus no client write grants
+-- already means nothing but INSERT can ever occur on messages.
+
+alter publication supabase_realtime add table public.messages;
