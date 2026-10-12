@@ -15,8 +15,9 @@ Source of truth for what gets built next. The `autopilot` skill works through th
 
 ## Milestone 1 — Complete the core loop
 
-- [ ] **1.1 Missing UI primitives** — Build `ListRow`, `Sheet`, `Skeleton`, `EmptyState` per DESIGN.md §13, only as far as items in this milestone need them (second-caller rule).
+- [x] **1.1 Missing UI primitives** — Build `ListRow`, `Sheet`, `Skeleton`, `EmptyState` per DESIGN.md §13, only as far as items in this milestone need them (second-caller rule).
   Done when: each has state-logic tests where it has logic, and is used by at least one screen below.
+  Note: `ListRow`/`Skeleton`/`EmptyState` are in real use (My Listings retrofit). `Sheet` is fully built and tested but has no real screen caller yet — its first consumer lands with 1.6 or 1.7.
 - [ ] **1.2 Inbox** — Inbox tab listing conversations (DESIGN.md §14.5) using the existing chat RPCs: other party avatar + name, listing thumbnail, last message, unread (weight + dot + accessibility label).
   Done when: conversations sort by latest message, unread clears on open, empty state shows when there are none.
 - [ ] **1.3 Conversation screen** — Message thread with realtime updates, send box, optimistic send, pagination of older messages, listing header that links to the listing.
@@ -76,3 +77,5 @@ Source of truth for what gets built next. The `autopilot` skill works through th
 ## Progress log
 
 Autopilot appends one line per finished item: date, item, commit hash, notes.
+
+- 2026-10-12 — 1.1 Missing UI primitives — `98d3f30` — Built ListRow, Sheet, Skeleton(+SkeletonRow/SkeletonListingCard), EmptyState(+ErrorState) and retrofitted My Listings to use them. Sheet has no real screen caller yet; deferred to 1.6/1.7. One review round found and fixed a stale-drag-offset bug in Sheet plus two should-fix items (keyboard avoidance, a duplicated DISABLED_OPACITY constant); re-review passed clean.
