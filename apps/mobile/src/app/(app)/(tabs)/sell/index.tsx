@@ -2,18 +2,14 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
-import { Button, Chip, EmptyState, IconButton, ListRow, Screen, SkeletonRow, Text, type IconName } from '@/components/ui';
+import { Button, EmptyState, Screen, SkeletonRow, Text, type IconName } from '@/components/ui';
 import { space } from '@/design/tokens';
 import { useAuth } from '@/features/auth/auth-provider';
-import type { ListingRow } from '@/features/listings/api';
+import type { ListingRow as ListingRowData } from '@/features/listings/api';
 import { mapListingError } from '@/features/listings/errors';
-import { formatMoney } from '@/features/listings/price';
+import { ListingRow } from '@/features/listings/listing-row';
 import { useCreateDraft, useDeleteDraft, useMyListings } from '@/features/listings/queries';
 
-// Verified against the installed packages: 'trash' exists in
-// sf-symbols-typescript's types, and 'delete' exists in expo-symbols'
-// android/symbols.json.
-const DELETE_ICON: IconName = { ios: 'trash', android: 'delete', web: 'delete' };
 // Verified the same way: 'exclamationmark.triangle'/'warning' and
 // 'bag'/'shopping_bag' both exist in sf-symbols-typescript and expo-symbols'
 // android/symbols.json respectively.
@@ -49,7 +45,7 @@ export default function SellIndex() {
     }
   }
 
-  function handleDeleteDraft(listing: ListingRow) {
+  function handleDeleteDraft(listing: ListingRowData) {
     Alert.alert(
       'Delete draft?',
       "This removes the draft and its photos. This can't be undone.",
@@ -154,9 +150,9 @@ function ListingSection({
   deleteDisabled,
 }: {
   title: string;
-  listings: ListingRow[];
-  onPress: (listing: ListingRow) => void;
-  onDelete?: (listing: ListingRow) => void;
+  listings: ListingRowData[];
+  onPress: (listing: ListingRowData) => void;
+  onDelete?: (listing: ListingRowData) => void;
   deleteDisabled?: boolean;
 }) {
   return (
@@ -166,7 +162,7 @@ function ListingSection({
       </Text>
       <View style={styles.rows}>
         {listings.map((listing) => (
-          <ListingListRow
+          <ListingRow
             key={listing.id}
             listing={listing}
             onPress={() => onPress(listing)}
@@ -176,47 +172,6 @@ function ListingSection({
         ))}
       </View>
     </View>
-  );
-}
-
-function ListingListRow({
-  listing,
-  onPress,
-  onDelete,
-  deleteDisabled,
-}: {
-  listing: ListingRow;
-  onPress: () => void;
-  onDelete?: () => void;
-  deleteDisabled?: boolean;
-}) {
-  const price =
-    listing.price_amount === null ? null : formatMoney(listing.price_amount, listing.currency);
-  const statusLabel = listing.status.charAt(0).toUpperCase() + listing.status.slice(1);
-
-  return (
-    <ListRow
-      title={listing.title ?? 'Untitled draft'}
-      subtitle={price ?? 'No price set'}
-      onPress={onPress}
-      trailing={
-        <View style={styles.rowMeta}>
-          <Chip label={statusLabel} />
-          {/* Delete is never offered here for anything but a draft: the RLS
-              DELETE policy would reject an active listing anyway, but the
-              button is withheld rather than shown-then-failing. */}
-          {onDelete ? (
-            <IconButton
-              icon={DELETE_ICON}
-              accessibilityLabel="Delete draft"
-              onPress={onDelete}
-              disabled={deleteDisabled}
-              color="danger"
-            />
-          ) : null}
-        </View>
-      }
-    />
   );
 }
 
@@ -239,11 +194,6 @@ const styles = StyleSheet.create({
     gap: space[2],
   },
   rows: {
-    gap: space[2],
-  },
-  rowMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: space[2],
   },
 });
