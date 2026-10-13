@@ -21,8 +21,9 @@ Source of truth for what gets built next. The `autopilot` skill works through th
 - [x] **1.2 Inbox** — Inbox tab listing conversations (DESIGN.md §14.5) using the existing chat RPCs: other party avatar + name, listing thumbnail, last message, unread (weight + dot + accessibility label).
   Done when: conversations sort by latest message, unread clears on open, empty state shows when there are none.
   Note: `inbox/[id].tsx` is a deliberate minimal stub (marks read, shows header, placeholder body) — 1.3 fills in the real thread UI.
-- [ ] **1.3 Conversation screen** — Message thread with realtime updates, send box, optimistic send, pagination of older messages, listing header that links to the listing.
+- [x] **1.3 Conversation screen** — Message thread with realtime updates, send box, optimistic send, pagination of older messages, listing header that links to the listing.
   Done when: two signed-in users can chat live; sending fails gracefully offline.
+  Note: chat UI is a deliberate minimal placeholder (plain text rows, no bubble styling) per Roy's decision — DESIGN.md §14.7 documents this pending a real design pass.
 - [ ] **1.4 "Message seller"** — Primary action on listing detail opens (or creates) the conversation for that listing. Hidden on your own listing.
   Done when: tapping it twice never creates two conversations.
 - [ ] **1.5 My listings** — Own Profile tab shows my listings across statuses (active, draft, reserved, sold), with status filter chips.
@@ -81,3 +82,4 @@ Autopilot appends one line per finished item: date, item, commit hash, notes.
 
 - 2026-10-12 — 1.1 Missing UI primitives — `98d3f30` — Built ListRow, Sheet, Skeleton(+SkeletonRow/SkeletonListingCard), EmptyState(+ErrorState) and retrofitted My Listings to use them. Sheet has no real screen caller yet; deferred to 1.6/1.7. One review round found and fixed a stale-drag-offset bug in Sheet plus two should-fix items (keyboard avoidance, a duplicated DISABLED_OPACITY constant); re-review passed clean.
 - 2026-10-12 — 1.2 Inbox — `ef72b0d` — Added the Inbox tab and list, consuming existing chat RPCs (no new migration). Added a minimal inbox/[id].tsx stub for 1.3 to build on. One review round found two must-fix items (missing test coverage for a normalizer, a detail query bypassing the inboxKeys convention) and two should-fix items (a misleading RPC doc comment, DESIGN.md §14.5 not documenting the listing thumbnail the roadmap requires); all fixed, re-review passed clean.
+- 2026-10-13 — 1.3 Conversation screen — `b8c40bb` — Replaced the inbox stub with the real thread: new conversation_messages RPC (SECURITY INVOKER), realtime via Postgres Changes (first in the app), optimistic send with client_nonce idempotency. Roy chose a minimal token-only placeholder UI over inventing bubble styling, since DESIGN.md had no spec for this screen (flagged and asked rather than improvised) — documented in new §14.7. Independent code review and supabase-security-reviewer both came back clean on first pass; no fix round needed.
