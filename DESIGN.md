@@ -456,6 +456,10 @@ Horizontally paged gallery (same image wrapper) → price → title → attribut
 
 **[OPEN] — dark treatment.** The media/gallery area may be dark while the informational portion follows the system theme. Not locked; decide with the real design in hand.
 
+### 14.7 Conversation thread
+
+**[OPEN] — no visual spec yet.** Shipped as a deliberate functional placeholder: plain left/right-aligned `Text` rows (own messages right, the other party's left), no bubble fill, shape, or shadow invented. Replace the styling once a real design exists; the data contract (message list + composer) is not expected to change.
+
 ---
 
 ## 15. Contribution & consistency rules

@@ -31,7 +31,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(134);
+select plan(145);
 
 -- ============================================================
 -- FIXTURES
@@ -1473,6 +1473,154 @@ select throws_ok(
   $$select public.inbox_unread_count()$$,
   '42501', null,
   'anon cannot execute inbox_unread_count'
+);
+
+-- ============================================================
+-- 22. conversation_messages -- message history pagination (ROADMAP 1.3)
+-- ============================================================
+-- Dedicated fixtures so page-size/cursor assertions are not entangled with
+-- the message volume and participants accumulated by every earlier
+-- section. F sells, G buys -- fresh ids in the f5... namespace.
+
+reset role;
+
+insert into auth.users (
+  id, instance_id, aud, role, email, encrypted_password, created_at, updated_at
+)
+values
+  ('f5000000-0000-0000-0000-00000000000f', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'pgtap-chat-f@test.dev', 'x', now(), now()),
+  ('f5000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'pgtap-chat-g@test.dev', 'x', now(), now());
+
+insert into public.listings
+  (id, seller_id, title, description, price_amount, condition, size, status)
+values
+  ('aaaa5000-0000-0000-0000-000000000020', 'f5000000-0000-0000-0000-00000000000f',
+   'P3 messages', 'CHAT_P3_MSGS', 1000, 'good', 'alpha_m', 'active');
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-000000000010","role":"authenticated"}';
+
+create temp table p3_conv as
+select public.get_or_create_listing_conversation('aaaa5000-0000-0000-0000-000000000020') as cv20;
+
+reset role;
+grant select on p3_conv to authenticated;
+
+-- 5 messages, strictly ascending, alternating sender.
+insert into public.messages (conversation_id, sender_id, body, client_nonce, created_at)
+values
+  ((select cv20 from p3_conv), 'f5000000-0000-0000-0000-000000000010',
+   'msg 1', 'nonce-p3-01', '2026-03-01 00:00:00+00'),
+  ((select cv20 from p3_conv), 'f5000000-0000-0000-0000-00000000000f',
+   'msg 2', 'nonce-p3-02', '2026-03-01 00:00:01+00'),
+  ((select cv20 from p3_conv), 'f5000000-0000-0000-0000-000000000010',
+   'msg 3', 'nonce-p3-03', '2026-03-01 00:00:02+00'),
+  ((select cv20 from p3_conv), 'f5000000-0000-0000-0000-00000000000f',
+   'msg 4', 'nonce-p3-04', '2026-03-01 00:00:03+00'),
+  ((select cv20 from p3_conv), 'f5000000-0000-0000-0000-000000000010',
+   'msg 5', 'nonce-p3-05', '2026-03-01 00:00:04+00');
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-000000000010","role":"authenticated"}';
+
+select is(
+  (select string_agg(m.body, ',' order by m.created_at desc, m.id desc)
+     from public.conversation_messages((select cv20 from p3_conv), 50) m),
+  'msg 5,msg 4,msg 3,msg 2,msg 1',
+  'a participant pages through messages newest-first'
+);
+
+select is(
+  (select count(*)::int from public.conversation_messages((select cv20 from p3_conv), 2)),
+  2,
+  'p_limit is honoured'
+);
+
+-- Page 2 continues exactly where page 1 stopped: no row repeated, none
+-- skipped. The cursor is derived from page 1 the way the client does it --
+-- same shape as inbox_conversations' own keyset-pagination assertion.
+select is(
+  (
+    select string_agg(m.body, ',' order by m.created_at desc, m.id desc)
+      from (
+        select p1.created_at, p1.id
+          from public.conversation_messages((select cv20 from p3_conv), 2) p1
+         order by p1.created_at asc, p1.id asc
+         limit 1
+      ) cur
+      cross join lateral public.conversation_messages((select cv20 from p3_conv), 2, cur.created_at, cur.id) m
+  ),
+  'msg 3,msg 2',
+  'the keyset cursor returns the next page with no gap and no duplicate'
+);
+
+select throws_ok(
+  $$select * from public.conversation_messages((select cv20 from p3_conv), 10, now(), null)$$,
+  'P0001', null,
+  'a half cursor (created_at without id) is rejected rather than silently returning page 1'
+);
+
+select throws_ok(
+  $$select * from public.conversation_messages((select cv20 from p3_conv), 10, null, 'cccc5000-0000-0000-0000-00000000dead')$$,
+  'P0001', null,
+  'a half cursor (id without created_at) is rejected too'
+);
+
+-- Both sides of the thread, not just the one that happened to create it --
+-- RLS's membership check is symmetric over buyer_id/seller_id, and this
+-- pins that for conversation_messages specifically rather than only
+-- trusting the general messages-RLS coverage in section 7 above.
+set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-00000000000f","role":"authenticated"}';
+
+select is(
+  (select count(*)::int from public.conversation_messages((select cv20 from p3_conv), 50)),
+  5,
+  'the seller side of the thread also reads the full message history'
+);
+
+-- A non-participant gets zero rows, not an error -- this function is
+-- SECURITY INVOKER, so RLS's silent USING-denial is the entire mechanism,
+-- matching this suite's established convention for RLS denials.
+set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-00000000000c","role":"authenticated"}';
+
+select is(
+  (select count(*)::int from public.conversation_messages((select cv20 from p3_conv), 50)),
+  0,
+  'a non-participant gets zero rows from conversation_messages, not an error'
+);
+
+select is(
+  (select count(*)::int from public.conversation_messages('cccc5000-0000-0000-0000-00000000dead', 50)),
+  0,
+  'a conversation id that does not exist at all also yields zero rows'
+);
+
+reset role;
+
+select ok(
+  has_function_privilege(
+    'authenticated', 'public.conversation_messages(uuid, integer, timestamptz, uuid)', 'execute'
+  )
+  and not has_function_privilege(
+    'anon', 'public.conversation_messages(uuid, integer, timestamptz, uuid)', 'execute'
+  ),
+  'conversation_messages: EXECUTE for authenticated only'
+);
+
+select ok(
+  not (select p.prosecdef from pg_proc p
+    where p.proname = 'conversation_messages' and p.pronamespace = 'public'::regnamespace),
+  'conversation_messages is SECURITY INVOKER, not DEFINER -- RLS stays active as a second guarantee'
+);
+
+set local role anon;
+
+select throws_ok(
+  $$select * from public.conversation_messages('cccc5000-0000-0000-0000-00000000dead', 50)$$,
+  '42501', null,
+  'anon cannot execute conversation_messages -- no EXECUTE grant'
 );
 
 set local role authenticated;

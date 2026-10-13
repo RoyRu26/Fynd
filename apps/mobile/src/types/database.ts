@@ -352,6 +352,22 @@ export type Database = {
           other_username: string
         }[]
       }
+      conversation_messages: {
+        Args: {
+          p_conversation_id: string
+          p_cursor_created_at?: string
+          p_cursor_id?: string
+          p_limit?: number
+        }
+        Returns: {
+          body: string
+          client_nonce: string
+          conversation_id: string
+          created_at: string
+          id: string
+          sender_id: string
+        }[]
+      }
       feed_listings: {
         Args: {
           p_cursor_created_at?: string
