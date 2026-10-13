@@ -113,3 +113,23 @@ export async function fetchConversationDetail(
   const row = data[0];
   return row ? normalizeConversationHeader(row) : null;
 }
+
+/**
+ * Resumes the caller's existing conversation about this listing, or starts
+ * one — race-safe server-side via `conversations_listing_buyer_key` (see the
+ * RPC's own migration comment: unique-index arbitration, resume-first then
+ * gate-on-active, `on conflict do nothing` plus a re-select on a lost race).
+ * Tapping "Message seller" twice, or twice from two devices, can never
+ * create two threads.
+ *
+ * Returns a bare conversation id, not a row — same reasoning as
+ * `markConversationRead`'s RPC returning `void`: the only thing the caller
+ * does with the result is navigate.
+ */
+export async function startOrResumeConversation(listingId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('get_or_create_listing_conversation', {
+    p_listing_id: listingId,
+  });
+  if (error) throw error;
+  return data;
+}

@@ -6,7 +6,12 @@ import {
   type InfiniteData,
 } from '@tanstack/react-query';
 
-import { fetchConversationDetail, fetchInboxPage, markConversationRead } from '@/features/inbox/api';
+import {
+  fetchConversationDetail,
+  fetchInboxPage,
+  markConversationRead,
+  startOrResumeConversation,
+} from '@/features/inbox/api';
 import { clearUnreadInPages } from '@/features/inbox/inbox-cache';
 import { deriveNextInboxCursor, type InboxConversation, type InboxCursor } from '@/features/inbox/inbox';
 
@@ -77,5 +82,19 @@ export function useMarkConversationRead() {
         current ? clearUnreadInPages(current, variables.conversationId) : current,
       );
     },
+  });
+}
+
+/**
+ * Opens (or resumes) the conversation for a listing, from the listing detail
+ * screen's "Message seller" action. No `onMutate`/cache patch: unlike
+ * favoriting, there's no pre-existing cache entry for a brand-new or resumed
+ * conversation to update optimistically, and the inbox list already relies
+ * on focus-refetch (see `useInboxConversations`), not optimistic cache
+ * writes, to pick it up.
+ */
+export function useStartConversation() {
+  return useMutation({
+    mutationFn: (listingId: string) => startOrResumeConversation(listingId),
   });
 }
