@@ -1,14 +1,15 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { Chip, EmptyState, Screen, SkeletonRow, Text, type IconName } from '@/components/ui';
 import { space } from '@/design/tokens';
 import { useAuth } from '@/features/auth/auth-provider';
 import type { ListingRow as ListingRowData } from '@/features/listings/api';
 import { mapListingError } from '@/features/listings/errors';
+import { ListingActionsSheet } from '@/features/listings/listing-actions-sheet';
 import { ListingRow } from '@/features/listings/listing-row';
-import { useDeleteDraft, useMyListings } from '@/features/listings/queries';
+import { useMyListings } from '@/features/listings/queries';
 import {
   filterListingsByStatus,
   FILTER_LABELS,
@@ -30,38 +31,18 @@ export default function MyListings() {
   const sellerId = session?.user.id;
 
   const listingsQuery = useMyListings(sellerId);
-  const deleteDraft = useDeleteDraft(sellerId);
 
   const [filter, setFilter] = useState<ListingStatusFilter>('all');
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [managingListing, setManagingListing] = useState<ListingRowData | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   function openListing(listingId: string) {
     router.push({ pathname: '/(app)/(tabs)/sell/[id]', params: { id: listingId } });
   }
 
-  function handleDeleteDraft(listing: ListingRowData) {
-    Alert.alert(
-      'Delete draft?',
-      "This removes the draft and its photos. This can't be undone.",
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            setDeleteError(null);
-            try {
-              await deleteDraft.mutateAsync(listing.id);
-            } catch (err) {
-              if (__DEV__) {
-                console.error(err);
-              }
-              setDeleteError(mapListingError(err).message);
-            }
-          },
-        },
-      ],
-    );
+  function manageListing(listing: ListingRowData) {
+    setActionError(null);
+    setManagingListing(listing);
   }
 
   const allListings = listingsQuery.data ?? [];
@@ -84,13 +65,13 @@ export default function MyListings() {
         ))}
       </View>
 
-      {deleteError ? (
+      {actionError ? (
         <Text
           variant="caption"
           color="danger"
           accessibilityLiveRegion="polite"
           accessibilityRole="alert">
-          {deleteError}
+          {actionError}
         </Text>
       ) : null}
 
@@ -118,12 +99,19 @@ export default function MyListings() {
               key={listing.id}
               listing={listing}
               onPress={() => openListing(listing.id)}
-              onDelete={listing.status === 'draft' ? () => handleDeleteDraft(listing) : undefined}
-              deleteDisabled={deleteDraft.isPending}
+              onManage={() => manageListing(listing)}
             />
           ))}
         </View>
       )}
+
+      <ListingActionsSheet
+        listing={managingListing}
+        sellerId={sellerId}
+        onClose={() => setManagingListing(null)}
+        onEdit={(listing) => openListing(listing.id)}
+        onError={setActionError}
+      />
     </Screen>
   );
 }

@@ -8,6 +8,7 @@ import {
   isListRowInteractive,
 } from '@/components/ui/list-row-state';
 import { Text } from '@/components/ui/text';
+import type { TextColor } from '@/components/ui/text-variants';
 import { minTouchTarget, space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 
@@ -20,6 +21,12 @@ export type ListRowProps = {
   disabled?: boolean;
   /** Drives title weight, a dot, and the accessible label — never color alone (DESIGN.md §12.4). */
   unread?: boolean;
+  /**
+   * Overrides the title's color — e.g. `danger` for a destructive action row,
+   * paired with a danger-tinted leading icon so the signal is never color
+   * alone (DESIGN.md §12.4). Defaults to `text`.
+   */
+  titleColor?: TextColor;
   /** Override; otherwise composed from title/subtitle/unread. */
   accessibilityLabel?: string;
 };
@@ -37,6 +44,7 @@ export function ListRow({
   onPress,
   disabled,
   unread,
+  titleColor = 'text',
   accessibilityLabel,
 }: ListRowProps) {
   const { colors } = useAppTheme();
@@ -50,7 +58,7 @@ export function ListRow({
         <View style={styles.titleRow}>
           <Text
             variant={getListRowTitleVariant(unread)}
-            color="text"
+            color={titleColor}
             numberOfLines={1}
             style={styles.titleText}>
             {title}

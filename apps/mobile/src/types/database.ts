@@ -422,6 +422,72 @@ export type Database = {
         Args: { p_conversation_id: string; p_up_to?: string }
         Returns: undefined
       }
+      mark_listing_active: {
+        Args: { p_listing_id: string }
+        Returns: {
+          condition: Database["public"]["Enums"]["listing_condition"] | null
+          created_at: string
+          currency: string
+          description: string
+          id: string
+          price_amount: number | null
+          seller_id: string
+          size: Database["public"]["Enums"]["listing_size"] | null
+          status: Database["public"]["Enums"]["listing_status"]
+          title: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "listings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mark_listing_reserved: {
+        Args: { p_listing_id: string }
+        Returns: {
+          condition: Database["public"]["Enums"]["listing_condition"] | null
+          created_at: string
+          currency: string
+          description: string
+          id: string
+          price_amount: number | null
+          seller_id: string
+          size: Database["public"]["Enums"]["listing_size"] | null
+          status: Database["public"]["Enums"]["listing_status"]
+          title: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "listings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mark_listing_sold: {
+        Args: { p_listing_id: string }
+        Returns: {
+          condition: Database["public"]["Enums"]["listing_condition"] | null
+          created_at: string
+          currency: string
+          description: string
+          id: string
+          price_amount: number | null
+          seller_id: string
+          size: Database["public"]["Enums"]["listing_size"] | null
+          status: Database["public"]["Enums"]["listing_status"]
+          title: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "listings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       publish_listing: {
         Args: { p_listing_id: string }
         Returns: {
@@ -452,9 +518,60 @@ export type Database = {
         }
         Returns: undefined
       }
+      remove_listing: {
+        Args: { p_listing_id: string }
+        Returns: {
+          condition: Database["public"]["Enums"]["listing_condition"] | null
+          created_at: string
+          currency: string
+          description: string
+          id: string
+          price_amount: number | null
+          seller_id: string
+          size: Database["public"]["Enums"]["listing_size"] | null
+          status: Database["public"]["Enums"]["listing_status"]
+          title: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "listings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       set_listing_image_order: {
         Args: { p_image_ids: string[]; p_listing_id: string }
         Returns: undefined
+      }
+      update_listing_details: {
+        Args: {
+          p_condition: Database["public"]["Enums"]["listing_condition"]
+          p_description: string
+          p_listing_id: string
+          p_price_amount: number
+          p_size: Database["public"]["Enums"]["listing_size"]
+          p_title: string
+        }
+        Returns: {
+          condition: Database["public"]["Enums"]["listing_condition"] | null
+          created_at: string
+          currency: string
+          description: string
+          id: string
+          price_amount: number | null
+          seller_id: string
+          size: Database["public"]["Enums"]["listing_size"] | null
+          status: Database["public"]["Enums"]["listing_status"]
+          title: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "listings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
     }
     Enums: {

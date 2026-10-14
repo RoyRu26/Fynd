@@ -46,15 +46,18 @@ import {
   useRemoveListingImage,
   useReorderListingImages,
   useUpdateDraft,
+  useUpdateListingDetails,
   usePublishListing,
 } from '@/features/listings/queries';
 import { CONDITION_LABELS } from '@/features/listings/condition';
 import {
   draftListingSchema,
   LISTING_CONDITIONS,
+  publishableListingSchema,
   publishBlockers,
   type DraftListingInput,
   type ListingFormInput,
+  type PublishableListingInput,
   type PublishBlocker,
 } from '@/features/listings/schemas';
 import {
@@ -88,11 +91,12 @@ export default function SellEditor() {
   // A draft belonging to someone else is already invisible to this query
   // (RLS hides it entirely), so this same branch also covers "not found".
   const isOwner = listing !== undefined && listing.seller_id === session?.user.id;
-  // Owning the row is not enough on its own: the owner's OWN listing can
-  // also be active (published), and photo modification must stop there too
-  // — "Do not allow photo modification for active listings" applies
-  // regardless of who is asking.
-  const isEditableDraft = isOwner && listing?.status === 'draft';
+  // ROADMAP 1.6 "Manage a listing" widens this from draft-only: an owner's
+  // active or reserved listing is now editable too, through
+  // update_listing_details rather than the plain draft UPDATE path. sold
+  // and removed stay permanently read-only — both are terminal statuses.
+  const isEditable =
+    isOwner && (listing?.status === 'draft' || listing?.status === 'active' || listing?.status === 'reserved');
 
   let body: ReactNode;
   if (listingQuery.isPending) {
@@ -117,21 +121,28 @@ export default function SellEditor() {
         </Text>
       </View>
     );
-  } else if (!isEditableDraft) {
+  } else if (!isEditable) {
+    // Only sold/removed reach here: isOwner is true and the listing exists,
+    // so draft/active/reserved are all covered by the editable branch below.
     body = (
       <View style={styles.centered}>
         <Text variant="title">{listing.title ?? 'Untitled listing'}</Text>
         <Text variant="body" color="textSecondary">
-          This listing has been published and can no longer be edited here.
+          {listing.status === 'sold'
+            ? 'This listing has been sold and can no longer be edited.'
+            : 'This listing has been removed and can no longer be edited.'}
         </Text>
       </View>
     );
   } else {
+    const isDraft = listing.status === 'draft';
     body = (
       <View style={styles.body}>
-        <Text variant="title">Edit draft</Text>
-        {/* Photos first and largest, per DESIGN.md §14.4. */}
-        <PhotoSection listingId={listing.id} sellerId={listing.seller_id} />
+        <Text variant="title">{isDraft ? 'Edit draft' : 'Edit listing'}</Text>
+        {/* Photos first and largest, per DESIGN.md §14.4. Read-only once the
+            listing is no longer a draft -- listing_images stays draft-scoped
+            at the RLS/RPC layer, so editing is photo-read-only here too. */}
+        <PhotoSection listingId={listing.id} sellerId={listing.seller_id} editable={isDraft} />
         {/* Keyed by listing id: a fresh mount (and fresh RHF defaultValues)
             only when the displayed listing actually changes, never on an
             incidental background refetch of the same one — which would
@@ -165,7 +176,15 @@ type PhotoCell =
   | { kind: 'persisted'; image: ListingImageRow; isCover: boolean; url: string | undefined }
   | { kind: 'local'; item: LocalPhotoItem };
 
-function PhotoSection({ listingId, sellerId }: { listingId: string; sellerId: string }) {
+function PhotoSection({
+  listingId,
+  sellerId,
+  editable,
+}: {
+  listingId: string;
+  sellerId: string;
+  editable: boolean;
+}) {
   const queryClient = useQueryClient();
   const imagesQuery = useListingImages(listingId);
   const removeImage = useRemoveListingImage(listingId);
@@ -303,17 +322,31 @@ function PhotoSection({ listingId, sellerId }: { listingId: string; sellerId: st
     }
   }
 
-  const cells: PhotoCell[] = [
-    ...persisted.map(
-      (image, index): PhotoCell => ({
-        kind: 'persisted',
-        image,
-        isCover: index === 0,
-        url: urlsQuery.data?.[image.storage_path],
-      }),
-    ),
-    ...localPhotos.map((item): PhotoCell => ({ kind: 'local', item })),
-  ];
+  // Once a listing is no longer a draft, listing_images stays draft-scoped
+  // at the RLS/RPC layer -- there is no attach/remove/reorder path left to
+  // call. Local, in-flight uploads can only ever exist on a draft (the Add
+  // photos control below is withheld entirely once !editable), so the
+  // non-editable cell list is just the persisted rows, plain.
+  const cells: PhotoCell[] = editable
+    ? [
+        ...persisted.map(
+          (image, index): PhotoCell => ({
+            kind: 'persisted',
+            image,
+            isCover: index === 0,
+            url: urlsQuery.data?.[image.storage_path],
+          }),
+        ),
+        ...localPhotos.map((item): PhotoCell => ({ kind: 'local', item })),
+      ]
+    : persisted.map(
+        (image, index): PhotoCell => ({
+          kind: 'persisted',
+          image,
+          isCover: index === 0,
+          url: urlsQuery.data?.[image.storage_path],
+        }),
+      );
 
   return (
     <View style={styles.photoSection}>
@@ -342,6 +375,7 @@ function PhotoSection({ listingId, sellerId }: { listingId: string; sellerId: st
                 isFirst={cell.isCover}
                 isLast={cell.image.id === persisted[persisted.length - 1]?.id}
                 busy={removingImageId === cell.image.id || reordering}
+                editable={editable}
                 onRemove={() => handleRemovePersisted(cell.image)}
                 onMoveEarlier={() => handleMove(cell.image.id, 'earlier')}
                 onMoveLater={() => handleMove(cell.image.id, 'later')}
@@ -356,18 +390,16 @@ function PhotoSection({ listingId, sellerId }: { listingId: string; sellerId: st
             ),
           )}
 
-          {remaining > 0 ? (
-            <AddPhotosCell onPress={handleAddPhotos} />
-          ) : null}
+          {editable && remaining > 0 ? <AddPhotosCell onPress={handleAddPhotos} /> : null}
         </View>
       )}
 
-      {pickError ? (
+      {editable && pickError ? (
         <Text variant="caption" color="danger" accessibilityLiveRegion="polite" accessibilityRole="alert">
           {pickError}
         </Text>
       ) : null}
-      {reorderError ? (
+      {editable && reorderError ? (
         <Text variant="caption" color="danger" accessibilityLiveRegion="polite" accessibilityRole="alert">
           {reorderError}
         </Text>
@@ -398,7 +430,21 @@ const SIZE_GROUPS = listingSizesBySystem();
 
 type PendingAction = 'save' | 'publish' | null;
 
+/**
+ * Dispatches between the draft editor (unchanged) and the active/reserved
+ * editor (ROADMAP 1.6): different mutation, different validation schema —
+ * `update_listing_details` re-validates the same completeness rules
+ * `publish_listing` already enforces, so the client side uses the exact
+ * same `publishableListingSchema`, not a new one.
+ */
 function ListingFieldsSection({ listing }: { listing: ListingRow }) {
+  if (listing.status === 'draft') {
+    return <DraftFieldsSection listing={listing} />;
+  }
+  return <PublishedFieldsSection listing={listing} />;
+}
+
+function DraftFieldsSection({ listing }: { listing: ListingRow }) {
   const sellerId = listing.seller_id;
   const updateDraft = useUpdateDraft(listing.id, sellerId);
   const publish = usePublishListing(sellerId);
@@ -677,6 +723,203 @@ function ListingFieldsSection({ listing }: { listing: ListingRow }) {
   );
 }
 
+/**
+ * The active/reserved editor (ROADMAP 1.6). Same fields and the same
+ * `ListingFormInput` shape as the draft editor, but validated against
+ * `publishableListingSchema` (nothing optional — a non-draft row is already
+ * complete and must stay that way) and saved via `update_listing_details`
+ * rather than the plain draft UPDATE path. No publish blockers, no Publish
+ * button: the listing is already published.
+ */
+// Unlike ListingFormInput (shared with the draft editor, where condition/size
+// may be null), publishableListingSchema requires both — so this form's own
+// field-values type narrows them to non-null to match the resolver's input.
+type PublishedFormInput = Omit<ListingFormInput, 'condition' | 'size'> & {
+  condition: NonNullable<ListingFormInput['condition']>;
+  size: NonNullable<ListingFormInput['size']>;
+};
+
+function PublishedFieldsSection({ listing }: { listing: ListingRow }) {
+  const sellerId = listing.seller_id;
+  const updateListingDetails = useUpdateListingDetails(listing.id, sellerId);
+
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const form = useForm<PublishedFormInput, unknown, PublishableListingInput>({
+    resolver: zodResolver(publishableListingSchema),
+    defaultValues: {
+      title: listing.title ?? '',
+      description: listing.description,
+      price: formatMinorUnitsForInput(listing.price_amount),
+      // Non-null by the listings_complete_when_not_draft CHECK constraint —
+      // any active/reserved row (this component's only callers) already has
+      // both set. ListingRow's generated type stays nullable because the
+      // column itself is nullable for drafts.
+      condition: listing.condition!,
+      size: listing.size!,
+    },
+  });
+  const { control, handleSubmit, formState } = form;
+
+  async function onSave(input: PublishableListingInput) {
+    setFormError(null);
+    setSaving(true);
+    try {
+      const saved = await updateListingDetails.mutateAsync(input);
+      // Resets to the server's canonical values and clears isDirty, same
+      // "saved state doubles as the reset" signal DraftFieldsSection uses.
+      // Non-null for the same reason as the defaultValues above: a row this
+      // RPC just saved is active/reserved, so both are guaranteed set.
+      form.reset({
+        title: saved.title ?? '',
+        description: saved.description,
+        price: formatMinorUnitsForInput(saved.price_amount),
+        condition: saved.condition!,
+        size: saved.size!,
+      });
+    } catch (err) {
+      if (__DEV__) {
+        console.error(err);
+      }
+      setFormError(mapListingError(err).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <View style={styles.fields}>
+      <Controller
+        control={control}
+        name="title"
+        render={({ field, fieldState }) => (
+          <TextField
+            label="Title"
+            value={field.value}
+            onChangeText={field.onChange}
+            onBlur={field.onBlur}
+            error={fieldState.error?.message}
+            disabled={saving}
+          />
+        )}
+      />
+
+      <Controller
+        control={control}
+        name="price"
+        render={({ field, fieldState }) => (
+          <TextField
+            label={`Price (${currencySymbol(listing.currency)})`}
+            keyboardType="decimal-pad"
+            value={field.value}
+            onChangeText={field.onChange}
+            onBlur={field.onBlur}
+            error={fieldState.error?.message}
+            disabled={saving}
+          />
+        )}
+      />
+
+      <View style={styles.conditionField}>
+        <Text variant="label" color="textSecondary">
+          Condition
+        </Text>
+        <Controller
+          control={control}
+          name="condition"
+          render={({ field }) => (
+            <View style={styles.conditionChips}>
+              {LISTING_CONDITIONS.map((value) => (
+                <Chip
+                  key={value}
+                  label={CONDITION_LABELS[value]}
+                  selectable
+                  selected={field.value === value}
+                  disabled={saving}
+                  onPress={() => field.onChange(value)}
+                />
+              ))}
+            </View>
+          )}
+        />
+      </View>
+
+      <View style={styles.sizeField}>
+        <Text variant="label" color="textSecondary">
+          Size
+        </Text>
+        <Controller
+          control={control}
+          name="size"
+          render={({ field }) => (
+            <View style={styles.sizeGroups}>
+              {SIZE_SYSTEM_ORDER.map((system) => (
+                <View key={system} style={styles.sizeGroup}>
+                  <Text variant="caption" color="textTertiary">
+                    {SIZE_SYSTEM_LABELS[system]}
+                  </Text>
+                  <View style={styles.sizeChips}>
+                    {SIZE_GROUPS[system].map((value) => (
+                      <Chip
+                        key={value}
+                        label={formatSizeLabel(value)}
+                        selectable
+                        selected={field.value === value}
+                        disabled={saving}
+                        onPress={() => field.onChange(value)}
+                      />
+                    ))}
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        />
+      </View>
+
+      <Controller
+        control={control}
+        name="description"
+        render={({ field, fieldState }) => (
+          <TextField
+            label="Description"
+            multiline
+            numberOfLines={4}
+            value={field.value}
+            onChangeText={field.onChange}
+            onBlur={field.onBlur}
+            error={fieldState.error?.message}
+            disabled={saving}
+          />
+        )}
+      />
+
+      {formError ? (
+        <Text variant="caption" color="danger" accessibilityLiveRegion="polite" accessibilityRole="alert">
+          {formError}
+        </Text>
+      ) : null}
+
+      <View style={styles.fieldsFooter}>
+        <Text variant="caption" color="textTertiary">
+          {saving ? 'Saving…' : formState.isDirty ? 'Unsaved changes' : ' '}
+        </Text>
+        <View style={styles.fieldsActions}>
+          <Button
+            variant="primary"
+            size="sm"
+            onPress={handleSubmit(onSave)}
+            loading={saving}
+            disabled={saving || !formState.isDirty}>
+            Save changes
+          </Button>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 const CELL_GAP = space[2];
 const CELL_BASIS = '31%';
 
@@ -685,6 +928,7 @@ function PersistedPhotoCell({
   isFirst,
   isLast,
   busy,
+  editable,
   onRemove,
   onMoveEarlier,
   onMoveLater,
@@ -693,6 +937,8 @@ function PersistedPhotoCell({
   isFirst: boolean;
   isLast: boolean;
   busy: boolean;
+  /** Plain thumbnail, no controls at all, once the listing is not a draft. */
+  editable: boolean;
   onRemove: () => void;
   onMoveEarlier: () => void;
   onMoveLater: () => void;
@@ -710,34 +956,38 @@ function PersistedPhotoCell({
           <Chip label="Cover" />
         </View>
       ) : null}
-      <View style={styles.cellTopRight}>
-        <IconButton
-          icon={REMOVE_ICON}
-          accessibilityLabel="Remove photo"
-          onPress={onRemove}
-          disabled={busy}
-          variant="onMedia"
-          size="sm"
-        />
-      </View>
-      <View style={styles.cellBottomRow}>
-        <IconButton
-          icon={MOVE_EARLIER_ICON}
-          accessibilityLabel="Move photo earlier"
-          onPress={onMoveEarlier}
-          disabled={busy || isFirst}
-          variant="onMedia"
-          size="sm"
-        />
-        <IconButton
-          icon={MOVE_LATER_ICON}
-          accessibilityLabel="Move photo later"
-          onPress={onMoveLater}
-          disabled={busy || isLast}
-          variant="onMedia"
-          size="sm"
-        />
-      </View>
+      {editable ? (
+        <>
+          <View style={styles.cellTopRight}>
+            <IconButton
+              icon={REMOVE_ICON}
+              accessibilityLabel="Remove photo"
+              onPress={onRemove}
+              disabled={busy}
+              variant="onMedia"
+              size="sm"
+            />
+          </View>
+          <View style={styles.cellBottomRow}>
+            <IconButton
+              icon={MOVE_EARLIER_ICON}
+              accessibilityLabel="Move photo earlier"
+              onPress={onMoveEarlier}
+              disabled={busy || isFirst}
+              variant="onMedia"
+              size="sm"
+            />
+            <IconButton
+              icon={MOVE_LATER_ICON}
+              accessibilityLabel="Move photo later"
+              onPress={onMoveLater}
+              disabled={busy || isLast}
+              variant="onMedia"
+              size="sm"
+            />
+          </View>
+        </>
+      ) : null}
     </View>
   );
 }

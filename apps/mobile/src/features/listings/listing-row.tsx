@@ -2,20 +2,24 @@ import { StyleSheet, View } from 'react-native';
 
 import { Chip, IconButton, ListRow, type IconName } from '@/components/ui';
 import { space } from '@/design/tokens';
+import { getAvailableActions } from '@/features/listings/actions';
 import type { ListingRow as ListingRowData } from '@/features/listings/api';
 import { formatMoney } from '@/features/listings/price';
 
-// Verified against the installed packages: 'trash' exists in
-// sf-symbols-typescript's types, and 'delete' exists in expo-symbols'
+// Verified against the installed packages: 'ellipsis' exists in
+// sf-symbols-typescript's types, and 'more_vert' exists in expo-symbols'
 // android/symbols.json.
-const DELETE_ICON: IconName = { ios: 'trash', android: 'delete', web: 'delete' };
+const MANAGE_ICON: IconName = { ios: 'ellipsis', android: 'more_vert', web: 'more_vert' };
 
 export type ListingRowProps = {
   listing: ListingRowData;
   onPress: () => void;
-  /** Omit entirely (not just disable) for anything but a draft — see below. */
-  onDelete?: () => void;
-  deleteDisabled?: boolean;
+  /**
+   * Opens the ROADMAP 1.6 actions sheet (ListingActionsSheet). Omit entirely
+   * (not just disable) when the listing has no available actions — see
+   * below — rather than showing a control that would open an empty sheet.
+   */
+  onManage?: () => void;
 };
 
 /**
@@ -24,10 +28,14 @@ export type ListingRowProps = {
  * second-caller rule: this stopped being sell/index.tsx-only once My
  * Listings needed the identical row).
  */
-export function ListingRow({ listing, onPress, onDelete, deleteDisabled }: ListingRowProps) {
+export function ListingRow({ listing, onPress, onManage }: ListingRowProps) {
   const price =
     listing.price_amount === null ? null : formatMoney(listing.price_amount, listing.currency);
   const statusLabel = listing.status.charAt(0).toUpperCase() + listing.status.slice(1);
+  // A sold/removed listing offers no actions at all (both are terminal), so
+  // the overflow control is withheld entirely rather than shown opening an
+  // empty sheet.
+  const hasActions = getAvailableActions(listing.status).length > 0;
 
   return (
     <ListRow
@@ -37,17 +45,8 @@ export function ListingRow({ listing, onPress, onDelete, deleteDisabled }: Listi
       trailing={
         <View style={styles.rowMeta}>
           <Chip label={statusLabel} />
-          {/* Delete is never offered here for anything but a draft: the RLS
-              DELETE policy would reject an active listing anyway, but the
-              button is withheld rather than shown-then-failing. */}
-          {onDelete ? (
-            <IconButton
-              icon={DELETE_ICON}
-              accessibilityLabel="Delete draft"
-              onPress={onDelete}
-              disabled={deleteDisabled}
-              color="danger"
-            />
+          {onManage && hasActions ? (
+            <IconButton icon={MANAGE_ICON} accessibilityLabel="Manage listing" onPress={onManage} />
           ) : null}
         </View>
       }

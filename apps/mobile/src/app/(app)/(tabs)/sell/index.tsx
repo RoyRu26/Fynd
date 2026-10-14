@@ -1,14 +1,15 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { Button, EmptyState, Screen, SkeletonRow, Text, type IconName } from '@/components/ui';
 import { space } from '@/design/tokens';
 import { useAuth } from '@/features/auth/auth-provider';
 import type { ListingRow as ListingRowData } from '@/features/listings/api';
 import { mapListingError } from '@/features/listings/errors';
+import { ListingActionsSheet } from '@/features/listings/listing-actions-sheet';
 import { ListingRow } from '@/features/listings/listing-row';
-import { useCreateDraft, useDeleteDraft, useMyListings } from '@/features/listings/queries';
+import { useCreateDraft, useMyListings } from '@/features/listings/queries';
 
 // Verified the same way: 'exclamationmark.triangle'/'warning' and
 // 'bag'/'shopping_bag' both exist in sf-symbols-typescript and expo-symbols'
@@ -23,13 +24,18 @@ export default function SellIndex() {
 
   const listingsQuery = useMyListings(sellerId);
   const createDraft = useCreateDraft(sellerId);
-  const deleteDraft = useDeleteDraft(sellerId);
 
   const [createError, setCreateError] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [managingListing, setManagingListing] = useState<ListingRowData | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   function openListing(listingId: string) {
     router.push({ pathname: '/(app)/(tabs)/sell/[id]', params: { id: listingId } });
+  }
+
+  function manageListing(listing: ListingRowData) {
+    setActionError(null);
+    setManagingListing(listing);
   }
 
   async function handleNewListing() {
@@ -43,31 +49,6 @@ export default function SellIndex() {
       }
       setCreateError(mapListingError(err).message);
     }
-  }
-
-  function handleDeleteDraft(listing: ListingRowData) {
-    Alert.alert(
-      'Delete draft?',
-      "This removes the draft and its photos. This can't be undone.",
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            setDeleteError(null);
-            try {
-              await deleteDraft.mutateAsync(listing.id);
-            } catch (err) {
-              if (__DEV__) {
-                console.error(err);
-              }
-              setDeleteError(mapListingError(err).message);
-            }
-          },
-        },
-      ],
-    );
   }
 
   const listings = listingsQuery.data ?? [];
@@ -87,7 +68,7 @@ export default function SellIndex() {
       </View>
 
       {createError ? <ErrorText message={createError} /> : null}
-      {deleteError ? <ErrorText message={deleteError} /> : null}
+      {actionError ? <ErrorText message={actionError} /> : null}
 
       {listingsQuery.isPending ? (
         <View style={styles.rows}>
@@ -113,8 +94,7 @@ export default function SellIndex() {
               title="Drafts"
               listings={drafts}
               onPress={(listing) => openListing(listing.id)}
-              onDelete={handleDeleteDraft}
-              deleteDisabled={deleteDraft.isPending}
+              onManage={manageListing}
             />
           ) : null}
           {others.length > 0 ? (
@@ -122,10 +102,19 @@ export default function SellIndex() {
               title="Listed"
               listings={others}
               onPress={(listing) => openListing(listing.id)}
+              onManage={manageListing}
             />
           ) : null}
         </View>
       )}
+
+      <ListingActionsSheet
+        listing={managingListing}
+        sellerId={sellerId}
+        onClose={() => setManagingListing(null)}
+        onEdit={(listing) => openListing(listing.id)}
+        onError={setActionError}
+      />
     </Screen>
   );
 }
@@ -146,14 +135,12 @@ function ListingSection({
   title,
   listings,
   onPress,
-  onDelete,
-  deleteDisabled,
+  onManage,
 }: {
   title: string;
   listings: ListingRowData[];
   onPress: (listing: ListingRowData) => void;
-  onDelete?: (listing: ListingRowData) => void;
-  deleteDisabled?: boolean;
+  onManage: (listing: ListingRowData) => void;
 }) {
   return (
     <View style={styles.section}>
@@ -166,8 +153,7 @@ function ListingSection({
             key={listing.id}
             listing={listing}
             onPress={() => onPress(listing)}
-            onDelete={onDelete ? () => onDelete(listing) : undefined}
-            deleteDisabled={deleteDisabled}
+            onManage={() => onManage(listing)}
           />
         ))}
       </View>

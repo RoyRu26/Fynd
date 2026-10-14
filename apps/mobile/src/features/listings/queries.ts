@@ -8,14 +8,20 @@ import {
   fetchListing,
   fetchListingImages,
   fetchMyListings,
+  markListingActive,
+  markListingReserved,
+  markListingSold,
   publishListing,
+  removeListing,
   removeListingImage,
   reorderListingImages,
   updateDraft,
+  updateListingDetails,
   type ListingImageRow,
 } from '@/features/listings/api';
 import { uploadAndAttachListingImage } from '@/features/listings/images';
-import type { DraftListingInput } from '@/features/listings/schemas';
+import type { DraftListingInput, PublishableListingInput } from '@/features/listings/schemas';
+import { listingDetailKeys } from '@/features/listing-detail/queries';
 
 export const listingKeys = {
   all: ['listings'] as const,
@@ -191,6 +197,88 @@ export function usePublishListing(sellerId: string | undefined) {
     onSuccess: (_listing, listingId) => {
       queryClient.invalidateQueries({ queryKey: listingKeys.detail(listingId) });
       queryClient.invalidateQueries({ queryKey: listingKeys.mine(sellerId) });
+    },
+  });
+}
+
+// ============================================================
+// Post-publish lifecycle (ROADMAP 1.6 "Manage a listing")
+// ============================================================
+// Same invalidation shape as usePublishListing: the detail query and the
+// seller's "mine" list both need to reflect the new status. Also invalidates
+// listingDetailKeys.byId -- a separate cache namespace (features/listing-detail/
+// queries.ts) that the listing-detail screen reads from, so it never shows a
+// stale status/description if it's mounted for this same listing.
+
+export function useMarkListingReserved(sellerId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (listingId: string) => markListingReserved(listingId),
+    onSuccess: (_listing, listingId) => {
+      queryClient.invalidateQueries({ queryKey: listingKeys.detail(listingId) });
+      queryClient.invalidateQueries({ queryKey: listingKeys.mine(sellerId) });
+      queryClient.invalidateQueries({ queryKey: listingDetailKeys.byId(listingId) });
+    },
+  });
+}
+
+export function useMarkListingActive(sellerId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (listingId: string) => markListingActive(listingId),
+    onSuccess: (_listing, listingId) => {
+      queryClient.invalidateQueries({ queryKey: listingKeys.detail(listingId) });
+      queryClient.invalidateQueries({ queryKey: listingKeys.mine(sellerId) });
+      queryClient.invalidateQueries({ queryKey: listingDetailKeys.byId(listingId) });
+    },
+  });
+}
+
+export function useMarkListingSold(sellerId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (listingId: string) => markListingSold(listingId),
+    onSuccess: (_listing, listingId) => {
+      queryClient.invalidateQueries({ queryKey: listingKeys.detail(listingId) });
+      queryClient.invalidateQueries({ queryKey: listingKeys.mine(sellerId) });
+      queryClient.invalidateQueries({ queryKey: listingDetailKeys.byId(listingId) });
+    },
+  });
+}
+
+export function useRemoveListing(sellerId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (listingId: string) => removeListing(listingId),
+    onSuccess: (_listing, listingId) => {
+      queryClient.invalidateQueries({ queryKey: listingKeys.detail(listingId) });
+      queryClient.invalidateQueries({ queryKey: listingKeys.mine(sellerId) });
+      queryClient.invalidateQueries({ queryKey: listingDetailKeys.byId(listingId) });
+    },
+  });
+}
+
+/** Mirrors useUpdateDraft's shape, for the active/reserved edit path. */
+export function useUpdateListingDetails(listingId: string | undefined, sellerId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: PublishableListingInput) => {
+      if (!listingId) {
+        throw new Error('Cannot update a listing without an id');
+      }
+      return updateListingDetails(listingId, input);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: listingKeys.detail(listingId) });
+      queryClient.invalidateQueries({ queryKey: listingKeys.mine(sellerId) });
+      if (listingId) {
+        queryClient.invalidateQueries({ queryKey: listingDetailKeys.byId(listingId) });
+      }
     },
   });
 }
