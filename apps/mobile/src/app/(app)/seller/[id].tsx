@@ -121,10 +121,7 @@ export default function SellerProfileScreen() {
     <View style={styles.listHeader}>
       {backRow}
       <View style={styles.identity}>
-        {/* source is always omitted: avatarPath has no bucket to resolve
-            against yet (see feed-card.tsx's own note) — every seller
-            renders as initials until that pipeline exists. */}
-        <Avatar size="lg" name={sellerName} />
+        <Avatar size="lg" source={seller.avatarUrl ?? undefined} name={sellerName} />
         <Text variant="title">{sellerName}</Text>
         {seller.username ? (
           <Text variant="body" color="textSecondary">{`@${seller.username}`}</Text>

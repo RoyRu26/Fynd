@@ -1,6 +1,8 @@
 import { createListingImageUrls } from '@/features/listings/api';
+import { createAvatarUrls } from '@/features/profile/api';
 import {
   associateListingDetailImageUrls,
+  associateListingDetailSellerAvatarUrl,
   normalizeListingDetailRow,
   type ListingDetail,
   type ListingDetailRow,
@@ -64,10 +66,19 @@ export async function fetchListingDetail(listingId: string): Promise<ListingDeta
   if (normalized === null) {
     return null;
   }
-  if (normalized.images.length === 0) {
-    return { ...normalized, images: [] };
-  }
 
-  const urlsByPath = await createListingImageUrls(normalized.images.map((image) => image.storagePath));
-  return associateListingDetailImageUrls(normalized, urlsByPath);
+  // Both signed-URL requests are independent (different buckets, different
+  // paths), so they run in parallel rather than serializing one behind the
+  // other.
+  const [imageUrlsByPath, avatarUrlsByPath] = await Promise.all([
+    createListingImageUrls(normalized.images.map((image) => image.storagePath)),
+    createAvatarUrls(normalized.sellerAvatarPath ? [normalized.sellerAvatarPath] : []),
+  ]);
+
+  const withImages =
+    normalized.images.length === 0
+      ? { ...normalized, images: [] }
+      : associateListingDetailImageUrls(normalized, imageUrlsByPath);
+
+  return associateListingDetailSellerAvatarUrl(withImages, avatarUrlsByPath);
 }

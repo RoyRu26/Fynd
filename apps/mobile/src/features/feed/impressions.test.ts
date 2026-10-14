@@ -147,6 +147,7 @@ function listing(id: string, createdAt: string): FeedListing {
     sellerUsername: 'roy',
     sellerDisplayName: 'Roy',
     sellerAvatarPath: null,
+    sellerAvatarUrl: null,
     coverStoragePath: `seller-1/${id}/cover.jpg`,
     coverUrl: `https://signed/${id}`,
     isFavorited: false,

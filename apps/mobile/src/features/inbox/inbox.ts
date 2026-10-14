@@ -36,6 +36,7 @@ export type InboxConversation = {
   otherUsername: string | null;
   otherDisplayName: string | null;
   otherAvatarPath: string | null;
+  otherAvatarUrl: string | null;
   lastMessageAt: string;
   lastMessageBody: string | null;
   lastMessageSenderId: string | null;
@@ -43,7 +44,10 @@ export type InboxConversation = {
   isUnread: boolean;
 };
 
-export type NormalizedInboxRow = Omit<InboxConversation, 'coverUrl'>;
+export type NormalizedInboxRow = Omit<InboxConversation, 'coverUrl' | 'otherAvatarUrl'>;
+
+/** The intermediate shape after cover-url resolution but before avatar-url resolution. */
+export type InboxConversationWithCover = Omit<InboxConversation, 'otherAvatarUrl'>;
 
 /**
  * Row -> domain normalization.
@@ -115,10 +119,26 @@ export function normalizeInboxRow(row: InboxConversationRpcRow): NormalizedInbox
 export function associateInboxCoverUrls(
   rows: NormalizedInboxRow[],
   urlsByPath: Record<string, string>,
-): InboxConversation[] {
+): InboxConversationWithCover[] {
   return rows.map((row) => ({
     ...row,
     coverUrl: row.coverStoragePath ? urlsByPath[row.coverStoragePath] ?? null : null,
+  }));
+}
+
+/**
+ * Attaches each row's resolved avatar URL, keyed by storage path. Same
+ * null-tolerant contract as `associateInboxCoverUrls`: a missing path or an
+ * unresolved signing never throws, since an avatar is a legitimate
+ * permanent null state (onboarding never sets one).
+ */
+export function associateInboxAvatarUrls(
+  rows: InboxConversationWithCover[],
+  urlsByPath: Record<string, string>,
+): InboxConversation[] {
+  return rows.map((row) => ({
+    ...row,
+    otherAvatarUrl: row.otherAvatarPath ? urlsByPath[row.otherAvatarPath] ?? null : null,
   }));
 }
 
@@ -181,9 +201,12 @@ export type ConversationHeader = {
   otherUsername: string | null;
   otherDisplayName: string | null;
   otherAvatarPath: string | null;
+  otherAvatarUrl: string | null;
 };
 
-export function normalizeConversationHeader(row: ConversationDetailRpcRow): ConversationHeader {
+export type NormalizedConversationHeader = Omit<ConversationHeader, 'otherAvatarUrl'>;
+
+export function normalizeConversationHeader(row: ConversationDetailRpcRow): NormalizedConversationHeader {
   return {
     conversationId: row.conversation_id,
     listingId: row.listing_id,
@@ -194,6 +217,20 @@ export function normalizeConversationHeader(row: ConversationDetailRpcRow): Conv
     otherUsername: row.other_username,
     otherDisplayName: row.other_display_name,
     otherAvatarPath: row.other_avatar_path,
+  };
+}
+
+/**
+ * Attaches the resolved avatar URL for the thread header's single avatar
+ * path. Same null-tolerant contract as `associateInboxAvatarUrls`.
+ */
+export function associateConversationHeaderAvatarUrl(
+  header: NormalizedConversationHeader,
+  urlsByPath: Record<string, string>,
+): ConversationHeader {
+  return {
+    ...header,
+    otherAvatarUrl: header.otherAvatarPath ? urlsByPath[header.otherAvatarPath] ?? null : null,
   };
 }
 

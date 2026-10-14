@@ -1,0 +1,40 @@
+-- Security fix, ROADMAP 1.7 "Edit profile + avatars."
+--
+-- `profiles.avatar_path` had a column-level UPDATE grant
+-- (`20261014112232_profile_bio_and_avatars.sql`) but no binding between the
+-- path's own uid-prefix segment and the row it is stored on. RLS's
+-- `auth.uid() = id` on the "Users can update own profile" policy only gates
+-- WHICH ROW a client may write -- it says nothing about the VALUE written
+-- into that row. Verified empirically against the running local DB: an
+-- authenticated user could
+--
+--   update public.profiles set avatar_path = '<someone-elses-uid>/their-real-photo.jpg'
+--   where id = <their-own-id>
+--
+-- and it would succeed. Combined with the avatars bucket's deliberately
+-- unscoped SELECT policy (any authenticated user may read any avatar
+-- object), this let an attacker point their own profile at a real victim's
+-- avatar object, so the attacker's profile would render with the victim's
+-- real photo everywhere a profile is shown (feed, seller profile, inbox,
+-- listing detail) to every viewer -- identity spoofing.
+--
+-- This is the same class of gap `attach_listing_image`
+-- (`20260914160100_listing_rpcs.sql`) already closes for listing photos by
+-- validating a storage path's prefix (and existence) before persisting it
+-- onto a row. `avatar_path` had no equivalent check.
+--
+-- Fixed with an unconditional CHECK constraint rather than another RLS
+-- policy: the invariant "this row's avatar_path, if set, must live under
+-- this row's own id" is a property of the DATA, true regardless of who or
+-- what is writing (client, a future admin tool, a SECURITY DEFINER
+-- function) -- matching this codebase's preference for data-level
+-- invariants over session-dependent checks where the same guarantee can be
+-- expressed without reference to auth.uid(). It compares against the row's
+-- own `id`, not `auth.uid()`, so it is role-independent.
+--
+-- Path convention confirmed from avatar-paths.ts / the bucket migration's
+-- own comment: `{user_id}/{image_id}.jpg` -- exactly two segments, uid
+-- first. `like (id::text || '/%')` matches that prefix exactly.
+
+alter table public.profiles add constraint profiles_avatar_path_owned
+  check (avatar_path is null or avatar_path like (id::text || '/%'));

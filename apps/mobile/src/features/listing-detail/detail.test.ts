@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   associateListingDetailImageUrls,
+  associateListingDetailSellerAvatarUrl,
   normalizeListingDetailRow,
   setFavoriteInDetail,
   type ListingDetail,
   type ListingDetailRow,
+  type ListingDetailWithImages,
 } from '@/features/listing-detail/detail';
 
 function row(overrides: Partial<ListingDetailRow> = {}): ListingDetailRow {
@@ -44,6 +46,7 @@ function detail(overrides: Partial<ListingDetail> = {}): ListingDetail {
     sellerAvatarPath: 'seller-1/avatar.jpg',
     images: [{ id: 'image-1', storagePath: 'seller-1/listing-1/1.jpg', url: 'https://example.com/1' }],
     isFavorited: false,
+    sellerAvatarUrl: 'https://example.com/avatar.jpg',
     ...overrides,
   };
 }
@@ -140,6 +143,32 @@ describe('associateListingDetailImageUrls', () => {
     if (normalized === null) throw new Error('expected a normalized detail');
 
     expect(() => associateListingDetailImageUrls(normalized, {})).toThrow();
+  });
+});
+
+describe('associateListingDetailSellerAvatarUrl', () => {
+  function withImages(overrides: Partial<ListingDetailWithImages> = {}): ListingDetailWithImages {
+    const { sellerAvatarUrl: _unused, ...rest } = detail();
+    return { ...rest, ...overrides };
+  }
+
+  it('resolves sellerAvatarUrl when the path has a matching signed url', () => {
+    const result = associateListingDetailSellerAvatarUrl(withImages(), {
+      'seller-1/avatar.jpg': 'https://example.com/avatar.jpg',
+    });
+    expect(result.sellerAvatarUrl).toBe('https://example.com/avatar.jpg');
+  });
+
+  it('does not throw when sellerAvatarPath is null — resolves sellerAvatarUrl to null', () => {
+    const d = withImages({ sellerAvatarPath: null });
+    expect(() => associateListingDetailSellerAvatarUrl(d, {})).not.toThrow();
+    expect(associateListingDetailSellerAvatarUrl(d, {}).sellerAvatarUrl).toBeNull();
+  });
+
+  it('does not throw when the path fails to resolve a signed url — resolves sellerAvatarUrl to null', () => {
+    const d = withImages({ sellerAvatarPath: 'seller-1/avatar.jpg' });
+    expect(() => associateListingDetailSellerAvatarUrl(d, {})).not.toThrow();
+    expect(associateListingDetailSellerAvatarUrl(d, {}).sellerAvatarUrl).toBeNull();
   });
 });
 

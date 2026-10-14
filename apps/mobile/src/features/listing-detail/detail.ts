@@ -50,9 +50,11 @@ export type NormalizedListingDetail = {
   isFavorited: boolean;
 };
 
-/** The normalized detail plus each image's resolved signed URL — see api.ts. */
+/** The normalized detail plus each image's resolved signed URL and the
+ * seller's resolved avatar URL — see api.ts. */
 export type ListingDetail = Omit<NormalizedListingDetail, 'images'> & {
   images: (ListingDetailImage & { url: string })[];
+  sellerAvatarUrl: string | null;
 };
 
 /**
@@ -110,6 +112,10 @@ export function normalizeListingDetailRow(
   };
 }
 
+/** The intermediate shape after image-url resolution but before seller
+ * avatar-url resolution — see api.ts's `fetchListingDetail`. */
+export type ListingDetailWithImages = Omit<ListingDetail, 'sellerAvatarUrl'>;
+
 /**
  * Attaches each image's resolved signed URL. Throws rather than returning a
  * detail page with a broken photo — same reasoning as feed/pagination.ts's
@@ -118,7 +124,7 @@ export function normalizeListingDetailRow(
 export function associateListingDetailImageUrls(
   detail: NormalizedListingDetail,
   urlsByPath: Record<string, string>,
-): ListingDetail {
+): ListingDetailWithImages {
   const images = detail.images.map((image) => {
     const url = urlsByPath[image.storagePath];
     if (!url) {
@@ -127,6 +133,23 @@ export function associateListingDetailImageUrls(
     return { ...image, url };
   });
   return { ...detail, images };
+}
+
+/**
+ * Attaches the seller's resolved avatar URL. Null-tolerant, NOT
+ * throw-on-missing — unlike `associateListingDetailImageUrls` above, an
+ * avatar is a legitimate permanent null state (onboarding never sets one),
+ * matching `associateInboxCoverUrls`'s tolerant pattern rather than
+ * `associateCoverUrls`'s strict one.
+ */
+export function associateListingDetailSellerAvatarUrl(
+  detail: ListingDetailWithImages,
+  urlsByPath: Record<string, string>,
+): ListingDetail {
+  return {
+    ...detail,
+    sellerAvatarUrl: detail.sellerAvatarPath ? urlsByPath[detail.sellerAvatarPath] ?? null : null,
+  };
 }
 
 /**

@@ -1,6 +1,9 @@
 import { createListingImageUrls } from '@/features/listings/api';
+import { createAvatarUrls } from '@/features/profile/api';
 import { supabase } from '@/lib/supabase';
 import {
+  associateConversationHeaderAvatarUrl,
+  associateInboxAvatarUrls,
   associateInboxCoverUrls,
   normalizeConversationHeader,
   normalizeInboxRow,
@@ -31,17 +34,17 @@ export type {
  *     profile. Unlike those, a conversation's cover is allowed to be
  *     missing (see `associateInboxCoverUrls`), since the underlying listing
  *     can legitimately have been deleted.
- *   * The other participant's avatar has no resolvable URL at all yet —
- *     `avatar_path` has no Storage bucket behind it in this phase (see the
- *     same note on seller/[id].tsx and listing/[id].tsx). The screen renders
- *     it as initials only.
+ *   * The other participant's avatar resolves through the same private
+ *     `avatars` bucket as every other screen (seller profile, listing
+ *     detail, feed) — a batched signed-URL request alongside the listing
+ *     cover's, never a second avatar-specific round trip per row.
  */
 
 /**
  * One inbox page: the `inbox_conversations` RPC, then exactly one batched
- * signed-URL request covering every non-null listing cover in the page.
- * Never N+1 — a page of 20 conversations costs at most 2 network round
- * trips, not 21.
+ * signed-URL request per bucket covering every non-null listing cover and
+ * every non-null avatar path in the page. Never N+1 — a page of 20
+ * conversations costs at most 3 network round trips, not 21.
  */
 export async function fetchInboxPage(params: {
   limit: number;
@@ -61,11 +64,23 @@ export async function fetchInboxPage(params: {
     return [];
   }
 
-  const storagePaths = rows
+  const coverPaths = rows
     .map((row) => row.coverStoragePath)
     .filter((path): path is string => path !== null);
-  const urlsByPath = await createListingImageUrls(storagePaths);
-  return associateInboxCoverUrls(rows, urlsByPath);
+  // Deduped: many rows can share the same other participant (and therefore
+  // the same avatar path), so signing the same path twice would be wasted
+  // work, not a correctness issue.
+  const avatarPaths = Array.from(
+    new Set(rows.map((row) => row.otherAvatarPath).filter((path): path is string => path !== null)),
+  );
+
+  const [coverUrlsByPath, avatarUrlsByPath] = await Promise.all([
+    createListingImageUrls(coverPaths),
+    createAvatarUrls(avatarPaths),
+  ]);
+
+  const withCovers = associateInboxCoverUrls(rows, coverUrlsByPath);
+  return associateInboxAvatarUrls(withCovers, avatarUrlsByPath);
 }
 
 /**
@@ -111,7 +126,13 @@ export async function fetchConversationDetail(
   });
   if (error) throw error;
   const row = data[0];
-  return row ? normalizeConversationHeader(row) : null;
+  if (!row) {
+    return null;
+  }
+
+  const normalized = normalizeConversationHeader(row);
+  const urlsByPath = await createAvatarUrls(normalized.otherAvatarPath ? [normalized.otherAvatarPath] : []);
+  return associateConversationHeaderAvatarUrl(normalized, urlsByPath);
 }
 
 /**

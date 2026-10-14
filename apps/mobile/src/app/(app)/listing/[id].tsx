@@ -146,10 +146,8 @@ export default function ListingDetailScreen() {
             { opacity: pressed ? 0.7 : 1 },
           ]}>
           {/* One Pressable for the whole row, not the avatar and name
-              separately — source is always omitted: sellerAvatarPath has no
-              bucket to resolve against yet (see feed-card.tsx's own note) —
-              every seller renders as initials until that pipeline exists. */}
-          <Avatar size="md" name={sellerName} />
+              separately. */}
+          <Avatar size="md" source={listing.sellerAvatarUrl ?? undefined} name={sellerName} />
           <Text variant="bodyStrong">{sellerName}</Text>
         </Pressable>
       </View>

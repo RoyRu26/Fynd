@@ -117,10 +117,7 @@ export function FeedCard({ listing, includeOwn }: FeedCardProps) {
             <Chip label={formatSizeLabel(listing.size)} />
           </View>
           <View style={styles.sellerRow}>
-            {/* source is always omitted: sellerAvatarPath has no bucket to
-                resolve against yet (see Phase 1 findings), so every seller
-                renders as initials. Avatar's own fallback handles this. */}
-            <Avatar size="sm" name={sellerName} />
+            <Avatar size="sm" source={listing.sellerAvatarUrl ?? undefined} name={sellerName} />
             <Text variant="label" color="textOnMedia" numberOfLines={1} style={styles.sellerName}>
               {sellerName}
             </Text>

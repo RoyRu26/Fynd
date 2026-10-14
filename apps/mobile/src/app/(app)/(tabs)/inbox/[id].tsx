@@ -167,10 +167,7 @@ export default function ConversationScreen() {
     body = (
       <View style={styles.body}>
         <View style={styles.identity}>
-          {/* source is always omitted: otherAvatarPath has no bucket to
-              resolve against yet — same precedent as seller/[id].tsx and
-              listing/[id].tsx. */}
-          <Avatar size="md" name={name} />
+          <Avatar size="md" source={header.otherAvatarUrl ?? undefined} name={name} />
           {hasListingTitle ? (
             <Pressable
               onPress={openListing}

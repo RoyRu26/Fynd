@@ -29,6 +29,11 @@ export default function ProfileIndex() {
 
       <View style={styles.rows}>
         <ListRow
+          title="Edit profile"
+          onPress={() => router.push('/(app)/(tabs)/profile/edit')}
+          trailing={<Icon name={CHEVRON_ICON} size="sm" color={colors.textTertiary} />}
+        />
+        <ListRow
           title="My listings"
           onPress={() => router.push('/(app)/(tabs)/profile/my-listings')}
           trailing={<Icon name={CHEVRON_ICON} size="sm" color={colors.textTertiary} />}

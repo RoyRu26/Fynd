@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  associateAvatarUrls,
   associateCoverUrls,
   deriveNextCursor,
   normalizeFeedRow,
   type FeedListingRpcRow,
+  type FeedListingWithCover,
   type NormalizedFeedRow,
 } from '@/features/feed/pagination';
 
@@ -136,6 +138,44 @@ describe('associateCoverUrls', () => {
 
   it('returns an empty array for an empty page without error', () => {
     expect(associateCoverUrls([], {})).toEqual([]);
+  });
+});
+
+describe('associateAvatarUrls', () => {
+  function withCover(overrides: Partial<FeedListingWithCover> = {}): FeedListingWithCover {
+    return { ...normalized(), coverUrl: 'https://signed/cover.jpg', ...overrides };
+  }
+
+  it('attaches each url by storage path, not by array position', () => {
+    const rows = [
+      withCover({ listingId: 'a', sellerAvatarPath: 'avatar/a.jpg' }),
+      withCover({ listingId: 'b', sellerAvatarPath: 'avatar/b.jpg' }),
+    ];
+    const urlsByPath = {
+      'avatar/b.jpg': 'https://signed/b',
+      'avatar/a.jpg': 'https://signed/a',
+    };
+
+    const result = associateAvatarUrls(rows, urlsByPath);
+
+    expect(result.find((r) => r.listingId === 'a')?.sellerAvatarUrl).toBe('https://signed/a');
+    expect(result.find((r) => r.listingId === 'b')?.sellerAvatarUrl).toBe('https://signed/b');
+  });
+
+  it('does not throw when sellerAvatarPath is null — resolves sellerAvatarUrl to null', () => {
+    const rows = [withCover({ listingId: 'a', sellerAvatarPath: null })];
+    expect(() => associateAvatarUrls(rows, {})).not.toThrow();
+    expect(associateAvatarUrls(rows, {})[0].sellerAvatarUrl).toBeNull();
+  });
+
+  it('does not throw when the path fails to resolve a signed url — resolves sellerAvatarUrl to null', () => {
+    const rows = [withCover({ listingId: 'a', sellerAvatarPath: 'avatar/a.jpg' })];
+    expect(() => associateAvatarUrls(rows, {})).not.toThrow();
+    expect(associateAvatarUrls(rows, {})[0].sellerAvatarUrl).toBeNull();
+  });
+
+  it('returns an empty array for an empty page without error', () => {
+    expect(associateAvatarUrls([], {})).toEqual([]);
   });
 });
 

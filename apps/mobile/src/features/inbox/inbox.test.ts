@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  associateConversationHeaderAvatarUrl,
+  associateInboxAvatarUrls,
   associateInboxCoverUrls,
   deriveNextInboxCursor,
   formatLastMessagePreview,
@@ -10,6 +12,8 @@ import {
   type ConversationDetailRpcRow,
   type InboxConversation,
   type InboxConversationRpcRow,
+  type InboxConversationWithCover,
+  type NormalizedConversationHeader,
   type NormalizedInboxRow,
 } from '@/features/inbox/inbox';
 
@@ -194,8 +198,12 @@ function normalized(overrides: Partial<NormalizedInboxRow> = {}): NormalizedInbo
   };
 }
 
-function conversation(overrides: Partial<InboxConversation> = {}): InboxConversation {
+function withCover(overrides: Partial<InboxConversationWithCover> = {}): InboxConversationWithCover {
   return { ...normalized(), coverUrl: 'https://signed/cover.jpg', ...overrides };
+}
+
+function conversation(overrides: Partial<InboxConversation> = {}): InboxConversation {
+  return { ...withCover(), otherAvatarUrl: 'https://signed/avatar.jpg', ...overrides };
 }
 
 describe('associateInboxCoverUrls', () => {
@@ -229,6 +237,76 @@ describe('associateInboxCoverUrls', () => {
 
   it('returns an empty array for an empty page without error', () => {
     expect(associateInboxCoverUrls([], {})).toEqual([]);
+  });
+});
+
+describe('associateInboxAvatarUrls', () => {
+  it('attaches each url by storage path, not by array position', () => {
+    const rows = [
+      withCover({ conversationId: 'a', otherAvatarPath: 'avatar/a.jpg' }),
+      withCover({ conversationId: 'b', otherAvatarPath: 'avatar/b.jpg' }),
+    ];
+    const urlsByPath = {
+      'avatar/b.jpg': 'https://signed/b',
+      'avatar/a.jpg': 'https://signed/a',
+    };
+
+    const result = associateInboxAvatarUrls(rows, urlsByPath);
+
+    expect(result.find((r) => r.conversationId === 'a')?.otherAvatarUrl).toBe('https://signed/a');
+    expect(result.find((r) => r.conversationId === 'b')?.otherAvatarUrl).toBe('https://signed/b');
+  });
+
+  it('does not throw when a row has no avatar path at all — resolves otherAvatarUrl to null', () => {
+    const rows = [withCover({ conversationId: 'a', otherAvatarPath: null })];
+    expect(() => associateInboxAvatarUrls(rows, {})).not.toThrow();
+    expect(associateInboxAvatarUrls(rows, {})[0].otherAvatarUrl).toBeNull();
+  });
+
+  it('does not throw when an avatar path fails to resolve a signed url — resolves otherAvatarUrl to null', () => {
+    const rows = [withCover({ conversationId: 'a', otherAvatarPath: 'avatar/a.jpg' })];
+    expect(() => associateInboxAvatarUrls(rows, {})).not.toThrow();
+    expect(associateInboxAvatarUrls(rows, {})[0].otherAvatarUrl).toBeNull();
+  });
+
+  it('returns an empty array for an empty page without error', () => {
+    expect(associateInboxAvatarUrls([], {})).toEqual([]);
+  });
+});
+
+describe('associateConversationHeaderAvatarUrl', () => {
+  function header(overrides: Partial<NormalizedConversationHeader> = {}): NormalizedConversationHeader {
+    return {
+      conversationId: 'conversation-1',
+      listingId: 'listing-1',
+      listingTitle: 'Vintage denim jacket',
+      listingStatus: 'active',
+      coverStoragePath: 'seller-1/listing-1/cover.jpg',
+      otherParticipantId: 'other-1',
+      otherUsername: 'roy',
+      otherDisplayName: 'Roy',
+      otherAvatarPath: 'other-1/avatar.jpg',
+      ...overrides,
+    };
+  }
+
+  it('resolves otherAvatarUrl when the path has a matching signed url', () => {
+    const result = associateConversationHeaderAvatarUrl(header(), {
+      'other-1/avatar.jpg': 'https://signed/avatar.jpg',
+    });
+    expect(result).toEqual({ ...header(), otherAvatarUrl: 'https://signed/avatar.jpg' });
+  });
+
+  it('does not throw when otherAvatarPath is null — resolves otherAvatarUrl to null', () => {
+    const h = header({ otherAvatarPath: null });
+    expect(() => associateConversationHeaderAvatarUrl(h, {})).not.toThrow();
+    expect(associateConversationHeaderAvatarUrl(h, {}).otherAvatarUrl).toBeNull();
+  });
+
+  it('does not throw when the path fails to resolve a signed url — resolves otherAvatarUrl to null', () => {
+    const h = header({ otherAvatarPath: 'other-1/avatar.jpg' });
+    expect(() => associateConversationHeaderAvatarUrl(h, {})).not.toThrow();
+    expect(associateConversationHeaderAvatarUrl(h, {}).otherAvatarUrl).toBeNull();
   });
 });
 

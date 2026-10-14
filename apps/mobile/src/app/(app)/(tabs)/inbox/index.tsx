@@ -165,7 +165,7 @@ function ConversationRow({
 
   return (
     <ListRow
-      leading={<Avatar size="md" name={name} />}
+      leading={<Avatar size="md" source={conversation.otherAvatarUrl ?? undefined} name={name} />}
       title={name}
       subtitle={subtitle}
       unread={conversation.isUnread}

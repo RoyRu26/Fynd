@@ -1,8 +1,10 @@
 import { Image } from 'expo-image';
 
 import { createListingImageUrls } from '@/features/listings/api';
+import { createAvatarUrls } from '@/features/profile/api';
 import { supabase } from '@/lib/supabase';
 import {
+  associateAvatarUrls,
   associateCoverUrls,
   normalizeFeedRow,
   type FeedCursor,
@@ -52,8 +54,21 @@ export async function fetchFeedPage(params: {
     return [];
   }
 
-  const urlsByPath = await createListingImageUrls(rows.map((row) => row.coverStoragePath));
-  return associateCoverUrls(rows, urlsByPath);
+  // Deduped: many cards on a page can share the same seller (and therefore
+  // the same avatar path), so signing the same path twice would be wasted
+  // work, not a correctness issue — same dedup discipline as the inbox
+  // page's own avatar resolution.
+  const avatarPaths = Array.from(
+    new Set(rows.map((row) => row.sellerAvatarPath).filter((path): path is string => path !== null)),
+  );
+
+  const [coverUrlsByPath, avatarUrlsByPath] = await Promise.all([
+    createListingImageUrls(rows.map((row) => row.coverStoragePath)),
+    createAvatarUrls(avatarPaths),
+  ]);
+
+  const withCovers = associateCoverUrls(rows, coverUrlsByPath);
+  return associateAvatarUrls(withCovers, avatarUrlsByPath);
 }
 
 /**

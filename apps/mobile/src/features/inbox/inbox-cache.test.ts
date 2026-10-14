@@ -15,6 +15,7 @@ function conversation(id: string, unreadCount = 2): InboxConversation {
     otherUsername: 'roy',
     otherDisplayName: 'Roy',
     otherAvatarPath: null,
+    otherAvatarUrl: null,
     lastMessageAt: '2026-01-02T10:00:00+00:00',
     lastMessageBody: 'Hey!',
     lastMessageSenderId: 'other-1',
