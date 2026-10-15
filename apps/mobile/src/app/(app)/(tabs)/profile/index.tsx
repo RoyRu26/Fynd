@@ -38,6 +38,11 @@ export default function ProfileIndex() {
           onPress={() => router.push('/(app)/(tabs)/profile/my-listings')}
           trailing={<Icon name={CHEVRON_ICON} size="sm" color={colors.textTertiary} />}
         />
+        <ListRow
+          title="Saved items"
+          onPress={() => router.push('/(app)/(tabs)/profile/saved')}
+          trailing={<Icon name={CHEVRON_ICON} size="sm" color={colors.textTertiary} />}
+        />
       </View>
 
       <Button variant="secondary" size="sm" onPress={() => signOut()}>
