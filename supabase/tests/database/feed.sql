@@ -37,33 +37,35 @@ values
 
 -- Listings are inserted privileged: id and status are not client-writable,
 -- and created_at must be controlled precisely to assert feed ordering.
--- Every active row carries a size: listings_complete_when_not_draft now
--- requires one. 'Active two' uses a shoe size so the feed is proven to
--- carry both halves of the prefixed enum through to the client.
+-- Every active row carries a size AND a category_id:
+-- listings_complete_when_not_draft now requires both. 'Active two' uses a
+-- shoe size so the feed is proven to carry both halves of the prefixed enum
+-- through to the client. 'c0000001-0000-4000-8000-000000000001' is the
+-- seeded Women > Tops leaf (20261018100200_categories.sql).
 insert into public.listings
-  (id, seller_id, title, description, price_amount, condition, size, status, created_at)
+  (id, seller_id, title, description, price_amount, condition, size, category_id, status, created_at)
 values
   -- A's active listings, oldest -> newest. These are the feed.
   ('aaaa1000-0000-0000-0000-000000000001', 'f3000000-0000-0000-0000-00000000000a',
-   'Active one',   'FEED_1', 1000, 'good', 'alpha_m', 'active', '2026-01-01 10:00:00+00'),
+   'Active one',   'FEED_1', 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active', '2026-01-01 10:00:00+00'),
   ('aaaa1000-0000-0000-0000-000000000002', 'f3000000-0000-0000-0000-00000000000a',
-   'Active two',   'FEED_2', 2000, 'good', 'eu_shoe_42', 'active', '2026-01-02 10:00:00+00'),
+   'Active two',   'FEED_2', 2000, 'good', 'eu_shoe_42', 'c0000001-0000-4000-8000-000000000001', 'active', '2026-01-02 10:00:00+00'),
   ('aaaa1000-0000-0000-0000-000000000003', 'f3000000-0000-0000-0000-00000000000a',
-   'Active three', 'FEED_3', 3000, 'good', 'alpha_l', 'active', '2026-01-03 10:00:00+00'),
+   'Active three', 'FEED_3', 3000, 'good', 'alpha_l', 'c0000001-0000-4000-8000-000000000001', 'active', '2026-01-03 10:00:00+00'),
   -- Active but NO images: must never appear in the feed.
   ('aaaa1000-0000-0000-0000-000000000004', 'f3000000-0000-0000-0000-00000000000a',
-   'Active imageless', 'FEED_NOIMG', 4000, 'good', 'alpha_m', 'active', '2026-01-04 10:00:00+00'),
+   'Active imageless', 'FEED_NOIMG', 4000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active', '2026-01-04 10:00:00+00'),
   -- Cover-gap case: its position-0 image was removed, leaving 1 and 2.
   ('aaaa1000-0000-0000-0000-000000000005', 'f3000000-0000-0000-0000-00000000000a',
-   'Active gap', 'FEED_GAP', 5000, 'good', 'one_size', 'active', '2026-01-05 10:00:00+00'),
-  -- A's draft: never in the feed, images never readable by others. No size,
-  -- which is legal for a draft and proves the feed excludes it for status
-  -- reasons rather than incidentally.
+   'Active gap', 'FEED_GAP', 5000, 'good', 'one_size', 'c0000001-0000-4000-8000-000000000001', 'active', '2026-01-05 10:00:00+00'),
+  -- A's draft: never in the feed, images never readable by others. No size
+  -- and no category, which is legal for a draft and proves the feed
+  -- excludes it for status reasons rather than incidentally.
   ('aaaa1000-0000-0000-0000-000000000006', 'f3000000-0000-0000-0000-00000000000a',
-   'A draft', 'FEED_DRAFT_A', 6000, 'good', null, 'draft', '2026-01-06 10:00:00+00'),
+   'A draft', 'FEED_DRAFT_A', 6000, 'good', null, null, 'draft', '2026-01-06 10:00:00+00'),
   -- C's own active listing, for the exclude-own-listings assertions.
   ('cccc1000-0000-0000-0000-000000000001', 'f3000000-0000-0000-0000-00000000000c',
-   'C own active', 'FEED_OWN_C', 7000, 'good', 'alpha_s', 'active', '2026-01-07 10:00:00+00');
+   'C own active', 'FEED_OWN_C', 7000, 'good', 'alpha_s', 'c0000001-0000-4000-8000-000000000001', 'active', '2026-01-07 10:00:00+00');
 
 insert into public.listing_images (listing_id, storage_path, "position")
 values

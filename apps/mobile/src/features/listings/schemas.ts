@@ -37,6 +37,16 @@ export const listingConditionSchema = z.enum(LISTING_CONDITIONS);
  */
 export const listingSizeSchema = z.enum(LISTING_SIZES);
 
+/**
+ * category_id is a foreign key into the `categories` table (ROADMAP 2.1),
+ * not a client-side enum like condition/size -- the taxonomy itself lives in
+ * the database and is fetched through features/categories. This schema only
+ * shapes the id value; `publishBlockers` and the sell-flow UI resolve it
+ * against the fetched category list to validate it actually names a real
+ * leaf.
+ */
+export const categoryIdSchema = z.string().uuid();
+
 const PRICE_MESSAGE = 'Enter a price like 24.50';
 const TITLE_SHORT_MESSAGE = `Use at least ${TITLE_MIN_LENGTH} characters`;
 const TITLE_LONG_MESSAGE = `Keep it under ${TITLE_MAX_LENGTH} characters`;
@@ -55,6 +65,7 @@ export type ListingFormInput = {
   price: string;
   condition: Enums<'listing_condition'> | null;
   size: Enums<'listing_size'> | null;
+  categoryId: string | null;
 };
 
 /**
@@ -89,6 +100,8 @@ export const draftListingSchema = z.object({
   // incomplete, and `listings_complete_when_not_draft` only requires size
   // once the listing stops being a draft.
   size: listingSizeSchema.nullable(),
+  // Same story again for category_id (ROADMAP 2.1).
+  categoryId: categoryIdSchema.nullable(),
 });
 
 export type DraftListingInput = z.infer<typeof draftListingSchema>;
@@ -118,11 +131,19 @@ export const publishableListingSchema = z.object({
     }),
   condition: listingConditionSchema,
   size: listingSizeSchema,
+  categoryId: categoryIdSchema,
 });
 
 export type PublishableListingInput = z.infer<typeof publishableListingSchema>;
 
-export type PublishBlocker = 'title' | 'price' | 'condition' | 'size' | 'photos' | 'status';
+export type PublishBlocker =
+  | 'title'
+  | 'price'
+  | 'condition'
+  | 'size'
+  | 'category'
+  | 'photos'
+  | 'status';
 
 /**
  * The reasons a saved listing cannot be published yet, in the order
@@ -134,7 +155,10 @@ export type PublishBlocker = 'title' | 'price' | 'condition' | 'size' | 'photos'
  * still exists, which the client cannot check.
  */
 export function publishBlockers(
-  listing: Pick<Tables<'listings'>, 'title' | 'price_amount' | 'condition' | 'size' | 'status'>,
+  listing: Pick<
+    Tables<'listings'>,
+    'title' | 'price_amount' | 'condition' | 'size' | 'category_id' | 'status'
+  >,
   imageCount: number,
 ): PublishBlocker[] {
   const blockers: PublishBlocker[] = [];
@@ -153,6 +177,9 @@ export function publishBlockers(
   }
   if (listing.size === null) {
     blockers.push('size');
+  }
+  if (listing.category_id === null) {
+    blockers.push('category');
   }
   if (imageCount < 1) {
     blockers.push('photos');

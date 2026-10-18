@@ -32,6 +32,16 @@ export type ListingDetailRow = {
   } | null;
   listing_images: { id: string; storage_path: string; position: number }[];
   favorites: { user_id: string }[];
+  // ROADMAP 2.1. Nullable here because `category_id` itself is nullable on
+  // a draft; the embed is absent only in that case. `parent` is nullable in
+  // the row shape only because PostgREST's embed type can't express "always
+  // present for a well-formed leaf" -- see api.ts's header comment for why
+  // this specific self-join shape is the one that actually resolves.
+  categories: {
+    id: string;
+    name: string;
+    parent: { id: string; name: string } | null;
+  } | null;
 };
 
 export type NormalizedListingDetail = {
@@ -42,6 +52,9 @@ export type NormalizedListingDetail = {
   currency: string;
   condition: Enums<'listing_condition'>;
   size: Enums<'listing_size'>;
+  categoryId: string;
+  categoryName: string;
+  categoryParentName: string;
   sellerId: string;
   sellerUsername: string | null;
   sellerDisplayName: string | null;
@@ -71,11 +84,16 @@ export type ListingDetail = Omit<NormalizedListingDetail, 'images'> & {
  *
  * Both must read as "unavailable," never as a flash of title/price/photos
  * right before disappearing — which is also why this never substitutes a
- * default for a null title/price/condition/size instead of throwing: those
- * columns are nullable only to support drafts, and
+ * default for a null title/price/condition/size/category instead of
+ * throwing: those columns are nullable only to support drafts, and
  * `listings_complete_when_not_draft` guarantees every non-draft row (which
- * 'active' always is) has all four. A null here would mean the constraint
- * itself had been violated, not that a default is owed.
+ * 'active' always is) has all five. A null here would mean the constraint
+ * itself had been violated, not that a default is owed. The same holds for
+ * `categories.parent` on a well-formed leaf -- see
+ * supabase/migrations/20261018100200_categories.sql: every leaf's parent_id
+ * resolves to a real top-level row by construction (no client write path
+ * exists to break that), so a present category with a null parent would
+ * itself be a taxonomy bug, not a legitimate state.
  */
 export function normalizeListingDetailRow(
   row: ListingDetailRow | null,
@@ -83,8 +101,17 @@ export function normalizeListingDetailRow(
   if (row === null || row.status !== 'active') {
     return null;
   }
-  if (row.title === null || row.price_amount === null || row.condition === null || row.size === null) {
+  if (
+    row.title === null ||
+    row.price_amount === null ||
+    row.condition === null ||
+    row.size === null ||
+    row.categories === null
+  ) {
     throw new Error(`Listing ${row.id} is active but missing a required field`);
+  }
+  if (row.categories.parent === null) {
+    throw new Error(`Listing ${row.id}'s category ${row.categories.id} has no parent -- taxonomy data bug`);
   }
 
   const images = [...row.listing_images]
@@ -99,6 +126,9 @@ export function normalizeListingDetailRow(
     currency: row.currency,
     condition: row.condition,
     size: row.size,
+    categoryId: row.categories.id,
+    categoryName: row.categories.name,
+    categoryParentName: row.categories.parent.name,
     sellerId: row.seller_id,
     sellerUsername: row.profiles?.username ?? null,
     sellerDisplayName: row.profiles?.display_name ?? null,

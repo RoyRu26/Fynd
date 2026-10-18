@@ -5,11 +5,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
-import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import {
   Button,
   Chip,
+  Icon,
   IconButton,
   ListingImage,
   Screen,
@@ -17,9 +18,18 @@ import {
   TextField,
   type IconName,
 } from '@/components/ui';
-import { radius, space } from '@/design/tokens';
+import { border, minTouchTarget, radius, space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 import { useAuth } from '@/features/auth/auth-provider';
+import { CategoryPickerSheet } from '@/features/categories/category-picker-sheet';
+import {
+  findCategorySelection,
+  formatCategoryBreadcrumb,
+  groupCategoriesByParent,
+  type Category,
+  type CategoryGroup,
+} from '@/features/categories/categories';
+import { useCategories } from '@/features/categories/queries';
 import type { ListingImageRow, ListingRow } from '@/features/listings/api';
 import { mapListingError } from '@/features/listings/errors';
 import { uploadAndAttachListingImage } from '@/features/listings/images';
@@ -74,6 +84,9 @@ const REMOVE_ICON: IconName = { ios: 'xmark', android: 'close', web: 'close' };
 const RETRY_ICON: IconName = { ios: 'arrow.clockwise', android: 'refresh', web: 'refresh' };
 const MOVE_EARLIER_ICON: IconName = { ios: 'chevron.left', android: 'chevron_left', web: 'chevron_left' };
 const MOVE_LATER_ICON: IconName = { ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' };
+// Same chevron used for the category field's disclosure affordance — matches
+// profile/index.tsx's own CHEVRON_ICON and category-picker-sheet.tsx's.
+const CATEGORY_CHEVRON_ICON: IconName = { ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' };
 
 export default function SellEditor() {
   const router = useRouter();
@@ -417,6 +430,7 @@ const PUBLISH_BLOCKER_LABELS: Record<PublishBlocker, string> = {
   price: 'Set a price',
   condition: 'Choose a condition',
   size: 'Choose a size',
+  category: 'Choose a category',
   photos: 'Add at least one photo',
   status: 'This listing has already been published',
 };
@@ -427,6 +441,55 @@ const SIZE_SYSTEM_ORDER: SizeSystem[] = ['alpha', 'eu_shoe', 'one_size'];
 // Derived once from the generated enum, same as LISTING_CONDITIONS above —
 // not component state, since the grouping never changes at runtime.
 const SIZE_GROUPS = listingSizesBySystem();
+
+/**
+ * The pressable "Category" field, shared between the draft and
+ * active/reserved editors (ROADMAP 2.1). Reuses TextField's label-above
+ * convention but is a plain pressable row rather than a TextField itself —
+ * category selection happens entirely in `CategoryPickerSheet`, never by
+ * typing.
+ */
+function CategoryField({
+  categoryId,
+  groups,
+  disabled,
+  onPress,
+}: {
+  categoryId: string | null;
+  groups: CategoryGroup[];
+  disabled: boolean;
+  onPress: () => void;
+}) {
+  const { colors } = useAppTheme();
+  const selection = findCategorySelection(groups, categoryId);
+  const label = selection ? formatCategoryBreadcrumb(selection.group, selection.leaf) : 'Choose a category';
+
+  return (
+    <View style={styles.categoryField}>
+      <Text variant="label" color="textSecondary">
+        Category
+      </Text>
+      <Pressable
+        onPress={onPress}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel={`Category, ${label}`}
+        style={({ pressed }) => [
+          styles.categoryRow,
+          {
+            backgroundColor: colors.bgElevated,
+            borderColor: colors.border,
+            opacity: disabled ? 0.4 : pressed ? 0.7 : 1,
+          },
+        ]}>
+        <Text variant="body" color={selection ? 'text' : 'textTertiary'}>
+          {label}
+        </Text>
+        <Icon name={CATEGORY_CHEVRON_ICON} size="sm" color={colors.textTertiary} />
+      </Pressable>
+    </View>
+  );
+}
 
 type PendingAction = 'save' | 'publish' | null;
 
@@ -455,6 +518,13 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
   const imagesQuery = useListingImages(listing.id);
   const imageCount = imagesQuery.data?.length ?? 0;
 
+  // 24h-cached reference data (see queries.ts) -- `?? []` covers the brief
+  // loading window before the first fetch resolves, during which the
+  // category field simply shows its placeholder rather than any value.
+  const categoriesQuery = useCategories();
+  const categoryGroups = categoriesQuery.data ? groupCategoriesByParent(categoriesQuery.data) : [];
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [shownBlockers, setShownBlockers] = useState<PublishBlocker[]>([]);
@@ -467,6 +537,7 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
       price: formatMinorUnitsForInput(listing.price_amount),
       condition: listing.condition,
       size: listing.size,
+      categoryId: listing.category_id,
     },
   });
   const { control, handleSubmit, formState } = form;
@@ -482,6 +553,7 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
       price_amount: watched.price ? parsePriceToMinorUnits(watched.price) : null,
       condition: watched.condition ?? null,
       size: watched.size ?? null,
+      category_id: watched.categoryId ?? null,
       status: listing.status,
     },
     imageCount,
@@ -497,6 +569,7 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
       price: formatMinorUnitsForInput(saved.price_amount),
       condition: saved.condition,
       size: saved.size,
+      categoryId: saved.category_id,
     });
   }
 
@@ -582,6 +655,30 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
             error={fieldState.error?.message}
             disabled={busy}
           />
+        )}
+      />
+
+      <Controller
+        control={control}
+        name="categoryId"
+        render={({ field }) => (
+          <>
+            <CategoryField
+              categoryId={field.value}
+              groups={categoryGroups}
+              disabled={busy}
+              onPress={() => setCategoryPickerOpen(true)}
+            />
+            <CategoryPickerSheet
+              visible={categoryPickerOpen}
+              groups={categoryGroups}
+              onClose={() => setCategoryPickerOpen(false)}
+              onSelect={(_group: CategoryGroup, leaf: Category) => {
+                field.onChange(leaf.id);
+                setCategoryPickerOpen(false);
+              }}
+            />
+          </>
         )}
       />
 
@@ -731,17 +828,23 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
  * rather than the plain draft UPDATE path. No publish blockers, no Publish
  * button: the listing is already published.
  */
-// Unlike ListingFormInput (shared with the draft editor, where condition/size
-// may be null), publishableListingSchema requires both — so this form's own
-// field-values type narrows them to non-null to match the resolver's input.
-type PublishedFormInput = Omit<ListingFormInput, 'condition' | 'size'> & {
+// Unlike ListingFormInput (shared with the draft editor, where condition/
+// size/categoryId may be null), publishableListingSchema requires all
+// three — so this form's own field-values type narrows them to non-null to
+// match the resolver's input.
+type PublishedFormInput = Omit<ListingFormInput, 'condition' | 'size' | 'categoryId'> & {
   condition: NonNullable<ListingFormInput['condition']>;
   size: NonNullable<ListingFormInput['size']>;
+  categoryId: NonNullable<ListingFormInput['categoryId']>;
 };
 
 function PublishedFieldsSection({ listing }: { listing: ListingRow }) {
   const sellerId = listing.seller_id;
   const updateListingDetails = useUpdateListingDetails(listing.id, sellerId);
+
+  const categoriesQuery = useCategories();
+  const categoryGroups = categoriesQuery.data ? groupCategoriesByParent(categoriesQuery.data) : [];
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -754,10 +857,11 @@ function PublishedFieldsSection({ listing }: { listing: ListingRow }) {
       price: formatMinorUnitsForInput(listing.price_amount),
       // Non-null by the listings_complete_when_not_draft CHECK constraint —
       // any active/reserved row (this component's only callers) already has
-      // both set. ListingRow's generated type stays nullable because the
-      // column itself is nullable for drafts.
+      // all three set. ListingRow's generated type stays nullable because
+      // the columns themselves are nullable for drafts.
       condition: listing.condition!,
       size: listing.size!,
+      categoryId: listing.category_id!,
     },
   });
   const { control, handleSubmit, formState } = form;
@@ -770,13 +874,14 @@ function PublishedFieldsSection({ listing }: { listing: ListingRow }) {
       // Resets to the server's canonical values and clears isDirty, same
       // "saved state doubles as the reset" signal DraftFieldsSection uses.
       // Non-null for the same reason as the defaultValues above: a row this
-      // RPC just saved is active/reserved, so both are guaranteed set.
+      // RPC just saved is active/reserved, so all three are guaranteed set.
       form.reset({
         title: saved.title ?? '',
         description: saved.description,
         price: formatMinorUnitsForInput(saved.price_amount),
         condition: saved.condition!,
         size: saved.size!,
+        categoryId: saved.category_id!,
       });
     } catch (err) {
       if (__DEV__) {
@@ -818,6 +923,30 @@ function PublishedFieldsSection({ listing }: { listing: ListingRow }) {
             error={fieldState.error?.message}
             disabled={saving}
           />
+        )}
+      />
+
+      <Controller
+        control={control}
+        name="categoryId"
+        render={({ field }) => (
+          <>
+            <CategoryField
+              categoryId={field.value}
+              groups={categoryGroups}
+              disabled={saving}
+              onPress={() => setCategoryPickerOpen(true)}
+            />
+            <CategoryPickerSheet
+              visible={categoryPickerOpen}
+              groups={categoryGroups}
+              onClose={() => setCategoryPickerOpen(false)}
+              onSelect={(_group: CategoryGroup, leaf: Category) => {
+                field.onChange(leaf.id);
+                setCategoryPickerOpen(false);
+              }}
+            />
+          </>
         )}
       />
 
@@ -1068,6 +1197,19 @@ const styles = StyleSheet.create({
   },
   fields: {
     gap: space[4],
+  },
+  categoryField: {
+    gap: space[1],
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: minTouchTarget,
+    paddingHorizontal: space[4],
+    paddingVertical: space[3],
+    borderWidth: border.thin,
+    borderRadius: radius.md,
   },
   conditionField: {
     gap: space[1],

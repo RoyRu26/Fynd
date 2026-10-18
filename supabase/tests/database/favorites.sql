@@ -31,17 +31,20 @@ values
   ('f4000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-000000000000',
    'authenticated', 'authenticated', 'pgtap-fav-c@test.dev', 'x', now(), now());
 
+-- Every active row carries a category_id too: listings_complete_when_not_draft
+-- requires it. 'c0000001-0000-4000-8000-000000000001' is the seeded
+-- Women > Tops leaf (20261018100200_categories.sql).
 insert into public.listings
-  (id, seller_id, title, description, price_amount, condition, size, status)
+  (id, seller_id, title, description, price_amount, condition, size, category_id, status)
 values
   ('dddd1000-0000-0000-0000-000000000001', 'f4000000-0000-0000-0000-00000000000a',
-   'A active listing', 'FAV_ACTIVE', 1000, 'good', 'alpha_m', 'active'),
+   'A active listing', 'FAV_ACTIVE', 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
   ('dddd1000-0000-0000-0000-000000000002', 'f4000000-0000-0000-0000-00000000000a',
-   'A second active',  'FAV_ACTIVE_2', 2000, 'good', 'eu_shoe_42', 'active'),
+   'A second active',  'FAV_ACTIVE_2', 2000, 'good', 'eu_shoe_42', 'c0000001-0000-4000-8000-000000000001', 'active'),
   -- A draft, which must never be favoritable by anyone -- including, below,
   -- its own owner.
   ('dddd1000-0000-0000-0000-000000000003', 'f4000000-0000-0000-0000-00000000000a',
-   'A draft', 'FAV_DRAFT', 3000, 'good', null, 'draft');
+   'A draft', 'FAV_DRAFT', 3000, 'good', null, null, 'draft');
 
 -- Act as B from here.
 set local role authenticated;

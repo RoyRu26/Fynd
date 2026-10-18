@@ -52,17 +52,20 @@ values
   ('f5000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-000000000000',
    'authenticated', 'authenticated', 'pgtap-chat-c@test.dev', 'x', now(), now());
 
+-- Every active row carries a category_id too: listings_complete_when_not_draft
+-- requires it. 'c0000001-0000-4000-8000-000000000001' is the seeded
+-- Women > Tops leaf (20261018100200_categories.sql).
 insert into public.listings
-  (id, seller_id, title, description, price_amount, condition, size, status)
+  (id, seller_id, title, description, price_amount, condition, size, category_id, status)
 values
   ('aaaa5000-0000-0000-0000-000000000001', 'f5000000-0000-0000-0000-00000000000a',
-   'Chat active one', 'CHAT_ACT_1', 1000, 'good', 'alpha_m', 'active'),
+   'Chat active one', 'CHAT_ACT_1', 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
   ('aaaa5000-0000-0000-0000-000000000002', 'f5000000-0000-0000-0000-00000000000a',
-   'Chat active two', 'CHAT_ACT_2', 2000, 'good', 'eu_shoe_42', 'active'),
+   'Chat active two', 'CHAT_ACT_2', 2000, 'good', 'eu_shoe_42', 'c0000001-0000-4000-8000-000000000001', 'active'),
   ('aaaa5000-0000-0000-0000-000000000003', 'f5000000-0000-0000-0000-00000000000a',
-   'Chat draft', 'CHAT_DRAFT', 3000, 'good', null, 'draft'),
+   'Chat draft', 'CHAT_DRAFT', 3000, 'good', null, null, 'draft'),
   ('aaaa5000-0000-0000-0000-000000000004', 'f5000000-0000-0000-0000-00000000000a',
-   'Chat will sell', 'CHAT_SOLD', 4000, 'good', 'alpha_l', 'active');
+   'Chat will sell', 'CHAT_SOLD', 4000, 'good', 'alpha_l', 'c0000001-0000-4000-8000-000000000001', 'active');
 
 -- Act as B (the buyer) from here.
 set local role authenticated;
@@ -746,20 +749,23 @@ update public.profiles
    set username = 'p2_seller', display_name = 'P2 Seller'
  where id = 'f5000000-0000-0000-0000-00000000000d';
 
+-- Every active row carries a category_id too: listings_complete_when_not_draft
+-- requires it. 'c0000001-0000-4000-8000-000000000001' is the seeded
+-- Women > Tops leaf (20261018100200_categories.sql).
 insert into public.listings
-  (id, seller_id, title, description, price_amount, condition, size, status)
+  (id, seller_id, title, description, price_amount, condition, size, category_id, status)
 values
   ('aaaa5000-0000-0000-0000-000000000010', 'f5000000-0000-0000-0000-00000000000d',
-   'P2 main', 'CHAT_P2_MAIN', 1000, 'good', 'alpha_m', 'active'),
+   'P2 main', 'CHAT_P2_MAIN', 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
   ('aaaa5000-0000-0000-0000-000000000011', 'f5000000-0000-0000-0000-00000000000d',
-   'P2 empty', 'CHAT_P2_EMPTY', 2000, 'good', 'alpha_l', 'active'),
+   'P2 empty', 'CHAT_P2_EMPTY', 2000, 'good', 'alpha_l', 'c0000001-0000-4000-8000-000000000001', 'active'),
   ('aaaa5000-0000-0000-0000-000000000012', 'f5000000-0000-0000-0000-00000000000d',
-   'P2 sold', 'CHAT_P2_SOLD', 3000, 'good', 'alpha_s', 'active'),
+   'P2 sold', 'CHAT_P2_SOLD', 3000, 'good', 'alpha_s', 'c0000001-0000-4000-8000-000000000001', 'active'),
   -- Deliberately imageless, so cover_storage_path has a genuine NULL to
   -- produce. Inserted privileged, which is how an active row can exist with
   -- no photos at all (publish_listing would have required one).
   ('aaaa5000-0000-0000-0000-000000000013', 'f5000000-0000-0000-0000-00000000000d',
-   'P2 noimage', 'CHAT_P2_NOIMG', 4000, 'good', 'one_size', 'active');
+   'P2 noimage', 'CHAT_P2_NOIMG', 4000, 'good', 'one_size', 'c0000001-0000-4000-8000-000000000001', 'active');
 
 -- 'P2 main' has NO position 0: its first photo was removed, leaving 1 and 2.
 -- The cover must be position 1 -- the MINIMUM present, not position 0, which
@@ -1493,11 +1499,14 @@ values
   ('f5000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000000',
    'authenticated', 'authenticated', 'pgtap-chat-g@test.dev', 'x', now(), now());
 
+-- Carries a category_id too: listings_complete_when_not_draft requires it.
+-- 'c0000001-0000-4000-8000-000000000001' is the seeded Women > Tops leaf
+-- (20261018100200_categories.sql).
 insert into public.listings
-  (id, seller_id, title, description, price_amount, condition, size, status)
+  (id, seller_id, title, description, price_amount, condition, size, category_id, status)
 values
   ('aaaa5000-0000-0000-0000-000000000020', 'f5000000-0000-0000-0000-00000000000f',
-   'P3 messages', 'CHAT_P3_MSGS', 1000, 'good', 'alpha_m', 'active');
+   'P3 messages', 'CHAT_P3_MSGS', 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active');
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-000000000010","role":"authenticated"}';

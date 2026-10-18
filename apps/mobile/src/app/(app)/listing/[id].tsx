@@ -7,6 +7,7 @@ import { ListingGallery } from '@/components/listing/listing-gallery';
 import { space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 import { useAuth } from '@/features/auth/auth-provider';
+import { formatCategoryBreadcrumb } from '@/features/categories/categories';
 import { mapInboxError } from '@/features/inbox/errors';
 import { useStartConversation } from '@/features/inbox/queries';
 import { CONDITION_LABELS } from '@/features/listings/condition';
@@ -127,6 +128,14 @@ export default function ListingDetailScreen() {
           <View style={styles.chipRow}>
             <Chip label={CONDITION_LABELS[listing.condition]} />
             <Chip label={formatSizeLabel(listing.size)} />
+            {/* DESIGN.md §14.6 has no numeric chip cap for this screen (unlike
+                the feed's "at most two chips"), so a third chip is fine here. */}
+            <Chip
+              label={formatCategoryBreadcrumb(
+                { name: listing.categoryParentName },
+                { name: listing.categoryName },
+              )}
+            />
           </View>
 
           <Text variant="body" color="textSecondary">

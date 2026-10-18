@@ -146,6 +146,7 @@ export async function updateDraft(
       price_amount: input.price,
       condition: input.condition,
       size: input.size,
+      category_id: input.categoryId,
     })
     .eq('id', listingId)
     .select();
@@ -234,8 +235,8 @@ export async function removeListing(listingId: string): Promise<ListingRow> {
  * Edits an active or reserved listing's details. Reuses
  * `publishableListingSchema`'s inferred shape (the same completeness rules
  * `publish_listing` already enforces), since the RPC re-validates exactly
- * that: a trimmed title, a positive price, and both condition and size set.
- * Never touches status/seller_id/currency/images.
+ * that: a trimmed title, a positive price, and condition/size/category all
+ * set. Never touches status/seller_id/currency/images.
  */
 export async function updateListingDetails(
   listingId: string,
@@ -248,6 +249,7 @@ export async function updateListingDetails(
     p_price_amount: input.price,
     p_condition: input.condition,
     p_size: input.size,
+    p_category_id: input.categoryId,
   });
   if (error) throw error;
   return data;

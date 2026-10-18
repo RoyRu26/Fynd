@@ -444,6 +444,8 @@ One step per screen, generous spacing, large touch targets. The photo grid is th
 
 **AI assistance appears as pre-filled, editable fields**, visually marked as suggestions with a subtle accent border or a small "suggested" chip. It is never a separate magic surface, and the user can always edit or discard. Same `TextField` and `Button` as auth.
 
+**Category (ROADMAP 2.1)** is a pressable field, not chips: a `Sheet`-based two-level drill-down (`CategoryPickerSheet`) picks a top-level group, then one of its leaves, since ~35 leaves across 6 groups would be an unusable wall of chips.
+
 ### 14.5 Inbox
 
 Pure `ListRow` + `Avatar`, with a small listing cover thumbnail in the row's trailing slot. The calmest surface in the app — it is the negative space that makes the feed feel loud. Unread is indicated by weight, a dot, **and** an accessible label; never color alone.
@@ -453,6 +455,8 @@ Pure `ListRow` + `Avatar`, with a small listing cover thumbnail in the row's tra
 The feed card unfolded: same elements, same order, more room.
 
 Horizontally paged gallery (same image wrapper) → price → title → attribute chips → seller row → description → pinned bottom action bar.
+
+**Attribute chips (ROADMAP 2.1)** are three, not two: condition, size, and a category breadcrumb (e.g. "Women › Shoes"). Unlike the feed card's "at most two chips," this screen has no numeric cap.
 
 **[OPEN] — dark treatment.** The media/gallery area may be dark while the informational portion follows the system theme. Not locked; decide with the real design in hand.
 
@@ -489,4 +493,4 @@ Tracked deliberately. Each must be resolved explicitly, not by improvisation.
 | 8 | **Destructive-button treatment** | Specified in §8, **still not implemented, still blocking.** The Olive & Oat palette removed the hue collision that motivated it (1° → 82°), which lowers the urgency but not the requirement: §12.4 forbids color-only status, and the dark-scheme margin leans on hue, which dichromats lose. |
 | 4 | **Exact elevation shadow values** | `raised` now has concrete values (§8). `overlay`/`modal` remain unspecified. |
 | 9 | **Ambient glow intensity on oat** | Alphas were carried over from the red-on-cream tuning and are almost certainly wrong for olive-on-oat — a low-chroma green reads as a shadow rather than a glow if too faint. Retune on device (§4a). |
-| 5 | **Schema gaps blocking these patterns** | No `size` column, and no `categories`, `favorites`, or `follows` tables exist. The feed hierarchy (§14.1) and Search filters (§14.2) depend on them. |
+| 5 | **Schema gaps blocking these patterns** | No `size` column, and no `favorites` or `follows` tables exist. The feed hierarchy (§14.1) and Search filters (§14.2) depend on them. `categories` is closed — ROADMAP 2.1 added the seeded taxonomy table. |

@@ -34,6 +34,38 @@ export type Database = {
   }
   public: {
     Tables: {
+      categories: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          parent_id: string | null
+          position: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          parent_id?: string | null
+          position?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          parent_id?: string | null
+          position?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "categories_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversations: {
         Row: {
           buyer_id: string
@@ -200,6 +232,7 @@ export type Database = {
       }
       listings: {
         Row: {
+          category_id: string | null
           condition: Database["public"]["Enums"]["listing_condition"] | null
           created_at: string
           currency: string
@@ -213,6 +246,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          category_id?: string | null
           condition?: Database["public"]["Enums"]["listing_condition"] | null
           created_at?: string
           currency?: string
@@ -226,6 +260,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          category_id?: string | null
           condition?: Database["public"]["Enums"]["listing_condition"] | null
           created_at?: string
           currency?: string
@@ -239,6 +274,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "listings_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "listings_seller_id_fkey"
             columns: ["seller_id"]
@@ -428,6 +470,7 @@ export type Database = {
       mark_listing_active: {
         Args: { p_listing_id: string }
         Returns: {
+          category_id: string | null
           condition: Database["public"]["Enums"]["listing_condition"] | null
           created_at: string
           currency: string
@@ -450,6 +493,7 @@ export type Database = {
       mark_listing_reserved: {
         Args: { p_listing_id: string }
         Returns: {
+          category_id: string | null
           condition: Database["public"]["Enums"]["listing_condition"] | null
           created_at: string
           currency: string
@@ -472,6 +516,7 @@ export type Database = {
       mark_listing_sold: {
         Args: { p_listing_id: string }
         Returns: {
+          category_id: string | null
           condition: Database["public"]["Enums"]["listing_condition"] | null
           created_at: string
           currency: string
@@ -494,6 +539,7 @@ export type Database = {
       publish_listing: {
         Args: { p_listing_id: string }
         Returns: {
+          category_id: string | null
           condition: Database["public"]["Enums"]["listing_condition"] | null
           created_at: string
           currency: string
@@ -524,6 +570,7 @@ export type Database = {
       remove_listing: {
         Args: { p_listing_id: string }
         Returns: {
+          category_id: string | null
           condition: Database["public"]["Enums"]["listing_condition"] | null
           created_at: string
           currency: string
@@ -549,6 +596,7 @@ export type Database = {
       }
       update_listing_details: {
         Args: {
+          p_category_id: string
           p_condition: Database["public"]["Enums"]["listing_condition"]
           p_description: string
           p_listing_id: string
@@ -557,6 +605,7 @@ export type Database = {
           p_title: string
         }
         Returns: {
+          category_id: string | null
           condition: Database["public"]["Enums"]["listing_condition"] | null
           created_at: string
           currency: string
