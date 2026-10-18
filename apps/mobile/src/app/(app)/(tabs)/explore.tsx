@@ -3,6 +3,7 @@ import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Keyboard,
   Pressable,
   StyleSheet,
   View,
@@ -16,6 +17,7 @@ import {
   EmptyState,
   Icon,
   IconButton,
+  ListRow,
   Screen,
   Sheet,
   SkeletonListingCard,
@@ -55,6 +57,7 @@ import {
 } from '@/features/search/active-filters';
 import type { SearchFilters, SearchListing } from '@/features/search/api';
 import { useSearch } from '@/features/search/queries';
+import { useRecentSearches } from '@/features/search/use-recent-searches';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 
 /**
@@ -62,11 +65,20 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value';
  * the Instagram Explore structure (not look). Reuses ROADMAP 2.2's search
  * backend (`features/search/`) exactly as built: no new RPC, no new table.
  *
- * The grid's own FlatList is the screen's ONLY scroll container (search bar
- * + active-filter chips both ride along as `ListHeaderComponent`), same
- * reasoning as `seller/[id].tsx`'s own header comment — `onEndReached`
- * pagination never fires correctly if something else does the actual
- * scrolling, hence `Screen`'s default `scroll={false}`.
+ * The search row (TextField + clear + filters trigger) is a persistent
+ * sibling `View` rendered directly under `<Screen>`, ABOVE whichever
+ * FlatList is currently shown (ROADMAP 2.4) — not inside either list's own
+ * `ListHeaderComponent`. Toggling between the grid and the recent-searches
+ * list swaps which FlatList is mounted (they even carry distinct `key`s,
+ * since `numColumns` differs and RN doesn't support changing it on an
+ * existing instance), and if the TextField lived inside either list's
+ * header it would unmount/remount with it, dropping keyboard focus the
+ * instant recent searches appear or disappear. Each FlatList is still the
+ * screen's only SCROLL container (the search row is a plain non-scrolling
+ * View) — `onEndReached` pagination never fires correctly if something else
+ * does the actual scrolling, hence `Screen`'s default `scroll={false}`. The
+ * active-filter chips stay as the grid FlatList's own (now smaller) header,
+ * since they're grid-specific.
  *
  * The empty, no-query/no-filter state is a deliberate full-catalog browse,
  * not a "type something" placeholder — `search_listings` already treats
@@ -83,6 +95,10 @@ const FILTERS_ICON: IconName = {
 const ERROR_ICON: IconName = { ios: 'exclamationmark.triangle', android: 'warning', web: 'warning' };
 const EMPTY_ICON: IconName = { ios: 'magnifyingglass', android: 'search_off', web: 'search_off' };
 const CATEGORY_CHEVRON_ICON: IconName = { ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' };
+// Verified against the installed packages: 'clock' exists in
+// sf-symbols-typescript's types, and 'history' exists in expo-symbols'
+// android/symbols.json.
+const RECENT_SEARCH_ICON: IconName = { ios: 'clock', android: 'history', web: 'history' };
 
 // Same display order the Sell editor's size selector already uses —
 // independent of listingSizesBySystem's own Record key order.
@@ -107,15 +123,49 @@ export default function ExploreScreen() {
   const { colors } = useAppTheme();
 
   const [queryInput, setQueryInput] = useState('');
-  // Not consumed by anything yet — present so ROADMAP 2.4 "Recent searches"
-  // can attach to the search box's focus state later without restructuring
-  // this screen.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- read by a future item, see comment above.
   const [searchFocused, setSearchFocused] = useState(false);
   const [committedFilters, setCommittedFilters] = useState<ExploreFilters>(EMPTY_FILTERS);
+  const recent = useRecentSearches();
 
   const debouncedQuery = useDebouncedValue(queryInput, 400);
-  const effectiveQuery = debouncedQuery.trim();
+  // Tapping a recent search runs it immediately instead of waiting out the
+  // 400ms debounce window — set alongside `queryInput` by
+  // `handleRecentSearchSelect`, and cleared by `handleQueryInputChange` so
+  // normal typing always falls back to the debounce path below.
+  const [immediateQuery, setImmediateQuery] = useState<string | null>(null);
+  const effectiveQuery = (immediateQuery ?? debouncedQuery).trim();
+  // Focused AND empty — not "focused regardless of content". Losing focus
+  // or typing a character both naturally fall out of this one boolean, no
+  // separate dismiss-on-type handling required.
+  const showRecentSearches = searchFocused && queryInput.trim().length === 0;
+
+  function handleQueryInputChange(text: string) {
+    setQueryInput(text);
+    setImmediateQuery(null);
+  }
+
+  function handleSearchBlur() {
+    setSearchFocused(false);
+    // Uses the LIVE input value, not the debounced one, so a fast-typed
+    // search committed before the debounce window elapses still records
+    // correctly. Skipped when immediateQuery is still set: that means this
+    // blur was triggered by handleRecentSearchSelect's own Keyboard.dismiss()
+    // immediately after it already recorded the same query — recording
+    // again would be a harmless but redundant AsyncStorage write + re-render.
+    if (queryInput.trim().length > 0 && immediateQuery === null) {
+      recent.record(queryInput);
+    }
+  }
+
+  const handleRecentSearchSelect = useCallback(
+    (query: string) => {
+      setQueryInput(query);
+      setImmediateQuery(query);
+      recent.record(query);
+      Keyboard.dismiss();
+    },
+    [recent],
+  );
 
   const searchFilters = useMemo<SearchFilters>(
     () => ({
@@ -245,6 +295,7 @@ export default function ExploreScreen() {
 
   function clearAll() {
     setQueryInput('');
+    setImmediateQuery(null);
     setCommittedFilters(EMPTY_FILTERS);
   }
 
@@ -277,45 +328,92 @@ export default function ExploreScreen() {
     ? formatCategoryBreadcrumb(draftCategorySelection.group, draftCategorySelection.leaf)
     : 'Any category';
 
-  const listHeader = (
-    <View style={styles.listHeader}>
+  // Persistent sibling of whichever FlatList is currently shown (see the
+  // header comment) — never itself part of either list's
+  // `ListHeaderComponent`, so it never unmounts/remounts when the grid and
+  // recent-searches lists swap.
+  const searchBar = (
+    <View style={styles.searchBar}>
       <View style={styles.searchRow}>
         <TextField
           containerStyle={styles.searchField}
           placeholder="Search listings"
           accessibilityLabel="Search listings"
           value={queryInput}
-          onChangeText={setQueryInput}
+          onChangeText={handleQueryInputChange}
           onFocus={() => setSearchFocused(true)}
-          onBlur={() => setSearchFocused(false)}
+          onBlur={handleSearchBlur}
+          onSubmitEditing={() => Keyboard.dismiss()}
           returnKeyType="search"
         />
         {queryInput.length > 0 ? (
           <IconButton
             icon={CLEAR_ICON}
             accessibilityLabel="Clear search"
-            onPress={() => setQueryInput('')}
+            onPress={() => {
+              setQueryInput('');
+              setImmediateQuery(null);
+            }}
           />
         ) : null}
         <IconButton icon={FILTERS_ICON} accessibilityLabel="Filters" onPress={openFilterSheet} />
       </View>
+    </View>
+  );
 
-      {hasActiveFilters(committedFilters) ? (
-        <View style={styles.chipRow}>
-          {activeChips.map((chip) => (
-            <Chip
-              key={chip.key}
-              label={chip.label}
-              icon={CLEAR_ICON}
-              selectable
-              selected={false}
-              accessibilityLabel={`Remove ${chip.label} filter`}
-              onPress={() => handleRemoveChip(chip.key)}
-            />
-          ))}
-        </View>
+  // Grid-specific — active-filter chips never apply to the recent-searches
+  // list, so this stays the grid FlatList's own header, not the persistent
+  // search bar above.
+  const gridHeader = hasActiveFilters(committedFilters) ? (
+    <View style={styles.chipRow}>
+      {activeChips.map((chip) => (
+        <Chip
+          key={chip.key}
+          label={chip.label}
+          icon={CLEAR_ICON}
+          selectable
+          selected={false}
+          accessibilityLabel={`Remove ${chip.label} filter`}
+          onPress={() => handleRemoveChip(chip.key)}
+        />
+      ))}
+    </View>
+  ) : null;
+
+  const renderRecentItem = useCallback(
+    ({ item }: ListRenderItemInfo<string>) => (
+      <ListRow
+        leading={<Icon name={RECENT_SEARCH_ICON} size="sm" color={colors.textTertiary} />}
+        title={item}
+        accessibilityLabel={`Recent search, ${item}`}
+        onPress={() => handleRecentSearchSelect(item)}
+        trailing={
+          <IconButton
+            icon={CLEAR_ICON}
+            accessibilityLabel={`Remove "${item}" from recent searches`}
+            onPress={() => recent.remove(item)}
+          />
+        }
+      />
+    ),
+    [colors.textTertiary, recent, handleRecentSearchSelect],
+  );
+
+  const recentListHeader = (
+    <View style={styles.recentHeader}>
+      <Text variant="label" color="textSecondary">
+        Recent searches
+      </Text>
+      {recent.items.length > 0 ? (
+        <Button variant="ghost" size="sm" onPress={recent.clear}>
+          Clear all
+        </Button>
       ) : null}
     </View>
+  );
+
+  const recentListEmpty = (
+    <EmptyState variant="empty" icon={RECENT_SEARCH_ICON} title="No recent searches yet." />
   );
 
   let listEmpty: ReactNode = null;
@@ -354,21 +452,36 @@ export default function ExploreScreen() {
 
   return (
     <Screen contentContainerStyle={styles.content}>
-      <FlatList
-        data={listings}
-        keyExtractor={(item) => item.listingId}
-        renderItem={renderItem}
-        numColumns={3}
-        ListHeaderComponent={listHeader}
-        ListEmptyComponent={listEmpty}
-        onEndReached={handleEndReached}
-        onEndReachedThreshold={1.5}
-        ListFooterComponent={
-          searchQuery.isFetchingNextPage ? (
-            <ActivityIndicator style={styles.footerSpinner} color={colors.textTertiary} />
-          ) : null
-        }
-      />
+      {searchBar}
+
+      {showRecentSearches ? (
+        <FlatList
+          key="recent"
+          data={recent.items}
+          keyExtractor={(item) => item}
+          renderItem={renderRecentItem}
+          ListHeaderComponent={recentListHeader}
+          ListEmptyComponent={recentListEmpty}
+          keyboardShouldPersistTaps="handled"
+        />
+      ) : (
+        <FlatList
+          key="grid"
+          data={listings}
+          keyExtractor={(item) => item.listingId}
+          renderItem={renderItem}
+          numColumns={3}
+          ListHeaderComponent={gridHeader}
+          ListEmptyComponent={listEmpty}
+          onEndReached={handleEndReached}
+          onEndReachedThreshold={1.5}
+          ListFooterComponent={
+            searchQuery.isFetchingNextPage ? (
+              <ActivityIndicator style={styles.footerSpinner} color={colors.textTertiary} />
+            ) : null
+          }
+        />
+      )}
 
       <Sheet
         visible={filterSheetOpen}
@@ -530,9 +643,8 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  listHeader: {
-    gap: space[3],
-    marginBottom: space[4],
+  searchBar: {
+    marginBottom: space[3],
   },
   searchRow: {
     flexDirection: 'row',
@@ -546,6 +658,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: space[2],
+    marginBottom: space[3],
+  },
+  recentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: space[1],
   },
   skeletonGrid: {
     flexDirection: 'row',
