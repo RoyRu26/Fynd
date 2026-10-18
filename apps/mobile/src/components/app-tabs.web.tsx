@@ -25,6 +25,10 @@ export default function AppTabs() {
           <TabTrigger name="home" href="/(app)/(tabs)" asChild>
             <TabButton>Home</TabButton>
           </TabTrigger>
+          {/* ROADMAP 2.3 "Explore tab" — 2nd position, between Home and Sell, mirroring app-tabs.tsx's native ordering. */}
+          <TabTrigger name="explore" href="/(app)/(tabs)/explore" asChild>
+            <TabButton>Explore</TabButton>
+          </TabTrigger>
           <TabTrigger name="sell" href="/(app)/(tabs)/sell" asChild>
             <TabButton>Sell</TabButton>
           </TabTrigger>

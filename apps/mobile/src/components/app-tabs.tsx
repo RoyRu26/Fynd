@@ -44,6 +44,18 @@ export default function AppTabs() {
         />
       </NativeTabs.Trigger>
 
+      {/* ROADMAP 2.3 "Explore tab" — 2nd position, between Home and Sell, so
+          the eventual custom bottom bar (DESIGN.md §4/§12.7) stays symmetric
+          once Sell becomes its center gradient action: two triggers either
+          side (Home/Explore, Inbox/Profile). Verified against the installed
+          packages like the Inbox trigger below: 'magnifyingglass' exists in
+          sf-symbols-typescript's types, 'search' in expo-symbols'
+          android/symbols.json — a real icon pair, not a placeholder. */}
+      <NativeTabs.Trigger name="explore">
+        <NativeTabs.Trigger.Label>Explore</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="magnifyingglass" md="search" />
+      </NativeTabs.Trigger>
+
       {/* Temporary icon: reuses the home PNG rather than sourcing new art,
           per the approved plan (DESIGN.md §4/§12.7's custom bottom bar with
           a gradient center action is a later phase). */}

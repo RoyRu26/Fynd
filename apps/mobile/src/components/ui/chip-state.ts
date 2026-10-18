@@ -8,6 +8,8 @@ export type ChipBase = {
   label: string;
   disabled?: boolean;
   icon?: IconName;
+  /** Overrides the root element's accessible name; falls back to the label/icon-derived default otherwise. */
+  accessibilityLabel?: string;
 };
 
 // A static chip's type has no onPress/selected fields at all — passing them

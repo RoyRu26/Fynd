@@ -13,11 +13,102 @@ import type { Category, CategoryGroup } from '@/features/categories/categories';
 const CHEVRON_ICON: IconName = { ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' };
 const BACK_ICON: IconName = { ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' };
 
+export type CategoryPickerContentProps = {
+  groups: CategoryGroup[];
+  /** Controlled drill-down state -- `null` means the top-level group list. */
+  activeGroupId: string | null;
+  onActiveGroupChange: (groupId: string | null) => void;
+  onSelect: (group: CategoryGroup, leaf: Category) => void;
+  /**
+   * When provided, renders one extra top-level row ("Any category" by
+   * default) above the group list that calls this instead of drilling into
+   * a group -- ROADMAP 2.3's Filter Sheet needs an explicit way to clear
+   * the category filter; the Sell-flow caller passes neither this nor
+   * `clearLabel` and is unaffected (no extra row, identical behavior).
+   */
+  onClear?: () => void;
+  clearLabel?: string;
+};
+
+/**
+ * The group->leaf drill-down list itself, with no `Sheet` (or any Modal) of
+ * its own -- a controlled presentational component so a caller that already
+ * owns a Sheet (ROADMAP 2.3's Explore screen, which shows this inside its
+ * one Filter Sheet instance alongside a "filters view") can render it
+ * without ever mounting a second `<Modal>`. `CategoryPickerSheet` below is
+ * the Sell-flow's own thin `Sheet`-wrapped version of the exact same list.
+ *
+ * `activeGroupId` is a controlled prop (not local state) precisely so two
+ * independent callers -- this file's own `CategoryPickerSheet` and
+ * `explore.tsx` -- can each own their own drill-down state and read it back
+ * for their own Sheet's `title`.
+ */
+export function CategoryPickerContent({
+  groups,
+  activeGroupId,
+  onActiveGroupChange,
+  onSelect,
+  onClear,
+  clearLabel = 'Any category',
+}: CategoryPickerContentProps) {
+  const { colors } = useAppTheme();
+  const activeGroup = groups.find((group) => group.id === activeGroupId) ?? null;
+
+  function handleSelect(group: CategoryGroup, leaf: Category) {
+    onActiveGroupChange(null);
+    onSelect(group, leaf);
+  }
+
+  function handleClear() {
+    onActiveGroupChange(null);
+    onClear?.();
+  }
+
+  return (
+    <View style={styles.rows}>
+      {activeGroup === null
+        ? [
+            ...(onClear ? [<ListRow key="__clear" title={clearLabel} onPress={handleClear} />] : []),
+            ...groups.map((group) => (
+              <ListRow
+                key={group.id}
+                title={group.name}
+                onPress={() => onActiveGroupChange(group.id)}
+                trailing={<Icon name={CHEVRON_ICON} size="sm" color={colors.textTertiary} />}
+              />
+            )),
+          ]
+        : [
+            <ListRow
+              key="__back"
+              title="All categories"
+              accessibilityLabel="Back to all categories"
+              leading={<Icon name={BACK_ICON} size="sm" color={colors.textSecondary} />}
+              onPress={() => onActiveGroupChange(null)}
+            />,
+            ...activeGroup.subcategories.map((leaf) => (
+              <ListRow key={leaf.id} title={leaf.name} onPress={() => handleSelect(activeGroup, leaf)} />
+            )),
+          ]}
+    </View>
+  );
+}
+
+/** Same per-level title `CategoryPickerSheet` has always shown -- shared so
+ * any other `Sheet`-owning caller of `CategoryPickerContent` (e.g.
+ * `explore.tsx`) can reproduce it exactly for their own Sheet's `title`. */
+export function getCategoryPickerTitle(groups: CategoryGroup[], activeGroupId: string | null): string {
+  const activeGroup = groups.find((group) => group.id === activeGroupId) ?? null;
+  return activeGroup ? activeGroup.name : 'Choose a category';
+}
+
 export type CategoryPickerSheetProps = {
   visible: boolean;
   groups: CategoryGroup[];
   onClose: () => void;
   onSelect: (group: CategoryGroup, leaf: Category) => void;
+  onClear?: () => void;
+  clearLabel?: string;
 };
 
 /**
@@ -27,13 +118,21 @@ export type CategoryPickerSheetProps = {
  * (~22 grouped by system): ~35 leaves across 6 groups needs a group picked
  * first.
  *
- * `activeGroupId` is local and resets to `null` whenever the sheet closes
- * (backdrop tap, drag dismiss, or a completed selection) — so reopening it
- * always starts back at the top level rather than wherever the seller last
- * left it.
+ * A thin wrapper around `CategoryPickerContent` + `Sheet`: owns the
+ * drill-down's `activeGroupId` state itself and resets it to `null`
+ * whenever the sheet closes (backdrop tap, drag dismiss, or a completed
+ * selection) -- so reopening it always starts back at the top level rather
+ * than wherever the seller last left it. Identical external behavior to
+ * before this file's `Sheet`-stacking-bug refactor.
  */
-export function CategoryPickerSheet({ visible, groups, onClose, onSelect }: CategoryPickerSheetProps) {
-  const { colors } = useAppTheme();
+export function CategoryPickerSheet({
+  visible,
+  groups,
+  onClose,
+  onSelect,
+  onClear,
+  clearLabel = 'Any category',
+}: CategoryPickerSheetProps) {
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
 
   function handleClose() {
@@ -41,42 +140,20 @@ export function CategoryPickerSheet({ visible, groups, onClose, onSelect }: Cate
     onClose();
   }
 
-  function handleSelect(group: CategoryGroup, leaf: Category) {
-    setActiveGroupId(null);
-    onSelect(group, leaf);
-  }
-
-  const activeGroup = groups.find((group) => group.id === activeGroupId) ?? null;
-
   return (
     <Sheet
       visible={visible}
       onClose={handleClose}
-      title={activeGroup ? activeGroup.name : 'Choose a category'}
+      title={getCategoryPickerTitle(groups, activeGroupId)}
       accessibilityLabel="Choose a category">
-      <View style={styles.rows}>
-        {activeGroup === null
-          ? groups.map((group) => (
-              <ListRow
-                key={group.id}
-                title={group.name}
-                onPress={() => setActiveGroupId(group.id)}
-                trailing={<Icon name={CHEVRON_ICON} size="sm" color={colors.textTertiary} />}
-              />
-            ))
-          : [
-              <ListRow
-                key="__back"
-                title="All categories"
-                accessibilityLabel="Back to all categories"
-                leading={<Icon name={BACK_ICON} size="sm" color={colors.textSecondary} />}
-                onPress={() => setActiveGroupId(null)}
-              />,
-              ...activeGroup.subcategories.map((leaf) => (
-                <ListRow key={leaf.id} title={leaf.name} onPress={() => handleSelect(activeGroup, leaf)} />
-              )),
-            ]}
-      </View>
+      <CategoryPickerContent
+        groups={groups}
+        activeGroupId={activeGroupId}
+        onActiveGroupChange={setActiveGroupId}
+        onSelect={onSelect}
+        onClear={onClear}
+        clearLabel={clearLabel}
+      />
     </Sheet>
   );
 }

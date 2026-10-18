@@ -11,7 +11,7 @@ export { getChipVisualState };
 
 export function Chip(props: ChipProps) {
   const { colors } = useAppTheme();
-  const { label, disabled, icon } = props;
+  const { label, disabled, icon, accessibilityLabel } = props;
   const { interactive, emphasis } = getChipVisualState(props);
   const selected = emphasis === 'selected';
 
@@ -41,7 +41,11 @@ export function Chip(props: ChipProps) {
   ];
 
   if (!props.selectable) {
-    return <View style={[...baseStyle, { opacity: disabled ? 0.4 : 1 }]}>{content}</View>;
+    return (
+      <View accessibilityLabel={accessibilityLabel} style={[...baseStyle, { opacity: disabled ? 0.4 : 1 }]}>
+        {content}
+      </View>
+    );
   }
 
   return (
@@ -49,6 +53,7 @@ export function Chip(props: ChipProps) {
       onPress={props.onPress}
       disabled={!interactive}
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       accessibilityState={{ selected: props.selected, disabled }}
       style={({ pressed }) => [...baseStyle, { opacity: disabled ? 0.4 : pressed ? 0.7 : 1 }]}>
       {content}
