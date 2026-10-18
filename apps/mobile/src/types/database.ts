@@ -239,6 +239,7 @@ export type Database = {
           description: string
           id: string
           price_amount: number | null
+          search_tsv: unknown
           seller_id: string
           size: Database["public"]["Enums"]["listing_size"] | null
           status: Database["public"]["Enums"]["listing_status"]
@@ -253,6 +254,7 @@ export type Database = {
           description?: string
           id?: string
           price_amount?: number | null
+          search_tsv?: unknown
           seller_id: string
           size?: Database["public"]["Enums"]["listing_size"] | null
           status?: Database["public"]["Enums"]["listing_status"]
@@ -267,6 +269,7 @@ export type Database = {
           description?: string
           id?: string
           price_amount?: number | null
+          search_tsv?: unknown
           seller_id?: string
           size?: Database["public"]["Enums"]["listing_size"] | null
           status?: Database["public"]["Enums"]["listing_status"]
@@ -477,6 +480,7 @@ export type Database = {
           description: string
           id: string
           price_amount: number | null
+          search_tsv: unknown
           seller_id: string
           size: Database["public"]["Enums"]["listing_size"] | null
           status: Database["public"]["Enums"]["listing_status"]
@@ -500,6 +504,7 @@ export type Database = {
           description: string
           id: string
           price_amount: number | null
+          search_tsv: unknown
           seller_id: string
           size: Database["public"]["Enums"]["listing_size"] | null
           status: Database["public"]["Enums"]["listing_status"]
@@ -523,6 +528,7 @@ export type Database = {
           description: string
           id: string
           price_amount: number | null
+          search_tsv: unknown
           seller_id: string
           size: Database["public"]["Enums"]["listing_size"] | null
           status: Database["public"]["Enums"]["listing_status"]
@@ -546,6 +552,7 @@ export type Database = {
           description: string
           id: string
           price_amount: number | null
+          search_tsv: unknown
           seller_id: string
           size: Database["public"]["Enums"]["listing_size"] | null
           status: Database["public"]["Enums"]["listing_status"]
@@ -577,6 +584,7 @@ export type Database = {
           description: string
           id: string
           price_amount: number | null
+          search_tsv: unknown
           seller_id: string
           size: Database["public"]["Enums"]["listing_size"] | null
           status: Database["public"]["Enums"]["listing_status"]
@@ -589,6 +597,32 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      search_listings: {
+        Args: {
+          p_category_id?: string
+          p_condition?: Database["public"]["Enums"]["listing_condition"]
+          p_cursor_created_at?: string
+          p_cursor_id?: string
+          p_cursor_price?: number
+          p_limit?: number
+          p_price_max?: number
+          p_price_min?: number
+          p_query?: string
+          p_size?: Database["public"]["Enums"]["listing_size"]
+          p_sort?: Database["public"]["Enums"]["search_sort"]
+        }
+        Returns: {
+          category_id: string
+          condition: Database["public"]["Enums"]["listing_condition"]
+          cover_storage_path: string
+          created_at: string
+          currency: string
+          listing_id: string
+          price_amount: number
+          size: Database["public"]["Enums"]["listing_size"]
+          title: string
+        }[]
       }
       set_listing_image_order: {
         Args: { p_image_ids: string[]; p_listing_id: string }
@@ -612,6 +646,7 @@ export type Database = {
           description: string
           id: string
           price_amount: number | null
+          search_tsv: unknown
           seller_id: string
           size: Database["public"]["Enums"]["listing_size"] | null
           status: Database["public"]["Enums"]["listing_status"]
@@ -653,6 +688,7 @@ export type Database = {
         | "eu_shoe_46"
         | "eu_shoe_47"
       listing_status: "draft" | "active" | "reserved" | "sold" | "removed"
+      search_sort: "newest" | "price"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -810,6 +846,7 @@ export const Constants = {
         "eu_shoe_47",
       ],
       listing_status: ["draft", "active", "reserved", "sold", "removed"],
+      search_sort: ["newest", "price"],
     },
   },
 } as const
