@@ -6,16 +6,28 @@ import { Avatar, Button, IconButton, Screen, Text, type IconName } from '@/compo
 import { ListingGridTile, type ListingGridTileItem } from '@/components/listing/listing-grid-tile';
 import { space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
+import { useAuth } from '@/features/auth/auth-provider';
+import { useFollowCounts, useIsFollowing, useToggleFollow } from '@/features/follows/queries';
 import { mapListingError } from '@/features/listings/errors';
 import { useSellerListings, useSellerProfile } from '@/features/seller-profile/queries';
 
 /**
- * Public Seller Profile v1 — DESIGN.md §14.3's "Instagram-shaped structure"
- * minus everything this phase explicitly defers: no follow, no
- * followers/following counts, no reviews/ratings/verification/location, no
- * edit affordance. Renders identically whether the viewer is a stranger or
- * the seller themselves — this IS the buyer-facing view, on purpose, so
- * there is nothing to branch on.
+ * Public Seller Profile v1 — DESIGN.md §14.3's "Instagram-shaped structure":
+ * identity header (avatar, display name, handle, counts, follow button) is
+ * now complete as of ROADMAP 3.1, then a photo grid reusing the Search
+ * tile. Still defers reviews/ratings/verification/location and any edit
+ * affordance — none of those have a real destination yet.
+ *
+ * Deliberately NOT ownership-aware, with ONE narrow exception — mirroring
+ * `listing/[id].tsx`'s own exact framing for its one exception (the pinned
+ * "Message seller" bar): `isOwnProfile` gates only the Follow/Unfollow
+ * button, which a user cannot meaningfully press against their own profile
+ * (the `follows_not_self` check would refuse it server-side regardless,
+ * same shape as messaging yourself). Follower/following counts render
+ * identically for every viewer, including the profile's own owner — they
+ * are not part of the ownership branch. The counts are plain, non-pressable
+ * text here; opening a tappable follower/following LIST is explicitly
+ * ROADMAP 3.3's scope, not this one's.
  *
  * Pushed outside the (tabs) NativeTabs group (see (app)/_layout's Stack),
  * same as Listing Detail — opening a seller hides the floating tab bar
@@ -34,10 +46,22 @@ const BACK_ICON: IconName = { ios: 'chevron.left', android: 'arrow_back', web: '
 export default function SellerProfileScreen() {
   const router = useRouter();
   const { colors } = useAppTheme();
+  const { session } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
+
+  // viewerId is only undefined for an instant during session hydration —
+  // same window `listing/[id].tsx`'s own `isOwnListing` documents. This is
+  // the screen's FIRST, and only, ownership branch: a narrow, deliberate
+  // exception to an otherwise ownership-agnostic screen (see the top-level
+  // doc comment).
+  const viewerId = session?.user.id;
+  const isOwnProfile = viewerId === id;
 
   const profileQuery = useSellerProfile(id);
   const listingsQuery = useSellerListings(id);
+  const followCountsQuery = useFollowCounts(id);
+  const isFollowingQuery = useIsFollowing(viewerId, id);
+  const { toggleFollow, isPending: followPending } = useToggleFollow(id, viewerId);
 
   const listings = useMemo(
     () => listingsQuery.data?.pages.flatMap((page) => page.listings) ?? [],
@@ -116,6 +140,9 @@ export default function SellerProfileScreen() {
 
   const seller = profileQuery.data;
   const sellerName = seller.displayName ?? seller.username ?? 'Fynd seller';
+  const followersCount = followCountsQuery.data?.followersCount ?? null;
+  const followingCount = followCountsQuery.data?.followingCount ?? null;
+  const isFollowing = isFollowingQuery.data ?? false;
 
   const listHeader = (
     <View style={styles.listHeader}>
@@ -126,10 +153,32 @@ export default function SellerProfileScreen() {
         {seller.username ? (
           <Text variant="body" color="textSecondary">{`@${seller.username}`}</Text>
         ) : null}
-        {totalCount !== null ? (
-          <Text variant="caption" color="textTertiary">
-            {totalCount === 1 ? '1 listing' : `${totalCount} listings`}
-          </Text>
+        <View style={styles.countsRow}>
+          {totalCount !== null ? (
+            <Text variant="caption" color="textTertiary">
+              {totalCount === 1 ? '1 listing' : `${totalCount} listings`}
+            </Text>
+          ) : null}
+          {followersCount !== null ? (
+            <Text variant="caption" color="textTertiary">
+              {followersCount === 1 ? '1 follower' : `${followersCount} followers`}
+            </Text>
+          ) : null}
+          {followingCount !== null ? (
+            <Text variant="caption" color="textTertiary">
+              {followingCount === 1 ? '1 following' : `${followingCount} following`}
+            </Text>
+          ) : null}
+        </View>
+        {!isOwnProfile ? (
+          <Button
+            variant={isFollowing ? 'secondary' : 'primary'}
+            size="sm"
+            loading={followPending}
+            accessibilityLabel={isFollowing ? `Unfollow ${sellerName}` : `Follow ${sellerName}`}
+            onPress={() => toggleFollow(isFollowing)}>
+            {isFollowing ? 'Following' : 'Follow'}
+          </Button>
         ) : null}
       </View>
     </View>
@@ -209,6 +258,10 @@ const styles = StyleSheet.create({
   identity: {
     alignItems: 'center',
     gap: space[2],
+  },
+  countsRow: {
+    flexDirection: 'row',
+    gap: space[4],
   },
   footerSpinner: {
     paddingVertical: space[5],

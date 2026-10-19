@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { requireUserId } from '@/lib/session';
 
 /**
  * Favorites — the durable record of what the signed-in user has saved.
@@ -15,12 +16,14 @@ import { supabase } from '@/lib/supabase';
  *     `created_at` is server-controlled.
  *   * There is no UPDATE grant at all. A favorite is inserted or deleted.
  *
- * The user id is resolved from the live session inside these functions
- * rather than accepted as a parameter. That is a deliberate API choice: a
- * caller cannot pass someone else's id, so "never write another user's
- * user_id" is enforced by the signature, not by convention. RLS would
- * reject it anyway, but a rejected write is a bug report and an impossible
- * write is not.
+ * The user id is resolved from the live session via the shared
+ * `requireUserId` (`@/lib/session`) rather than accepted as a parameter.
+ * That is a deliberate API choice: a caller cannot pass someone else's id,
+ * so "never write another user's user_id" is enforced by the signature, not
+ * by convention. RLS would reject it anyway, but a rejected write is a bug
+ * report and an impossible write is not. See `@/lib/session`'s own doc
+ * comment for the full reasoning — `conversation/api.ts` and
+ * `follows/api.ts` share the exact same helper for the exact same reason.
  *
  * `listing_events` is NOT written here. The enum carries 'favorite' and
  * 'unfavorite' labels for a future recommender, but there is no
@@ -29,19 +32,6 @@ import { supabase } from '@/lib/supabase';
  * on that table. `favorites` is the durable state; events would be history,
  * and adding them is a later, server-side change.
  */
-
-async function requireUserId(): Promise<string> {
-  // Reads the in-memory/AsyncStorage session rather than hitting the
-  // network, so this costs effectively nothing per toggle.
-  const { data, error } = await supabase.auth.getSession();
-  if (error) throw error;
-
-  const userId = data.session?.user.id;
-  if (!userId) {
-    throw new Error('Cannot change favorites without a signed-in user');
-  }
-  return userId;
-}
 
 /**
  * Favorites an active listing.
@@ -53,7 +43,7 @@ async function requireUserId(): Promise<string> {
  * it, not the client.
  */
 export async function addFavorite(listingId: string): Promise<void> {
-  const userId = await requireUserId();
+  const userId = await requireUserId('change favorites');
 
   const { error } = await supabase
     .from('favorites')
@@ -75,7 +65,7 @@ export async function addFavorite(listingId: string): Promise<void> {
  * stranded.
  */
 export async function removeFavorite(listingId: string): Promise<void> {
-  const userId = await requireUserId();
+  const userId = await requireUserId('change favorites');
 
   const { error } = await supabase
     .from('favorites')

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { requireUserId } from '@/lib/session';
 import type { MessageCursor, MessageRow, MessageRpcRow } from '@/features/conversation/conversation';
 
 export type { MessageCursor, MessageRow, MessageRpcRow } from '@/features/conversation/conversation';
@@ -47,26 +48,6 @@ export async function fetchMessagePage(params: {
   return data;
 }
 
-async function requireUserId(): Promise<string> {
-  // Reads the in-memory/AsyncStorage session rather than hitting the
-  // network — same reasoning and same pattern as
-  // `features/feed/favorites.ts`'s `requireUserId`. `sender_id` is
-  // deliberately NOT accepted as a caller-supplied parameter below: a
-  // caller cannot pass someone else's id, so "never write another user's
-  // sender_id" is enforced by this function's signature, not by
-  // convention. RLS (`messages.sender_id = (select auth.uid())`) would
-  // reject a mismatch anyway, but a rejected write is a bug report and an
-  // impossible write is not.
-  const { data, error } = await supabase.auth.getSession();
-  if (error) throw error;
-
-  const userId = data.session?.user.id;
-  if (!userId) {
-    throw new Error('Cannot send a message without a signed-in user');
-  }
-  return userId;
-}
-
 /**
  * Sends one message.
  *
@@ -84,7 +65,7 @@ export async function sendMessage(params: {
   clientNonce: string;
 }): Promise<MessageRow> {
   const { conversationId, body, clientNonce } = params;
-  const senderId = await requireUserId();
+  const senderId = await requireUserId('send a message');
 
   const { data, error } = await supabase
     .from('messages')
