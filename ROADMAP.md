@@ -51,7 +51,8 @@ Source of truth for what gets built next. The `autopilot` skill works through th
 
 ## Milestone 4 — AI listing assist
 
-- [ ] **4.1 [DECISION] AI provider** — Which model/API to call, and Roy adds the API key as a Supabase secret. Ask before starting.
+- [x] **4.1 [DECISION] AI provider** — Which model/API to call, and Roy adds the API key as a Supabase secret. Ask before starting.
+  **Answer (2026-10-19):** Anthropic Claude Haiku 4.5 (`claude-haiku-4-5-20251001`), via the Messages API's vision input (base64/URL image blocks) directly from the Edge Function — no separate image-captioning step. Chosen over Sonnet 5 for cost-per-call on a rate-limited, per-listing suggestion feature where "good enough, cheap, fast" beats frontier reasoning. Secret name: `ANTHROPIC_API_KEY`, set via `supabase secrets set ANTHROPIC_API_KEY=sk-ant-...` for the hosted project, and `supabase/functions/.env` (gitignored) for local `supabase functions serve`.
 - [ ] **4.2 Suggest-from-photos Edge Function** — Takes the draft's uploaded photos, returns suggested title, category, condition, description and a price range. Key stays server-side; rate-limited per user.
 - [ ] **4.3 Suggestions in the sell flow** — Pre-filled, editable fields marked "suggested" (DESIGN.md §14.4). Never auto-publishes. Works fine if the function fails.
 - [ ] **Checkpoint 4**
