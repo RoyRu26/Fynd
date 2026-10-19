@@ -1,6 +1,15 @@
+import { createAvatarUrls } from '@/features/profile/api';
+import {
+  associateFollowListAvatarUrls,
+  normalizeFollowListRow,
+  reorderFollowListRows,
+  type FollowCounts,
+  type FollowListMode,
+  type FollowListPage,
+  type FollowListProfileRow,
+} from '@/features/follows/follows';
 import { supabase } from '@/lib/supabase';
 import { requireUserId } from '@/lib/session';
-import type { FollowCounts } from '@/features/follows/follows';
 
 /**
  * Database access for the follows feature.
@@ -104,4 +113,58 @@ export async function fetchIsFollowing(viewerId: string, profileId: string): Pro
   if (error) throw error;
 
   return (count ?? 0) > 0;
+}
+
+/**
+ * One page of `profileId`'s followers (`mode: 'followers'`) or the
+ * profiles `profileId` follows (`mode: 'following'`).
+ *
+ * Two small, explicit queries, not one clever embedded one — same
+ * reasoning as `seller-profile/api.ts`'s own doc comment: `follows.
+ * follower_id`/`followed_id` reference `auth.users(id)`, not
+ * `public.profiles(id)`, so there is no FK edge for PostgREST to embed
+ * across. Step 1 pages `follows` (public-read per the 3.1 migration) and
+ * collects the "other party" id from each row in page order — whichever
+ * column ISN'T `profileId`. Step 2 batch-fetches those ids from `profiles`
+ * via `.in(...)`, which comes back in NO particular order, so results are
+ * re-assembled by walking the ORIGINAL page order and looking each profile
+ * up by id, rather than trusting the `.in()` response order.
+ */
+export async function fetchFollowListPage(params: {
+  profileId: string;
+  mode: FollowListMode;
+  limit: number;
+  offset: number;
+}): Promise<FollowListPage> {
+  const { profileId, mode, limit, offset } = params;
+  const filterColumn = mode === 'followers' ? 'followed_id' : 'follower_id';
+  const otherPartyColumn = mode === 'followers' ? 'follower_id' : 'followed_id';
+
+  const { data, error, count } = await supabase
+    .from('follows')
+    .select('follower_id, followed_id', { count: 'exact' })
+    .eq(filterColumn, profileId)
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
+  if (error) throw error;
+
+  const otherPartyIds = data.map((row) => row[otherPartyColumn] as string);
+  if (otherPartyIds.length === 0) {
+    return { profiles: [], totalCount: count ?? 0 };
+  }
+
+  const { data: profileRows, error: profilesError } = await supabase
+    .from('profiles')
+    .select('id, username, display_name, avatar_path')
+    .in('id', otherPartyIds);
+  if (profilesError) throw profilesError;
+
+  const ordered = reorderFollowListRows(otherPartyIds, profileRows as FollowListProfileRow[]);
+  const normalized = ordered.map(normalizeFollowListRow);
+
+  const urlsByPath = await createAvatarUrls(
+    normalized.flatMap((profile) => (profile.avatarPath ? [profile.avatarPath] : [])),
+  );
+  const profiles = associateFollowListAvatarUrls(normalized, urlsByPath);
+  return { profiles, totalCount: count ?? profiles.length };
 }

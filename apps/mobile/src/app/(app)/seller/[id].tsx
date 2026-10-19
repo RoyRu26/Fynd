@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, type ReactNode } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, View, type ListRenderItemInfo } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, View, type ListRenderItemInfo } from 'react-native';
 
 import { Avatar, Button, IconButton, Screen, Text, type IconName } from '@/components/ui';
 import { ListingGridTile, type ListingGridTileItem } from '@/components/listing/listing-grid-tile';
@@ -25,9 +25,11 @@ import { useSellerListings, useSellerProfile } from '@/features/seller-profile/q
  * (the `follows_not_self` check would refuse it server-side regardless,
  * same shape as messaging yourself). Follower/following counts render
  * identically for every viewer, including the profile's own owner — they
- * are not part of the ownership branch. The counts are plain, non-pressable
- * text here; opening a tappable follower/following LIST is explicitly
- * ROADMAP 3.3's scope, not this one's.
+ * are not part of the ownership branch. As of ROADMAP 3.3, the counts are
+ * each wrapped in a `Pressable` that pushes `follows/[id]` (this same
+ * profile id, with a `mode` query param) to show the scrollable list
+ * behind the number — always tappable, even at 0, landing on that screen's
+ * empty state.
  *
  * Pushed outside the (tabs) NativeTabs group (see (app)/_layout's Stack),
  * same as Listing Detail — opening a seller hides the floating tab bar
@@ -42,6 +44,20 @@ import { useSellerListings, useSellerProfile } from '@/features/seller-profile/q
  */
 
 const BACK_ICON: IconName = { ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' };
+
+// DESIGN.md §15.1: touch targets must reach 44×44pt via minimum height or
+// hitSlop, never left bare at the call site. The counts' caption text is
+// an 18px line (text-variants.ts), so hitSlop makes up the vertical
+// difference the same way icon-button.tsx does for its own icon-sized box;
+// a little horizontal slop too, since "1 follower" can render narrower
+// than 44pt. Asymmetric top/bottom, not split evenly: `identity`'s gap
+// below countsRow (space[2] = 8) is narrower than an even split would need,
+// and the Follow/Unfollow Button sits right there with its own real hit
+// target -- an even 13/13 split would eat 5px into it. Capping bottom at
+// the gap and pushing the difference onto top (which only neighbors static
+// text, nothing pressable) keeps the full 44pt without encroaching on the
+// Button below.
+const COUNT_HIT_SLOP = { top: 18, bottom: 8, left: 8, right: 8 };
 
 export default function SellerProfileScreen() {
   const router = useRouter();
@@ -74,6 +90,13 @@ export default function SellerProfileScreen() {
       router.push({ pathname: '/(app)/listing/[id]', params: { id: listingId } });
     },
     [router],
+  );
+
+  const openFollowList = useCallback(
+    (mode: 'followers' | 'following') => {
+      router.push({ pathname: '/(app)/follows/[id]', params: { id, mode } });
+    },
+    [router, id],
   );
 
   const renderItem = useCallback(
@@ -160,14 +183,26 @@ export default function SellerProfileScreen() {
             </Text>
           ) : null}
           {followersCount !== null ? (
-            <Text variant="caption" color="textTertiary">
-              {followersCount === 1 ? '1 follower' : `${followersCount} followers`}
-            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${followersCount} followers`}
+              hitSlop={COUNT_HIT_SLOP}
+              onPress={() => openFollowList('followers')}>
+              <Text variant="caption" color="textTertiary">
+                {followersCount === 1 ? '1 follower' : `${followersCount} followers`}
+              </Text>
+            </Pressable>
           ) : null}
           {followingCount !== null ? (
-            <Text variant="caption" color="textTertiary">
-              {followingCount === 1 ? '1 following' : `${followingCount} following`}
-            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${followingCount} following`}
+              hitSlop={COUNT_HIT_SLOP}
+              onPress={() => openFollowList('following')}>
+              <Text variant="caption" color="textTertiary">
+                {followingCount === 1 ? '1 following' : `${followingCount} following`}
+              </Text>
+            </Pressable>
           ) : null}
         </View>
         {!isOwnProfile ? (

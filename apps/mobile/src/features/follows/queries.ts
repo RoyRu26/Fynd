@@ -1,7 +1,26 @@
-import { useMutation, useMutationState, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useMutationState, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { fetchFollowCounts, fetchIsFollowing, followSeller, unfollowSeller } from '@/features/follows/api';
-import { adjustFollowCounts, type FollowCounts } from '@/features/follows/follows';
+import {
+  fetchFollowCounts,
+  fetchFollowListPage,
+  fetchIsFollowing,
+  followSeller,
+  unfollowSeller,
+} from '@/features/follows/api';
+import {
+  adjustFollowCounts,
+  deriveNextFollowListOffset,
+  type FollowCounts,
+  type FollowListMode,
+} from '@/features/follows/follows';
+
+/**
+ * A screenful of rows for a follower/following list — same sizing
+ * reasoning as `SELLER_LISTINGS_PAGE_SIZE`: large enough that most
+ * profiles never page at all, small enough that a very-followed profile's
+ * list isn't chatty.
+ */
+export const FOLLOW_LIST_PAGE_SIZE = 20;
 
 export const followKeys = {
   counts: (profileId: string) => ['follows', profileId, 'counts'] as const,
@@ -11,6 +30,7 @@ export const followKeys = {
   // mounts, and the key needs to exist before `enabled` gates the fetch.
   isFollowing: (viewerId: string | undefined, profileId: string) =>
     ['follows', viewerId, profileId, 'is-following'] as const,
+  list: (profileId: string, mode: FollowListMode) => ['follows', profileId, 'list', mode] as const,
 };
 
 /**
@@ -41,6 +61,22 @@ export function useIsFollowing(viewerId: string | undefined, profileId: string) 
     queryKey: followKeys.isFollowing(viewerId, profileId),
     queryFn: () => fetchIsFollowing(viewerId as string, profileId),
     enabled: !!viewerId && viewerId !== profileId,
+  });
+}
+
+/**
+ * A paginated page of `profileId`'s followers or following list. Mirrors
+ * `seller-profile/queries.ts`'s `useSellerListings` shape exactly: offset
+ * page params, `getNextPageParam` via the shared offset-deriver.
+ */
+export function useFollowList(profileId: string, mode: FollowListMode) {
+  return useInfiniteQuery({
+    queryKey: followKeys.list(profileId, mode),
+    queryFn: ({ pageParam }: { pageParam: number }) =>
+      fetchFollowListPage({ profileId, mode, limit: FOLLOW_LIST_PAGE_SIZE, offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, _allPages, lastPageParam) =>
+      deriveNextFollowListOffset(lastPageParam, lastPage, FOLLOW_LIST_PAGE_SIZE),
   });
 }
 
