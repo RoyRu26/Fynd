@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useMutation, useMutationState, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { feedKeys } from '@/features/feed/queries';
 import {
   fetchFollowCounts,
   fetchFollowListPage,
@@ -161,6 +162,20 @@ export function useToggleFollow(profileId: string, viewerId: string | undefined)
       if (viewerCountsKey && context?.previousViewerCounts !== undefined) {
         queryClient.setQueryData<FollowCounts>(viewerCountsKey, context.previousViewerCounts);
       }
+    },
+
+    // The Home "Following" feed (ROADMAP 3.2) is a server-paginated,
+    // keyset-cursor infinite query -- there is no sane optimistic patch for
+    // "insert this seller's listings into the right page/position," unlike
+    // the simple counter bumps above. Invalidate both `includeOwn` variants
+    // of the followingOnly=true feed on actual server success (not
+    // onMutate: the RPC's own follows lookup only reflects a follow once
+    // the insert/delete below has actually committed), so a freshly
+    // followed seller's posts appear on next view of that tab instead of
+    // waiting for an unrelated refetch (app relaunch, tab focus, ...).
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: feedKeys.list(false, true) });
+      queryClient.invalidateQueries({ queryKey: feedKeys.list(true, true) });
     },
   });
 
