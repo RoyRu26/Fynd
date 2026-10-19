@@ -16,7 +16,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(51);
+select plan(52);
 
 -- ============================================================
 -- FIXTURES
@@ -348,13 +348,27 @@ select is(
 );
 
 -- The LIMIT null hole: least(greatest(null,1),50) is null, and LIMIT null
--- means no limit at all. Scoped like the above; the live assertion is that
--- an explicit null is coalesced to the default instead of propagating.
+-- means no limit at all. A feed_fixture-join count (the pattern used
+-- everywhere else in this file) can't prove this one: if enough unrelated
+-- live data outranks this suite's intentionally-old (2026-01-0x) fixtures
+-- -- which a local dev seed script now provides, in volume -- the fixture
+-- rows can be legitimately pushed off page 1 by an ordinary, correctly
+-- bounded page, and a join-count of zero would look identical to the bug
+-- this test exists to catch. Proven two ways instead, neither of which
+-- depends on how much unrelated data coexists in this database:
+--   1. the page is never larger than the real default (10) -- directly
+--      rules out "null became unbounded";
+--   2. null produces the IDENTICAL page to passing the default explicitly
+--      -- rules out null coalescing to anything else.
+select ok(
+  (select count(*)::int from public.feed_listings(null)) <= 10,
+  'an explicit p_limit => null never returns more than the default limit (10) -- it does not become unbounded'
+);
+
 select is(
-  (select count(*)::int from public.feed_listings(null) f
-    join feed_fixture ff on ff.listing_id = f.listing_id),
-  4,
-  'an explicit p_limit => null falls back to the default, and never becomes an unbounded LIMIT'
+  (select array_agg(listing_id order by created_at desc, listing_id desc) from public.feed_listings(null)),
+  (select array_agg(listing_id order by created_at desc, listing_id desc) from public.feed_listings(10)),
+  'an explicit p_limit => null produces the exact same page as passing the default (10) explicitly'
 );
 
 select is(

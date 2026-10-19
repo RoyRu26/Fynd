@@ -218,20 +218,28 @@ select ok(
   'exact-leaf category filter excludes a leaf under a different group'
 );
 
--- Top-level expand: 'c0000000-...-0001' is the seeded Women group.
-
+-- Top-level expand: 'c0000000-...-0001' is the seeded Women group. Unlike
+-- the exact-leaf case above, "all of Women" is broad enough to also match
+-- ordinary dev/seed data living in this same database (a local seed
+-- script now populates dozens of real Women's-category listings) --
+-- enough of it, dated more recently than this suite's fixtures, to push
+-- 'Leather Leaf A1'/'A2' off the default-limited page entirely. The
+-- `p_query := 'Leather Leaf'` text filter scopes these three assertions
+-- back down to just this suite's own fixtures (none of which contain
+-- those words) without touching the category-filter logic under test --
+-- it's ANDed with the category predicate, never substituting for it.
 select ok(
-  exists(select 1 from public.search_listings(p_category_id := 'c0000000-0000-4000-8000-000000000001') where title = 'Leather Leaf A1'),
+  exists(select 1 from public.search_listings(p_category_id := 'c0000000-0000-4000-8000-000000000001', p_query := 'Leather Leaf') where title = 'Leather Leaf A1'),
   'top-level category filter matches a listing in a child leaf (Tops)'
 );
 
 select ok(
-  exists(select 1 from public.search_listings(p_category_id := 'c0000000-0000-4000-8000-000000000001') where title = 'Leather Leaf A2'),
+  exists(select 1 from public.search_listings(p_category_id := 'c0000000-0000-4000-8000-000000000001', p_query := 'Leather Leaf') where title = 'Leather Leaf A2'),
   'top-level category filter matches a listing in a different child leaf (Dresses)'
 );
 
 select ok(
-  not exists(select 1 from public.search_listings(p_category_id := 'c0000000-0000-4000-8000-000000000001') where title = 'Leather Leaf B1'),
+  not exists(select 1 from public.search_listings(p_category_id := 'c0000000-0000-4000-8000-000000000001', p_query := 'Leather Leaf') where title = 'Leather Leaf B1'),
   'top-level category filter excludes a listing under a different group entirely'
 );
 
@@ -266,14 +274,19 @@ select ok(
 -- ============================================================
 -- 6. Price filters alone
 -- ============================================================
+-- p_price_min alone is the broadest filter in this file -- no category
+-- constraint at all -- so it's the one most exposed to unrelated dev/seed
+-- data also clearing the floor. Same `p_query := 'Leather Leaf'` scoping
+-- as the top-level category case above, same reasoning: ANDed with the
+-- price predicate, not a substitute for it.
 
 select ok(
-  exists(select 1 from public.search_listings(p_price_min := 4000) where title = 'Leather Leaf B1'),
+  exists(select 1 from public.search_listings(p_price_min := 4000, p_query := 'Leather Leaf') where title = 'Leather Leaf B1'),
   'price_min alone includes a listing at or above the floor'
 );
 
 select ok(
-  not exists(select 1 from public.search_listings(p_price_min := 4000) where title = 'Leather Leaf A1'),
+  not exists(select 1 from public.search_listings(p_price_min := 4000, p_query := 'Leather Leaf') where title = 'Leather Leaf A1'),
   'price_min alone excludes a listing below the floor'
 );
 
