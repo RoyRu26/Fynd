@@ -30,6 +30,11 @@ import {
   type CategoryGroup,
 } from '@/features/categories/categories';
 import { useCategories } from '@/features/categories/queries';
+import {
+  applySuggestionToForm,
+  clearSuggestedField,
+  type SuggestedFieldName,
+} from '@/features/listings/ai-suggestion-apply';
 import type { ListingImageRow, ListingRow } from '@/features/listings/api';
 import { mapListingError } from '@/features/listings/errors';
 import { uploadAndAttachListingImage } from '@/features/listings/images';
@@ -46,6 +51,7 @@ import {
 import {
   currencySymbol,
   formatMinorUnitsForInput,
+  formatMoney,
   parsePriceToMinorUnits,
 } from '@/features/listings/price';
 import {
@@ -55,6 +61,7 @@ import {
   useListingImages,
   useRemoveListingImage,
   useReorderListingImages,
+  useSuggestListingFromPhotos,
   useUpdateDraft,
   useUpdateListingDetails,
   usePublishListing,
@@ -454,11 +461,18 @@ function CategoryField({
   groups,
   disabled,
   onPress,
+  suggested,
 }: {
   categoryId: string | null;
   groups: CategoryGroup[];
   disabled: boolean;
   onPress: () => void;
+  /**
+   * ROADMAP 4.3 "Suggestions in the sell flow". Optional, defaulting to
+   * falsy, so the published-listing editor's call site (which never
+   * applies AI suggestions) is completely unaffected.
+   */
+  suggested?: boolean;
 }) {
   const { colors } = useAppTheme();
   const selection = findCategorySelection(groups, categoryId);
@@ -466,9 +480,12 @@ function CategoryField({
 
   return (
     <View style={styles.categoryField}>
-      <Text variant="label" color="textSecondary">
-        Category
-      </Text>
+      <View style={styles.fieldLabelRow}>
+        <Text variant="label" color="textSecondary">
+          Category
+        </Text>
+        {suggested ? <Chip label="Suggested" /> : null}
+      </View>
       <Pressable
         onPress={onPress}
         disabled={disabled}
@@ -529,6 +546,16 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
   const [formError, setFormError] = useState<string | null>(null);
   const [shownBlockers, setShownBlockers] = useState<PublishBlocker[]>([]);
 
+  // ROADMAP 4.3 "Suggestions in the sell flow". `suggestedFields` is which
+  // fields currently show a "Suggested" chip; `suggestedPriceRange` is only
+  // ever read while 'price' is in that set, to render the price field's
+  // helper text. Neither is persisted — both are pure local UI state that
+  // seeding the form from a suggestion writes, and editing a field clears.
+  const suggest = useSuggestListingFromPhotos();
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [suggestedFields, setSuggestedFields] = useState<Set<SuggestedFieldName>>(new Set());
+  const [suggestedPriceRange, setSuggestedPriceRange] = useState<{ min: number; max: number } | null>(null);
+
   const form = useForm<ListingFormInput, unknown, DraftListingInput>({
     resolver: zodResolver(draftListingSchema),
     defaultValues: {
@@ -571,6 +598,46 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
       size: saved.size,
       categoryId: saved.category_id,
     });
+  }
+
+  /**
+   * ROADMAP 4.3. Never auto-publishes and never touches the DB — it only
+   * seeds local form state via `form.setValue(..., { shouldDirty: true })`,
+   * the exact same mechanism the category picker's own `onSelect` already
+   * uses. All `ok:false` reasons (no_photos/rate_limited/ai_unavailable/
+   * invalid_request) render identically: stop pending, leave the form
+   * untouched, show `result.message` inline — the Edge Function already
+   * returns a safe, display-ready string, so there is no per-reason
+   * branching here.
+   */
+  async function handleSuggest() {
+    setSuggestError(null);
+    try {
+      const result = await suggest.mutateAsync(listing.id);
+      if (!result.ok) {
+        setSuggestError(result.message);
+        return;
+      }
+
+      const { values, suggestedFields: fields } = applySuggestionToForm(result.suggestion, categoryGroups);
+      form.setValue('title', values.title, { shouldDirty: true });
+      form.setValue('description', values.description, { shouldDirty: true });
+      form.setValue('condition', values.condition, { shouldDirty: true });
+      form.setValue('price', values.price, { shouldDirty: true });
+      if (values.categoryId !== undefined) {
+        form.setValue('categoryId', values.categoryId, { shouldDirty: true });
+      }
+      setSuggestedFields(new Set(fields));
+      setSuggestedPriceRange({ min: result.suggestion.priceMinAmount, max: result.suggestion.priceMaxAmount });
+    } catch (err) {
+      // suggestListingFromPhotos maps its own transport failures into an
+      // ok:false result rather than throwing — reaching here means something
+      // genuinely unexpected happened (e.g. a bug), not an expected failure.
+      if (__DEV__) {
+        console.error(err);
+      }
+      setSuggestError("Couldn't get suggestions right now.");
+    }
   }
 
   async function onSaveDraft(input: DraftListingInput) {
@@ -627,36 +694,92 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
 
   return (
     <View style={styles.fields}>
-      <Controller
-        control={control}
-        name="title"
-        render={({ field, fieldState }) => (
-          <TextField
-            label="Title"
-            value={field.value}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            error={fieldState.error?.message}
-            disabled={busy}
-          />
-        )}
-      />
+      <View style={styles.suggestSection}>
+        <Button
+          variant="secondary"
+          size="sm"
+          onPress={handleSuggest}
+          loading={suggest.isPending}
+          disabled={suggest.isPending || imageCount === 0}>
+          Suggest from photos
+        </Button>
+        {imageCount === 0 ? (
+          <Text variant="caption" color="textTertiary">
+            Add a photo first
+          </Text>
+        ) : null}
+        {suggestError ? (
+          <Text variant="caption" color="danger" accessibilityLiveRegion="polite" accessibilityRole="alert">
+            {suggestError}
+          </Text>
+        ) : null}
+      </View>
 
-      <Controller
-        control={control}
-        name="price"
-        render={({ field, fieldState }) => (
-          <TextField
-            label={`Price (${currencySymbol(listing.currency)})`}
-            keyboardType="decimal-pad"
-            value={field.value}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            error={fieldState.error?.message}
-            disabled={busy}
-          />
-        )}
-      />
+      <View style={styles.fieldWithLabel}>
+        <View style={styles.fieldLabelRow}>
+          <Text variant="label" color="textSecondary">
+            Title
+          </Text>
+          {suggestedFields.has('title') ? <Chip label="Suggested" /> : null}
+        </View>
+        <Controller
+          control={control}
+          name="title"
+          render={({ field, fieldState }) => (
+            <TextField
+              value={field.value}
+              onChangeText={(text) => {
+                field.onChange(text);
+                setSuggestedFields((prev) => clearSuggestedField(prev, 'title'));
+              }}
+              onBlur={field.onBlur}
+              error={fieldState.error?.message}
+              disabled={busy}
+              accessibilityLabel={['Title', suggestedFields.has('title') ? 'Suggested' : null, fieldState.error?.message]
+                .filter(Boolean)
+                .join(', ')}
+            />
+          )}
+        />
+      </View>
+
+      <View style={styles.fieldWithLabel}>
+        <View style={styles.fieldLabelRow}>
+          <Text variant="label" color="textSecondary">
+            {`Price (${currencySymbol(listing.currency)})`}
+          </Text>
+          {suggestedFields.has('price') ? <Chip label="Suggested" /> : null}
+        </View>
+        <Controller
+          control={control}
+          name="price"
+          render={({ field, fieldState }) => (
+            <TextField
+              keyboardType="decimal-pad"
+              value={field.value}
+              onChangeText={(text) => {
+                field.onChange(text);
+                setSuggestedFields((prev) => clearSuggestedField(prev, 'price'));
+              }}
+              onBlur={field.onBlur}
+              error={fieldState.error?.message}
+              disabled={busy}
+              helperText={
+                suggestedFields.has('price') && suggestedPriceRange
+                  ? `Suggested range: ${formatMoney(suggestedPriceRange.min, listing.currency)}–${formatMoney(suggestedPriceRange.max, listing.currency)}`
+                  : undefined
+              }
+              accessibilityLabel={[
+                `Price (${currencySymbol(listing.currency)})`,
+                suggestedFields.has('price') ? 'Suggested' : null,
+                fieldState.error?.message,
+              ]
+                .filter(Boolean)
+                .join(', ')}
+            />
+          )}
+        />
+      </View>
 
       <Controller
         control={control}
@@ -668,6 +791,7 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
               groups={categoryGroups}
               disabled={busy}
               onPress={() => setCategoryPickerOpen(true)}
+              suggested={suggestedFields.has('categoryId')}
             />
             <CategoryPickerSheet
               visible={categoryPickerOpen}
@@ -676,6 +800,7 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
               onSelect={(_group: CategoryGroup, leaf: Category) => {
                 field.onChange(leaf.id);
                 setCategoryPickerOpen(false);
+                setSuggestedFields((prev) => clearSuggestedField(prev, 'categoryId'));
               }}
             />
           </>
@@ -683,9 +808,12 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
       />
 
       <View style={styles.conditionField}>
-        <Text variant="label" color="textSecondary">
-          Condition
-        </Text>
+        <View style={styles.fieldLabelRow}>
+          <Text variant="label" color="textSecondary">
+            Condition
+          </Text>
+          {suggestedFields.has('condition') ? <Chip label="Suggested" /> : null}
+        </View>
         <Controller
           control={control}
           name="condition"
@@ -698,7 +826,10 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
                   selectable
                   selected={field.value === value}
                   disabled={busy}
-                  onPress={() => field.onChange(field.value === value ? null : value)}
+                  onPress={() => {
+                    field.onChange(field.value === value ? null : value);
+                    setSuggestedFields((prev) => clearSuggestedField(prev, 'condition'));
+                  }}
                 />
               ))}
             </View>
@@ -739,22 +870,39 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
         />
       </View>
 
-      <Controller
-        control={control}
-        name="description"
-        render={({ field, fieldState }) => (
-          <TextField
-            label="Description"
-            multiline
-            numberOfLines={4}
-            value={field.value}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            error={fieldState.error?.message}
-            disabled={busy}
-          />
-        )}
-      />
+      <View style={styles.fieldWithLabel}>
+        <View style={styles.fieldLabelRow}>
+          <Text variant="label" color="textSecondary">
+            Description
+          </Text>
+          {suggestedFields.has('description') ? <Chip label="Suggested" /> : null}
+        </View>
+        <Controller
+          control={control}
+          name="description"
+          render={({ field, fieldState }) => (
+            <TextField
+              multiline
+              numberOfLines={4}
+              value={field.value}
+              onChangeText={(text) => {
+                field.onChange(text);
+                setSuggestedFields((prev) => clearSuggestedField(prev, 'description'));
+              }}
+              onBlur={field.onBlur}
+              error={fieldState.error?.message}
+              disabled={busy}
+              accessibilityLabel={[
+                'Description',
+                suggestedFields.has('description') ? 'Suggested' : null,
+                fieldState.error?.message,
+              ]
+                .filter(Boolean)
+                .join(', ')}
+            />
+          )}
+        />
+      </View>
 
       {/* shownBlockers only ever fills after a blocked publish attempt — which
           the now-disabled Publish button prevents in the normal case — so in
@@ -1197,6 +1345,18 @@ const styles = StyleSheet.create({
   },
   fields: {
     gap: space[4],
+  },
+  suggestSection: {
+    gap: space[2],
+    alignItems: 'flex-start',
+  },
+  fieldWithLabel: {
+    gap: space[1],
+  },
+  fieldLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space[2],
   },
   categoryField: {
     gap: space[1],

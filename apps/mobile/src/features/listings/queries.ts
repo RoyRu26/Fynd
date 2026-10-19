@@ -19,6 +19,7 @@ import {
   updateListingDetails,
   type ListingImageRow,
 } from '@/features/listings/api';
+import { suggestListingFromPhotos } from '@/features/listings/ai-suggestions';
 import { uploadAndAttachListingImage } from '@/features/listings/images';
 import type { DraftListingInput, PublishableListingInput } from '@/features/listings/schemas';
 import { listingDetailKeys } from '@/features/listing-detail/queries';
@@ -198,6 +199,21 @@ export function usePublishListing(sellerId: string | undefined) {
       queryClient.invalidateQueries({ queryKey: listingKeys.detail(listingId) });
       queryClient.invalidateQueries({ queryKey: listingKeys.mine(sellerId) });
     },
+  });
+}
+
+/**
+ * ROADMAP 4.3 "Suggestions in the sell flow". Deliberately plain: no
+ * `onSuccess` cache write and no query key of its own — the result only
+ * ever seeds local form state in the draft editor (see
+ * ai-suggestion-apply.ts) and is never persisted or cached.
+ * `suggestListingFromPhotos` does not throw in normal operation (it maps
+ * its own transport failures into an `{ok:false}` result), so callers
+ * branch on `mutation.data?.ok` rather than `mutation.isError`.
+ */
+export function useSuggestListingFromPhotos() {
+  return useMutation({
+    mutationFn: (listingId: string) => suggestListingFromPhotos(listingId),
   });
 }
 
