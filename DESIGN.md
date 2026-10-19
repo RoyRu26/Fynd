@@ -423,6 +423,8 @@ The visual anchor of the product. Always dark. Full-viewport, vertically paged, 
 
 **Performance:** only the visible page and its immediate neighbours keep active media.
 
+**Scope toggle (ROADMAP 3.2).** A "For you" / "Following" pair sits above the feed as screen-level chrome, not card content — it is **not** subject to the chrome budget's "at most two chips" cap above, which bounds what one card overlay shows, not the screen's own top-level navigation. Implemented as two `Chip`s in their existing `selectable`/`selected` mode (§13) — no new SegmentedControl primitive; two carefully-indistinguishable options is exactly what the second-caller rule (§15.2) asks to inline rather than invent a component for. Introduces no new scrim or gradient: each card's `gradientScrim` is already transparent at its top stop, so legibility comes from the Chip's own opaque fill, the same mechanism the card's mid-overlay condition/size chips already rely on.
+
 ### 14.2 Search / Explore
 
 The inverse of the feed: dense where the feed is singular. Borrows the **Instagram Explore dense, image-first grid model** — the structure, not the look. Follows system appearance.

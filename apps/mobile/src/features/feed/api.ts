@@ -38,14 +38,16 @@ export async function fetchFeedPage(params: {
   limit: number;
   cursor: FeedCursor;
   includeOwn: boolean;
+  followingOnly: boolean;
 }): Promise<FeedListing[]> {
-  const { limit, cursor, includeOwn } = params;
+  const { limit, cursor, includeOwn, followingOnly } = params;
 
   const { data, error } = await supabase.rpc('feed_listings', {
     p_limit: limit,
     p_cursor_created_at: cursor?.createdAt,
     p_cursor_id: cursor?.id,
     p_include_own: includeOwn,
+    p_following_only: followingOnly,
   });
   if (error) throw error;
 

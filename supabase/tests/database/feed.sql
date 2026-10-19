@@ -16,13 +16,15 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(52);
+select plan(60);
 
 -- ============================================================
 -- FIXTURES
 -- ============================================================
 -- Three sellers. A owns the feed-eligible content, B is the "other seller"
--- whose privacy must hold, C is a pure viewer with nothing of their own.
+-- whose privacy must hold and -- for the p_following_only tests below --
+-- whose own active listing C must never see unfollowed, C is a viewer with
+-- one listing of their own who follows A but not B.
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password, created_at, updated_at
@@ -65,7 +67,13 @@ values
    'A draft', 'FEED_DRAFT_A', 6000, 'good', null, null, 'draft', '2026-01-06 10:00:00+00'),
   -- C's own active listing, for the exclude-own-listings assertions.
   ('cccc1000-0000-0000-0000-000000000001', 'f3000000-0000-0000-0000-00000000000c',
-   'C own active', 'FEED_OWN_C', 7000, 'good', 'alpha_s', 'c0000001-0000-4000-8000-000000000001', 'active', '2026-01-07 10:00:00+00');
+   'C own active', 'FEED_OWN_C', 7000, 'good', 'alpha_s', 'c0000001-0000-4000-8000-000000000001', 'active', '2026-01-07 10:00:00+00'),
+  -- B's active, imaged listing: feed-eligible under the default "for you"
+  -- scope, but C does not follow B, so it is the row the p_following_only
+  -- exclusion tests below must never surface. Without this, "nothing from
+  -- B" would pass vacuously -- B would simply have nothing to leak.
+  ('bbbb1000-0000-0000-0000-000000000001', 'f3000000-0000-0000-0000-00000000000b',
+   'B active', 'FEED_B', 8000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active', '2026-01-08 10:00:00+00');
 
 insert into public.listing_images (listing_id, storage_path, "position")
 values
@@ -84,7 +92,9 @@ values
   ('aaaa1000-0000-0000-0000-000000000006',
    'f3000000-0000-0000-0000-00000000000a/aaaa1000-0000-0000-0000-000000000006/draft.jpg', 0),
   ('cccc1000-0000-0000-0000-000000000001',
-   'f3000000-0000-0000-0000-00000000000c/cccc1000-0000-0000-0000-000000000001/own.jpg', 0);
+   'f3000000-0000-0000-0000-00000000000c/cccc1000-0000-0000-0000-000000000001/own.jpg', 0),
+  ('bbbb1000-0000-0000-0000-000000000001',
+   'f3000000-0000-0000-0000-00000000000b/bbbb1000-0000-0000-0000-000000000001/b-one.jpg', 0);
 
 -- Storage objects. Only (bucket_id, name) is written: path_tokens is
 -- GENERATED ALWAYS and must never appear in an INSERT.
@@ -98,6 +108,13 @@ values
   ('listing-images', 'f3000000-0000-0000-0000-00000000000a/aaaa1000-0000-0000-0000-000000000001/orphan.jpg'),
   -- C's own orphan, under C's own prefix.
   ('listing-images', 'f3000000-0000-0000-0000-00000000000c/cccc1000-0000-0000-0000-000000000001/own-orphan.jpg');
+
+-- C follows A, not B -- backs the p_following_only tests in section 2b
+-- below. follows is publicly readable (20261019061403_follows.sql), so this
+-- plain insert as the migration owner is enough; no role/claims dance
+-- needed to seed it.
+insert into public.follows (follower_id, followed_id)
+values ('f3000000-0000-0000-0000-00000000000c', 'f3000000-0000-0000-0000-00000000000a');
 
 -- ============================================================
 -- FIXTURE SCOPE
@@ -312,6 +329,100 @@ select ok(
     select 1 from public.feed_listings(50, null, null, null) f where f.title = 'C own active'
   ),
   'p_include_own => null is treated as false, not as null-propagating'
+);
+
+-- ============================================================
+-- 3a. feed_listings -- p_following_only (ROADMAP 3.2)
+-- ============================================================
+-- C follows A, not B (fixture inserted above). Acting as C throughout
+-- unless a case needs a different viewer.
+
+-- 1. Exactly A's eligible listings, nothing from B.
+select is(
+  (select count(*)::int from public.feed_listings(50, null, null, false, true) f
+    join feed_fixture ff on ff.listing_id = f.listing_id),
+  4,
+  'p_following_only => true returns exactly the eligible listings of the one seller C follows'
+);
+
+select ok(
+  not exists(
+    select 1 from public.feed_listings(50, null, null, false, true) f where f.title = 'B active'
+  ),
+  'p_following_only => true excludes a followable seller C does not actually follow'
+);
+
+-- The join-count assertion above only proves the fixture's 4 eligible rows
+-- are present; it can't by itself catch an extra row sneaking in, since a
+-- join only ever narrows. A's draft and imageless listing are both status/
+-- image-filtered independently of the following filter, but assert the
+-- *unjoined* total here too, so a hypothetical leak of either has no
+-- feed_fixture join to hide behind.
+select is(
+  (select count(*)::int from public.feed_listings(50, null, null, false, true)),
+  4,
+  'p_following_only => true returns exactly 4 rows total -- A''s draft and imageless listing do not leak in alongside the eligible ones'
+);
+
+-- 2. A viewer who follows nobody gets zero rows -- B has no `follows` row at
+-- all, so this is deterministic regardless of unrelated dev data: the
+-- correlated subquery has nothing to match for B as follower, full stop.
+set local request.jwt.claims = '{"sub":"f3000000-0000-0000-0000-00000000000b","role":"authenticated"}';
+
+select is(
+  (select count(*)::int from public.feed_listings(50, null, null, false, true)),
+  0,
+  'p_following_only => true with a viewer who follows nobody returns zero rows'
+);
+
+set local request.jwt.claims = '{"sub":"f3000000-0000-0000-0000-00000000000c","role":"authenticated"}';
+
+-- 3. Self-follow-impossible regression: p_following_only + p_include_own
+-- together must never leak the viewer's own listing. follows_not_self
+-- guarantees no row can ever read (C, C), so the EXISTS this filter adds can
+-- never match C's own seller_id even in principle -- this proves it holds in
+-- practice too.
+select ok(
+  not exists(
+    select 1 from public.feed_listings(50, null, null, true, true) f where f.title = 'C own active'
+  ),
+  'p_following_only => true with p_include_own => true still never returns the viewer''s own listing'
+);
+
+-- 4. Explicit false and explicit null both behave identically to the
+-- omitted default -- same null-hostile discipline as p_include_own above.
+select is(
+  (select array_agg(listing_id order by created_at desc, listing_id desc) from public.feed_listings(50)),
+  (select array_agg(listing_id order by created_at desc, listing_id desc) from public.feed_listings(50, null, null, null, false)),
+  'p_following_only => false explicitly produces the same page as the omitted default'
+);
+
+select is(
+  (select array_agg(listing_id order by created_at desc, listing_id desc) from public.feed_listings(50)),
+  (select array_agg(listing_id order by created_at desc, listing_id desc) from public.feed_listings(50, null, null, null, null)),
+  'p_following_only => null is treated as false, not as null-propagating'
+);
+
+-- 5. Keyset pagination still works under p_following_only => true: a
+-- small p_limit splits the four fixture rows across two pages, and the
+-- second page's cursor-driven fetch returns the remainder with no gap and
+-- no duplicate -- mirroring section 4's own keyset case exactly, scoped the
+-- same way and for the same reason.
+select is(
+  (
+    select string_agg(f.title, ',' order by f.created_at desc)
+      from (
+        select f1.created_at, f1.listing_id
+          from public.feed_listings(50, null, null, false, true) f1
+          join feed_fixture ff on ff.listing_id = f1.listing_id
+         order by f1.created_at desc, f1.listing_id desc
+         limit 1 offset 1
+      ) cur
+      cross join lateral public.feed_listings(2, cur.created_at, cur.listing_id, false, true) f
+      join feed_fixture ff2 on ff2.listing_id = f.listing_id
+  ),
+  'Active two,Active one',
+  'the keyset cursor returns the next page with no gap and no duplicate under p_following_only => true too'
 );
 
 -- ============================================================

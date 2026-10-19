@@ -438,6 +438,7 @@ export type Database = {
         Args: {
           p_cursor_created_at?: string
           p_cursor_id?: string
+          p_following_only?: boolean
           p_include_own?: boolean
           p_limit?: number
         }

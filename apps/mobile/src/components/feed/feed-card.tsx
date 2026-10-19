@@ -41,9 +41,12 @@ export type FeedCardProps = {
   /** Forwarded to useToggleFavorite so it targets the same cache entry the
    * visible feed is actually reading — see useFeed's own includeOwn flag. */
   includeOwn?: boolean;
+  /** Forwarded to useToggleFavorite alongside includeOwn — see useFeed's own
+   * followingOnly flag (ROADMAP 3.2's "For you"/"Following" toggle). */
+  followingOnly?: boolean;
 };
 
-export function FeedCard({ listing, includeOwn }: FeedCardProps) {
+export function FeedCard({ listing, includeOwn, followingOnly }: FeedCardProps) {
   const router = useRouter();
 
   // Formatted from the listing's OWN stored currency, never a hardcoded
@@ -65,7 +68,7 @@ export function FeedCard({ listing, includeOwn }: FeedCardProps) {
   // Cache-optimistic toggle + the same "disable while this listing's own
   // mutation is in flight" race guard the hook already implements — nothing
   // feed-card-specific to add here, just wiring.
-  const { toggleFavorite, pendingListingIds } = useToggleFavorite(includeOwn);
+  const { toggleFavorite, pendingListingIds } = useToggleFavorite(includeOwn, followingOnly);
   const favoritePending = pendingListingIds.has(listing.listingId);
 
   // Double-tap is never a toggle: it only ever favorites, and only when
