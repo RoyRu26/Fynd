@@ -1,7 +1,7 @@
 import { useIsFocused, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import type { ReactNode } from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -124,6 +124,22 @@ function HomeFeed() {
   }, [listings]);
   const impressionStateRef = useRef<ImpressionTrackerState>(EMPTY_IMPRESSION_TRACKER);
 
+  // Same ref-sync reason as listingsRef: onViewableItemsChanged is frozen
+  // (stable identity, empty deps — RN forbids changing it after mount) and
+  // must read the CURRENT scope, not whatever scope was active when the
+  // callback was created.
+  const scopeRef = useRef<FeedScope>(scope);
+  useEffect(() => {
+    scopeRef.current = scope;
+  }, [scope]);
+
+  // The FlatList is no longer remounted on scope change (see below), so
+  // each scope's last-viewed page needs to be remembered independently —
+  // otherwise whichever scope the user is NOT currently on would silently
+  // keep whatever scroll position the other one left it at.
+  const flatListRef = useRef<FlatList<FeedListing>>(null);
+  const lastIndexByScope = useRef<Record<FeedScope, number>>({ forYou: 0, following: 0 });
+
   // A plain module-scope object already has fully stable identity across
   // every render — no ref needed for viewabilityConfig at all.
   const onViewableItemsChanged = useCallback(
@@ -181,6 +197,8 @@ function HomeFeed() {
       // Prefetch --------------------------------------------------------
       const primary = nowViewable[0];
       if (primary && typeof primary.index === 'number') {
+        lastIndexByScope.current[scopeRef.current] = primary.index;
+
         const upcoming = currentListings
           .slice(primary.index + 1, primary.index + 1 + PREFETCH_AHEAD_COUNT)
           .map((l) => l.coverUrl);
@@ -224,6 +242,25 @@ function HomeFeed() {
   const goToExplore = useCallback(() => {
     router.push('/(app)/(tabs)/explore');
   }, [router]);
+
+  // Restores the scope being switched TO at whatever page it was last left
+  // on, rather than the top. Unconditional -- including index 0 -- because
+  // without key={scope} forcing a remount, the FlatList's scroll offset
+  // never resets on its own: if it doesn't, switching to a scope that was
+  // never scrolled (index 0) would leave it sitting at whatever pixel
+  // offset the PREVIOUS scope had reached, so whatever this scope's data
+  // happens to render at that same offset (often still the previous
+  // scope's card, for an instant) stays on screen instead of jumping to
+  // this one's actual top. Runs whenever scope or pageHeight changes:
+  // pageHeight is in the dependency list because the offset math needs it,
+  // not because it signals a scope change. useLayoutEffect, not useEffect,
+  // so the jump happens before the frame is presented rather than as a
+  // visible flash to the old position first.
+  useLayoutEffect(() => {
+    if (pageHeight === 0) return;
+    const index = lastIndexByScope.current[scope];
+    flatListRef.current?.scrollToOffset({ offset: index * pageHeight, animated: false });
+  }, [scope, pageHeight]);
 
   let body: ReactNode;
   if (feedQuery.isPending) {
@@ -273,11 +310,13 @@ function HomeFeed() {
   } else {
     body = (
       <FlatList
-        // Remounts the list on scope change — a clean scroll-position reset
-        // with no manual scrollToOffset bookkeeping, since "For you" and
-        // "Following" are different result sets that should each start at
-        // their own top, not inherit whatever page the other was scrolled to.
-        key={scope}
+        // No key={scope} here on purpose: "For you" and "Following" are
+        // different result sets, but switching between them should return
+        // each to wherever the user last left it, not reset to the top —
+        // which means the same FlatList instance has to persist across the
+        // switch. The useLayoutEffect above is what restores each scope's
+        // own remembered position when `data` swaps out from under it.
+        ref={flatListRef}
         data={listings}
         keyExtractor={(item) => item.listingId}
         renderItem={renderItem}
@@ -286,9 +325,23 @@ function HomeFeed() {
         showsVerticalScrollIndicator={false}
         getItemLayout={getItemLayout}
         initialNumToRender={2}
-        maxToRenderPerBatch={2}
-        windowSize={3}
-        removeClippedSubviews
+        // 3 (not the previous 2) and 5 (not 3): tight enough to still cap a
+        // full-viewport image feed's memory footprint, but with enough
+        // headroom that a user flicking through several pages in quick
+        // succession is less likely to outrun React's render queue. Raised
+        // alongside removing removeClippedSubviews below as the suspected
+        // cause of a reported bug: opening a post deep in a fast scroll
+        // sometimes opened a different one instead -- consistent with the
+        // tapped cell's visible content not having caught up to its new
+        // list position yet when the tap landed.
+        maxToRenderPerBatch={3}
+        windowSize={5}
+        // Deliberately NOT set. React Native's own docs flag this prop as
+        // having rendering bugs ("may have bugs (missing content) in some
+        // circumstances") — exactly the kind of stale-view-under-a-tap
+        // symptom above, and the most likely single cause of it. The memory
+        // saving isn't worth that risk for a feed whose images are already
+        // managed by ListingImage's own caching.
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={VIEWABILITY_CONFIG}
         onEndReached={handleEndReached}
