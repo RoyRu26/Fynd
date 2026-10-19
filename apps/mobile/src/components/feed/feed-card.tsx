@@ -15,14 +15,20 @@ import type { FeedListing } from '@/features/feed/pagination';
 /**
  * One page of the Home feed: full-bleed cover photo (wrapped in
  * FeedCardGestures for tap-or-swipe-left-to-open-detail and
- * double-tap-to-like), a bottom scrim, and the DESIGN.md §14.1 tier 2-4
- * overlay — price, title, a condition + size chip pair, a seller row, and a
- * favorite action. Still
- * deliberately minimal beyond that — no share, comments, follow, chat,
- * timestamps, or shipping metadata; those are later slices, not omissions.
+ * double-tap-to-like) and the DESIGN.md §14.1 tier 2-4 overlay — price,
+ * title, a condition + size chip pair, a seller row, and a favorite
+ * action. Still deliberately minimal beyond that — no share, comments,
+ * follow, chat, timestamps, or shipping metadata; those are later slices,
+ * not omissions.
  *
- * No card-within-card: every layer here is a plain full-size View stacked
- * on the photo, never an inset surface with its own background/border.
+ * The overlay's gradient scrim lives on that block's own box, not a
+ * separate full-card layer: the box is bottom-anchored with no `top`, so
+ * it (and the gradient painted on it) is only ever as tall as the content
+ * actually needs — the rest of the photo above it is never darkened.
+ *
+ * No card-within-card otherwise: every OTHER layer here is a plain
+ * full-size View stacked on the photo, never an inset surface with its
+ * own background/border.
  */
 
 // Breathing room between the overlay's lowest content and the tab bar's own
@@ -97,15 +103,15 @@ export function FeedCard({ listing, includeOwn, followingOnly }: FeedCardProps) 
         />
       </FeedCardGestures>
 
-      <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.scrim]} />
-
       {/* box-none: the row itself must never swallow the vertical swipe that
           pages the feed. Only the IconButton below — an actual Pressable —
-          ever claims a touch. */}
+          ever claims a touch. The scrim lives on THIS view, not a separate
+          full-card layer: it is bottom-anchored with no `top`, so its own
+          height — and therefore the gradient's extent — is whatever this
+          content actually needs, not an arbitrary fraction of the photo. */}
       <View
         pointerEvents="box-none"
         style={[
-          StyleSheet.absoluteFill,
           styles.overlay,
           { paddingBottom: insets.bottom + FEED_OVERLAY_BOTTOM_GAP },
         ]}>
@@ -145,10 +151,16 @@ const styles = StyleSheet.create({
   card: {
     flex: 1,
   },
-  scrim: {
-    experimental_backgroundImage: [gradientScrim],
-  },
   overlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    // No `top`: height is intrinsic to the content (metadata + button +
+    // padding) rather than stretched to the full card, which is what keeps
+    // the gradient below confined to this block instead of washing over
+    // most of the photo.
+    experimental_backgroundImage: [gradientScrim],
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
