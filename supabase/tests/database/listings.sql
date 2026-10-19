@@ -6,6 +6,10 @@
 --                privilege allowlist (M2).
 -- Sections 12-20 Phase 2: draft-scoped image RLS, Storage bucket/policies
 --                (M3), and the three SECURITY DEFINER RPCs (M4).
+-- Sections 21-25 ROADMAP 1.6 "Manage a listing": the post-publish lifecycle
+--                RPCs (mark_listing_reserved, mark_listing_active,
+--                mark_listing_sold, remove_listing, update_listing_details)
+--                and the full transition matrix each one enforces.
 --
 -- Two recurring conventions worth stating once:
 --
@@ -20,7 +24,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(83);
+select plan(138);
 
 -- ============================================================
 -- FIXTURES
@@ -175,6 +179,50 @@ select throws_ok(
 );
 
 update public.listings set size = 'alpha_m' where description = 'ROW_ALPHA';
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+-- ============================================================
+-- 3b. category_id -- nullable on drafts, required on everything else
+-- ============================================================
+-- ROW_GAMMA above already proves a draft may carry no category at all (it
+-- has none and was accepted). These cover the column privilege grant, the
+-- foreign key, and the rebuilt completeness invariant -- mirroring 3a's
+-- size coverage exactly. 'c0000001-0000-4000-8000-000000000001' is the
+-- seeded Women > Tops leaf (20261018100200_categories.sql).
+
+select is(
+  (select category_id from public.listings where description = 'ROW_GAMMA'),
+  null,
+  'a draft may hold category_id = NULL, exactly like title/price/condition/size'
+);
+
+update public.listings set category_id = 'c0000001-0000-4000-8000-000000000001' where description = 'ROW_ALPHA';
+
+select is(
+  (select category_id from public.listings where description = 'ROW_ALPHA'),
+  'c0000001-0000-4000-8000-000000000001'::uuid,
+  'a seller can set category_id on their own draft -- the column grant landed'
+);
+
+select throws_ok(
+  $$update public.listings set category_id = 'dddd0000-0000-0000-0000-00000000dead' where description = 'ROW_ALPHA'$$,
+  '23503', null,
+  'a bogus category_id is rejected by the foreign key'
+);
+
+update public.listings set category_id = null where description = 'ROW_ALPHA';
+
+reset role;
+
+select throws_ok(
+  $$update public.listings set status = 'active' where description = 'ROW_ALPHA'$$,
+  '23514', null,
+  'a listing with every other field set but no category still cannot become active'
+);
+
+update public.listings set category_id = 'c0000001-0000-4000-8000-000000000001' where description = 'ROW_ALPHA';
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000a","role":"authenticated"}';
@@ -366,59 +414,68 @@ select throws_ok(
 
 reset role;
 
--- Every ACTIVE row must now carry a size: listings_complete_when_not_draft
--- requires it. Drafts are free to omit it, and the PUB_* fixtures below
--- exercise exactly that boundary.
-insert into public.listings (id, seller_id, title, description, price_amount, condition, size, status)
+-- Every ACTIVE row must now carry a size AND a category:
+-- listings_complete_when_not_draft requires both. Drafts are free to omit
+-- either, and the PUB_* fixtures below exercise exactly that boundary.
+-- 'c0000001-0000-4000-8000-000000000001' is the seeded Women > Tops leaf
+-- (20261018100200_categories.sql), used throughout this file as "a valid
+-- category" wherever the specific category does not matter to the test.
+insert into public.listings (id, seller_id, title, description, price_amount, condition, size, category_id, status)
 values
   -- Storage policy fixtures
   ('aaaa0001-0000-0000-0000-000000000001', 'f2000000-0000-0000-0000-00000000000a',
-   'A draft for storage',  'SA_DRAFT',  1000, 'good', 'alpha_m', 'draft'),
+   'A draft for storage',  'SA_DRAFT',  1000, 'good', 'alpha_m', null, 'draft'),
   ('aaaa0001-0000-0000-0000-000000000002', 'f2000000-0000-0000-0000-00000000000a',
-   'A active for storage', 'SA_ACTIVE', 1000, 'good', 'alpha_m', 'active'),
+   'A active for storage', 'SA_ACTIVE', 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
   ('aaaa0001-0000-0000-0000-000000000003', 'f2000000-0000-0000-0000-00000000000a',
-   'A doomed draft',       'SA_DOOMED', 1000, 'good', 'alpha_m', 'draft'),
+   'A doomed draft',       'SA_DOOMED', 1000, 'good', 'alpha_m', null, 'draft'),
   ('bbbb0001-0000-0000-0000-000000000001', 'f2000000-0000-0000-0000-00000000000b',
-   'B draft for storage',  'SB_DRAFT',  1000, 'good', 'alpha_m', 'draft'),
+   'B draft for storage',  'SB_DRAFT',  1000, 'good', 'alpha_m', null, 'draft'),
   ('bbbb0001-0000-0000-0000-000000000002', 'f2000000-0000-0000-0000-00000000000b',
-   'B active for storage', 'SB_ACTIVE', 1000, 'good', 'alpha_m', 'active'),
+   'B active for storage', 'SB_ACTIVE', 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
   -- attach_listing_image fixtures
   ('aaaa0002-0000-0000-0000-000000000001', 'f2000000-0000-0000-0000-00000000000a',
-   'A attach draft',       'AT_A',      1000, 'good', 'alpha_m', 'draft'),
+   'A attach draft',       'AT_A',      1000, 'good', 'alpha_m', null, 'draft'),
   ('aaaa0002-0000-0000-0000-000000000002', 'f2000000-0000-0000-0000-00000000000a',
-   'A photo cap draft',    'AT_CAP',    1000, 'good', 'alpha_m', 'draft'),
+   'A photo cap draft',    'AT_CAP',    1000, 'good', 'alpha_m', null, 'draft'),
   ('aaaa0002-0000-0000-0000-000000000003', 'f2000000-0000-0000-0000-00000000000a',
-   'A attach active',      'AT_ACTIVE', 1000, 'good', 'alpha_m', 'active'),
+   'A attach active',      'AT_ACTIVE', 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
   -- set_listing_image_order fixtures
   ('aaaa0003-0000-0000-0000-000000000001', 'f2000000-0000-0000-0000-00000000000a',
-   'A reorder draft',      'OR_A',      1000, 'good', 'alpha_m', 'draft'),
+   'A reorder draft',      'OR_A',      1000, 'good', 'alpha_m', null, 'draft'),
   ('aaaa0003-0000-0000-0000-000000000002', 'f2000000-0000-0000-0000-00000000000a',
-   'A other draft',        'OR_OTHER',  1000, 'good', 'alpha_m', 'draft'),
+   'A other draft',        'OR_OTHER',  1000, 'good', 'alpha_m', null, 'draft'),
   ('aaaa0003-0000-0000-0000-000000000003', 'f2000000-0000-0000-0000-00000000000a',
-   'A reorder active',     'OR_ACTIVE', 1000, 'good', 'alpha_m', 'active'),
+   'A reorder active',     'OR_ACTIVE', 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
   -- publish_listing fixtures. A numeric shoe size on the happy path, so the
   -- publish flow is proven against the escape-path half of the enum too.
+  -- Each is otherwise-complete including category_id, except PUB_NOCATEGORY
+  -- below which isolates the new requirement the same way PUB_NOSIZE does.
   ('aaaa0004-0000-0000-0000-000000000001', 'f2000000-0000-0000-0000-00000000000a',
-   'A publishable draft',  'PUB_OK',    2500, 'good', 'eu_shoe_42', 'draft'),
+   'A publishable draft',  'PUB_OK',    2500, 'good', 'eu_shoe_42', 'c0000001-0000-4000-8000-000000000001', 'draft'),
   ('aaaa0004-0000-0000-0000-000000000005', 'f2000000-0000-0000-0000-00000000000a',
-   'A draft no photos',    'PUB_NOIMG', 2500, 'good', 'alpha_m', 'draft'),
+   'A draft no photos',    'PUB_NOIMG', 2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'draft'),
   ('aaaa0004-0000-0000-0000-000000000006', 'f2000000-0000-0000-0000-00000000000a',
-   'A ghost photo draft',  'PUB_GHOST', 2500, 'good', 'alpha_m', 'draft'),
+   'A ghost photo draft',  'PUB_GHOST', 2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'draft'),
   ('bbbb0004-0000-0000-0000-000000000001', 'f2000000-0000-0000-0000-00000000000b',
-   'B publishable draft',  'PUB_B',     2500, 'good', 'alpha_m', 'draft');
+   'B publishable draft',  'PUB_B',     2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'draft');
 
--- The four incomplete drafts, each missing exactly one required field.
-insert into public.listings (id, seller_id, title, description, price_amount, condition, size)
+-- The five incomplete drafts, each missing exactly one required field.
+insert into public.listings (id, seller_id, title, description, price_amount, condition, size, category_id)
 values
   ('aaaa0004-0000-0000-0000-000000000002', 'f2000000-0000-0000-0000-00000000000a',
-   null,                'PUB_NOTITLE', 2500, 'good', 'alpha_m'),
+   null,                'PUB_NOTITLE', 2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001'),
   ('aaaa0004-0000-0000-0000-000000000003', 'f2000000-0000-0000-0000-00000000000a',
-   'A draft no price',  'PUB_NOPRICE', null, 'good', 'alpha_m'),
+   'A draft no price',  'PUB_NOPRICE', null, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001'),
   ('aaaa0004-0000-0000-0000-000000000004', 'f2000000-0000-0000-0000-00000000000a',
-   'A draft no cond',   'PUB_NOCOND',  2500, null,   'alpha_m'),
+   'A draft no cond',   'PUB_NOCOND',  2500, null,   'alpha_m', 'c0000001-0000-4000-8000-000000000001'),
   -- Complete in every respect EXCEPT size -- the new publish requirement.
   ('aaaa0004-0000-0000-0000-000000000007', 'f2000000-0000-0000-0000-00000000000a',
-   'A draft no size',   'PUB_NOSIZE',  2500, 'good', null);
+   'A draft no size',   'PUB_NOSIZE',  2500, 'good', null, 'c0000001-0000-4000-8000-000000000001'),
+  -- Complete in every respect EXCEPT category_id -- ROADMAP 2.1's own new
+  -- publish requirement.
+  ('aaaa0004-0000-0000-0000-000000000008', 'f2000000-0000-0000-0000-00000000000a',
+   'A draft no category', 'PUB_NOCATEGORY', 2500, 'good', 'alpha_m', null);
 
 -- Storage objects the RPC tests need to already exist. Only (bucket_id,
 -- name) is written: path_tokens is GENERATED ALWAYS and must never appear
@@ -955,6 +1012,12 @@ select throws_ok(
 );
 
 select throws_ok(
+  $$select public.publish_listing('aaaa0004-0000-0000-0000-000000000008')$$,
+  'P0001', null,
+  'publishing a draft with no category is rejected -- the server, not the client, is authoritative'
+);
+
+select throws_ok(
   $$select public.publish_listing('aaaa0004-0000-0000-0000-000000000005')$$,
   'P0001', null,
   'publishing a draft with zero photos is rejected'
@@ -1043,6 +1106,442 @@ select ok(
   exists(select 1 from public.listing_images
           where storage_path = 'f2000000-0000-0000-0000-00000000000a/aaaa0002-0000-0000-0000-000000000001/i1.jpg'),
   'removing a photo from another seller''s draft is denied'
+);
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+-- ============================================================
+-- 21. ROADMAP 1.6 FIXTURES
+-- ============================================================
+-- Non-draft rows are fully populated (listings_complete_when_not_draft
+-- requires it). ids are readable rather than random:
+--
+--   eeee0001-*  mark_listing_reserved     eeee0002-*  mark_listing_active
+--   eeee0003-*  mark_listing_sold         eeee0004-*  remove_listing
+--   eeee0005-*  update_listing_details
+--
+-- The not-found case for every RPC below reuses
+-- cccc0000-0000-0000-0000-00000000dead, already established earlier in this
+-- file as a listing id that never exists.
+
+reset role;
+
+-- Non-draft rows all carry category_id too (listings_complete_when_not_draft
+-- requires it as of ROADMAP 2.1); drafts in this block omit it, same as they
+-- already omit nothing else required.
+insert into public.listings (id, seller_id, title, description, price_amount, condition, size, category_id, status)
+values
+  -- mark_listing_reserved fixtures
+  ('eeee0001-0000-0000-0000-000000000001', 'f2000000-0000-0000-0000-00000000000a',
+   'MR active',  'MR_ACTIVE',  2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
+  ('eeee0001-0000-0000-0000-000000000002', 'f2000000-0000-0000-0000-00000000000a',
+   'MR draft',   'MR_DRAFT',   2500, 'good', 'alpha_m', null, 'draft'),
+  ('eeee0001-0000-0000-0000-000000000003', 'f2000000-0000-0000-0000-00000000000a',
+   'MR sold',    'MR_SOLD',    2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'sold'),
+  ('eeee0001-0000-0000-0000-000000000004', 'f2000000-0000-0000-0000-00000000000a',
+   'MR removed', 'MR_REMOVED', 2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'removed'),
+  ('eeee0001-0000-0000-0000-000000000006', 'f2000000-0000-0000-0000-00000000000b',
+   'MR B active','MR_B_ACTIVE',2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
+  -- mark_listing_active fixtures
+  ('eeee0002-0000-0000-0000-000000000001', 'f2000000-0000-0000-0000-00000000000a',
+   'MA reserved','MA_RESERVED',2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'reserved'),
+  ('eeee0002-0000-0000-0000-000000000002', 'f2000000-0000-0000-0000-00000000000a',
+   'MA draft',   'MA_DRAFT',   2500, 'good', 'alpha_m', null, 'draft'),
+  ('eeee0002-0000-0000-0000-000000000003', 'f2000000-0000-0000-0000-00000000000a',
+   'MA active',  'MA_ACTIVE',  2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
+  ('eeee0002-0000-0000-0000-000000000004', 'f2000000-0000-0000-0000-00000000000a',
+   'MA sold',    'MA_SOLD',    2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'sold'),
+  ('eeee0002-0000-0000-0000-000000000005', 'f2000000-0000-0000-0000-00000000000a',
+   'MA removed', 'MA_REMOVED', 2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'removed'),
+  ('eeee0002-0000-0000-0000-000000000006', 'f2000000-0000-0000-0000-00000000000b',
+   'MA B reserved','MA_B_RESERVED',2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'reserved'),
+  -- mark_listing_sold fixtures
+  ('eeee0003-0000-0000-0000-000000000001', 'f2000000-0000-0000-0000-00000000000a',
+   'MS active',  'MS_ACTIVE',  2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
+  ('eeee0003-0000-0000-0000-000000000002', 'f2000000-0000-0000-0000-00000000000a',
+   'MS reserved','MS_RESERVED',2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'reserved'),
+  ('eeee0003-0000-0000-0000-000000000003', 'f2000000-0000-0000-0000-00000000000a',
+   'MS draft',   'MS_DRAFT',   2500, 'good', 'alpha_m', null, 'draft'),
+  ('eeee0003-0000-0000-0000-000000000004', 'f2000000-0000-0000-0000-00000000000a',
+   'MS removed', 'MS_REMOVED', 2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'removed'),
+  ('eeee0003-0000-0000-0000-000000000005', 'f2000000-0000-0000-0000-00000000000b',
+   'MS B active','MS_B_ACTIVE',2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
+  -- remove_listing fixtures
+  ('eeee0004-0000-0000-0000-000000000001', 'f2000000-0000-0000-0000-00000000000a',
+   'RM active',  'RM_ACTIVE',  2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
+  ('eeee0004-0000-0000-0000-000000000002', 'f2000000-0000-0000-0000-00000000000a',
+   'RM reserved','RM_RESERVED',2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'reserved'),
+  ('eeee0004-0000-0000-0000-000000000003', 'f2000000-0000-0000-0000-00000000000a',
+   'RM draft',   'RM_DRAFT',   2500, 'good', 'alpha_m', null, 'draft'),
+  ('eeee0004-0000-0000-0000-000000000004', 'f2000000-0000-0000-0000-00000000000a',
+   'RM sold',    'RM_SOLD',    2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'sold'),
+  ('eeee0004-0000-0000-0000-000000000005', 'f2000000-0000-0000-0000-00000000000b',
+   'RM B active','RM_B_ACTIVE',2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
+  -- update_listing_details fixtures
+  ('eeee0005-0000-0000-0000-000000000001', 'f2000000-0000-0000-0000-00000000000a',
+   'UD active',  'UD_ACTIVE',  2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
+  ('eeee0005-0000-0000-0000-000000000002', 'f2000000-0000-0000-0000-00000000000a',
+   'UD reserved','UD_RESERVED',2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'reserved'),
+  ('eeee0005-0000-0000-0000-000000000003', 'f2000000-0000-0000-0000-00000000000a',
+   'UD draft',   'UD_DRAFT',   2500, 'good', 'alpha_m', null, 'draft'),
+  ('eeee0005-0000-0000-0000-000000000004', 'f2000000-0000-0000-0000-00000000000a',
+   'UD sold',    'UD_SOLD',    2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'sold'),
+  ('eeee0005-0000-0000-0000-000000000005', 'f2000000-0000-0000-0000-00000000000a',
+   'UD removed', 'UD_REMOVED', 2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'removed'),
+  ('eeee0005-0000-0000-0000-000000000006', 'f2000000-0000-0000-0000-00000000000a',
+   'UD invalid', 'UD_INVALID', 2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
+  ('eeee0005-0000-0000-0000-000000000007', 'f2000000-0000-0000-0000-00000000000b',
+   'UD B active','UD_B_ACTIVE',2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active');
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+-- ============================================================
+-- 22. mark_listing_reserved
+-- ============================================================
+
+select is(
+  (select l.status from public.mark_listing_reserved('eeee0001-0000-0000-0000-000000000001') l),
+  'reserved'::listing_status,
+  'an active listing is marked reserved'
+);
+
+select throws_ok(
+  $$select public.mark_listing_reserved('eeee0001-0000-0000-0000-000000000001')$$,
+  'P0001', null,
+  'marking an already-reserved listing as reserved again is rejected -- no-op not allowed'
+);
+
+select throws_ok(
+  $$select public.mark_listing_reserved('eeee0001-0000-0000-0000-000000000002')$$,
+  'P0001', null,
+  'marking a draft as reserved is rejected'
+);
+
+select throws_ok(
+  $$select public.mark_listing_reserved('eeee0001-0000-0000-0000-000000000003')$$,
+  'P0001', null,
+  'marking a sold (terminal) listing as reserved is rejected'
+);
+
+select throws_ok(
+  $$select public.mark_listing_reserved('eeee0001-0000-0000-0000-000000000004')$$,
+  'P0001', null,
+  'marking a removed (terminal) listing as reserved is rejected'
+);
+
+select throws_ok(
+  $$select public.mark_listing_reserved('cccc0000-0000-0000-0000-00000000dead')$$,
+  'P0002', null,
+  'mark_listing_reserved on a listing that does not exist is rejected as not-found'
+);
+
+select throws_ok(
+  $$select public.mark_listing_reserved('eeee0001-0000-0000-0000-000000000006')$$,
+  '42501', null,
+  'marking another seller''s listing as reserved is rejected'
+);
+
+set local role anon;
+select throws_ok(
+  $$select public.mark_listing_reserved('eeee0001-0000-0000-0000-000000000001')$$,
+  '42501', null,
+  'anon cannot execute mark_listing_reserved'
+);
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+-- ============================================================
+-- 23. mark_listing_active
+-- ============================================================
+
+select is(
+  (select l.status from public.mark_listing_active('eeee0002-0000-0000-0000-000000000001') l),
+  'active'::listing_status,
+  'a reserved listing is marked active'
+);
+
+-- The distinct, more useful message: not the generic wrong-status message.
+select throws_ok(
+  $$select public.mark_listing_active('eeee0002-0000-0000-0000-000000000002')$$,
+  'P0001',
+  'A draft must be published with publish_listing, not mark_listing_active',
+  'marking a draft as active via mark_listing_active is rejected with a message pointing at publish_listing'
+);
+
+select throws_ok(
+  $$select public.mark_listing_active('eeee0002-0000-0000-0000-000000000003')$$,
+  'P0001', null,
+  'marking an already-active listing as active is rejected'
+);
+
+select throws_ok(
+  $$select public.mark_listing_active('eeee0002-0000-0000-0000-000000000004')$$,
+  'P0001', null,
+  'marking a sold (terminal) listing as active is rejected'
+);
+
+select throws_ok(
+  $$select public.mark_listing_active('eeee0002-0000-0000-0000-000000000005')$$,
+  'P0001', null,
+  'marking a removed (terminal) listing as active is rejected'
+);
+
+select throws_ok(
+  $$select public.mark_listing_active('cccc0000-0000-0000-0000-00000000dead')$$,
+  'P0002', null,
+  'mark_listing_active on a listing that does not exist is rejected as not-found'
+);
+
+select throws_ok(
+  $$select public.mark_listing_active('eeee0002-0000-0000-0000-000000000006')$$,
+  '42501', null,
+  'marking another seller''s listing as active is rejected'
+);
+
+set local role anon;
+select throws_ok(
+  $$select public.mark_listing_active('eeee0002-0000-0000-0000-000000000001')$$,
+  '42501', null,
+  'anon cannot execute mark_listing_active'
+);
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+-- ============================================================
+-- 24. mark_listing_sold
+-- ============================================================
+
+select is(
+  (select l.status from public.mark_listing_sold('eeee0003-0000-0000-0000-000000000001') l),
+  'sold'::listing_status,
+  'an active listing is marked sold'
+);
+
+select is(
+  (select l.status from public.mark_listing_sold('eeee0003-0000-0000-0000-000000000002') l),
+  'sold'::listing_status,
+  'a reserved listing is marked sold'
+);
+
+select throws_ok(
+  $$select public.mark_listing_sold('eeee0003-0000-0000-0000-000000000001')$$,
+  'P0001', null,
+  'marking an already-sold listing as sold again is rejected -- sold is terminal'
+);
+
+select throws_ok(
+  $$select public.mark_listing_sold('eeee0003-0000-0000-0000-000000000003')$$,
+  'P0001', null,
+  'marking a draft as sold is rejected'
+);
+
+select throws_ok(
+  $$select public.mark_listing_sold('eeee0003-0000-0000-0000-000000000004')$$,
+  'P0001', null,
+  'marking a removed (terminal) listing as sold is rejected'
+);
+
+select throws_ok(
+  $$select public.mark_listing_sold('cccc0000-0000-0000-0000-00000000dead')$$,
+  'P0002', null,
+  'mark_listing_sold on a listing that does not exist is rejected as not-found'
+);
+
+select throws_ok(
+  $$select public.mark_listing_sold('eeee0003-0000-0000-0000-000000000005')$$,
+  '42501', null,
+  'marking another seller''s listing as sold is rejected'
+);
+
+set local role anon;
+select throws_ok(
+  $$select public.mark_listing_sold('eeee0003-0000-0000-0000-000000000002')$$,
+  '42501', null,
+  'anon cannot execute mark_listing_sold'
+);
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+-- ============================================================
+-- 25. remove_listing
+-- ============================================================
+
+select is(
+  (select l.status from public.remove_listing('eeee0004-0000-0000-0000-000000000001') l),
+  'removed'::listing_status,
+  'an active listing is removed'
+);
+
+select is(
+  (select l.status from public.remove_listing('eeee0004-0000-0000-0000-000000000002') l),
+  'removed'::listing_status,
+  'a reserved listing is removed'
+);
+
+select throws_ok(
+  $$select public.remove_listing('eeee0004-0000-0000-0000-000000000001')$$,
+  'P0001', null,
+  'removing an already-removed listing again is rejected'
+);
+
+select throws_ok(
+  $$select public.remove_listing('eeee0004-0000-0000-0000-000000000003')$$,
+  'P0001', null,
+  'removing a draft is rejected -- a draft is removed via deleteDraft instead'
+);
+
+select throws_ok(
+  $$select public.remove_listing('eeee0004-0000-0000-0000-000000000004')$$,
+  'P0001', null,
+  'removing a sold listing is rejected -- sold is permanent history, not removable this way'
+);
+
+select throws_ok(
+  $$select public.remove_listing('cccc0000-0000-0000-0000-00000000dead')$$,
+  'P0002', null,
+  'remove_listing on a listing that does not exist is rejected as not-found'
+);
+
+select throws_ok(
+  $$select public.remove_listing('eeee0004-0000-0000-0000-000000000005')$$,
+  '42501', null,
+  'removing another seller''s listing is rejected'
+);
+
+set local role anon;
+select throws_ok(
+  $$select public.remove_listing('eeee0004-0000-0000-0000-000000000002')$$,
+  '42501', null,
+  'anon cannot execute remove_listing'
+);
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+-- ============================================================
+-- 26. update_listing_details
+-- ============================================================
+
+-- 'c0000002-0000-4000-8000-000000000004' is the seeded Men > Shoes leaf --
+-- used here specifically (rather than the Women > Tops leaf most other
+-- fixtures use) so a successful edit is also proven to actually change
+-- category_id, not merely leave whatever the fixture already had.
+select is(
+  (select l.title from public.update_listing_details(
+     'eeee0005-0000-0000-0000-000000000001', 'UD active (edited)', 'edited body', 3000, 'very_good', 'alpha_l',
+     'c0000002-0000-4000-8000-000000000004') l),
+  'UD active (edited)',
+  'editing an active listing''s details succeeds'
+);
+
+-- listings_complete_when_not_draft must never be violated by a successful
+-- edit: the constraint-relevant columns are still all non-null afterwards,
+-- and category_id was actually written to the new value requested.
+select ok(
+  (select title is not null and price_amount is not null and condition is not null and size is not null
+          and category_id is not null
+     from public.listings where id = 'eeee0005-0000-0000-0000-000000000001'),
+  'the edited active listing still satisfies listings_complete_when_not_draft'
+);
+
+select is(
+  (select category_id from public.listings where id = 'eeee0005-0000-0000-0000-000000000001'),
+  'c0000002-0000-4000-8000-000000000004'::uuid,
+  'the edit actually changed category_id to the requested leaf'
+);
+
+select is(
+  (select l.status from public.update_listing_details(
+     'eeee0005-0000-0000-0000-000000000002', 'UD reserved (edited)', 'edited body', 3000, 'very_good', 'alpha_l',
+     'c0000001-0000-4000-8000-000000000001') l),
+  'reserved'::listing_status,
+  'editing a reserved listing''s details succeeds and does not change its status'
+);
+
+select throws_ok(
+  $$select public.update_listing_details('eeee0005-0000-0000-0000-000000000003', 'x', '', 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001')$$,
+  'P0001', null,
+  'editing a draft through update_listing_details is rejected -- drafts use updateDraft instead'
+);
+
+select throws_ok(
+  $$select public.update_listing_details('eeee0005-0000-0000-0000-000000000004', 'x', '', 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001')$$,
+  'P0001', null,
+  'editing a sold (terminal) listing is rejected'
+);
+
+select throws_ok(
+  $$select public.update_listing_details('eeee0005-0000-0000-0000-000000000005', 'x', '', 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001')$$,
+  'P0001', null,
+  'editing a removed (terminal) listing is rejected'
+);
+
+select throws_ok(
+  $$select public.update_listing_details('eeee0005-0000-0000-0000-000000000006', null, '', 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001')$$,
+  'P0001', null,
+  'editing with a null title is rejected'
+);
+
+select throws_ok(
+  $$select public.update_listing_details('eeee0005-0000-0000-0000-000000000006', '  ', '', 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001')$$,
+  'P0001', null,
+  'editing with a whitespace-only title is rejected -- trimmed, matching publish_listing'
+);
+
+select throws_ok(
+  $$select public.update_listing_details('eeee0005-0000-0000-0000-000000000006', 'Valid title', repeat('x', 5001), 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001')$$,
+  'P0001', null,
+  'editing with an over-5000-char description is rejected with a friendly error, not the bare listings_description_length CHECK'
+);
+
+select throws_ok(
+  $$select public.update_listing_details('eeee0005-0000-0000-0000-000000000006', 'Valid title', '', 0, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001')$$,
+  'P0001', null,
+  'editing with a non-positive price is rejected'
+);
+
+select throws_ok(
+  $$select public.update_listing_details('eeee0005-0000-0000-0000-000000000006', 'Valid title', '', 1000, null, 'alpha_m', 'c0000001-0000-4000-8000-000000000001')$$,
+  'P0001', null,
+  'editing with a null condition is rejected'
+);
+
+select throws_ok(
+  $$select public.update_listing_details('eeee0005-0000-0000-0000-000000000006', 'Valid title', '', 1000, 'good', null, 'c0000001-0000-4000-8000-000000000001')$$,
+  'P0001', null,
+  'editing with a null size is rejected'
+);
+
+select throws_ok(
+  $$select public.update_listing_details('eeee0005-0000-0000-0000-000000000006', 'Valid title', '', 1000, 'good', 'alpha_m', null)$$,
+  'P0001', null,
+  'editing with a null category is rejected'
+);
+
+-- None of the rejected attempts above actually changed the row.
+select is(
+  (select title from public.listings where id = 'eeee0005-0000-0000-0000-000000000006'),
+  'UD invalid',
+  'a listing targeted only by rejected edits keeps its original title'
+);
+
+select throws_ok(
+  $$select public.update_listing_details('cccc0000-0000-0000-0000-00000000dead', 'x', '', 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001')$$,
+  'P0002', null,
+  'update_listing_details on a listing that does not exist is rejected as not-found'
+);
+
+select throws_ok(
+  $$select public.update_listing_details('eeee0005-0000-0000-0000-000000000007', 'x', '', 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001')$$,
+  '42501', null,
+  'editing another seller''s listing is rejected'
+);
+
+set local role anon;
+select throws_ok(
+  $$select public.update_listing_details('eeee0005-0000-0000-0000-000000000001', 'x', '', 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001')$$,
+  '42501', null,
+  'anon cannot execute update_listing_details'
 );
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000a","role":"authenticated"}';

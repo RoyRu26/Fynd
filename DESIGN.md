@@ -423,6 +423,8 @@ The visual anchor of the product. Always dark. Full-viewport, vertically paged, 
 
 **Performance:** only the visible page and its immediate neighbours keep active media.
 
+**Scope toggle (ROADMAP 3.2).** A "For you" / "Following" pair sits above the feed as screen-level chrome, not card content — it is **not** subject to the chrome budget's "at most two chips" cap above, which bounds what one card overlay shows, not the screen's own top-level navigation. Implemented as two `Chip`s in their existing `selectable`/`selected` mode (§13) — no new SegmentedControl primitive; two carefully-indistinguishable options is exactly what the second-caller rule (§15.2) asks to inline rather than invent a component for. Introduces no new scrim or gradient: each card's `gradientScrim` is already transparent at its top stop, so legibility comes from the Chip's own opaque fill, the same mechanism the card's mid-overlay condition/size chips already rely on.
+
 ### 14.2 Search / Explore
 
 The inverse of the feed: dense where the feed is singular. Borrows the **Instagram Explore dense, image-first grid model** — the structure, not the look. Follows system appearance.
@@ -444,9 +446,11 @@ One step per screen, generous spacing, large touch targets. The photo grid is th
 
 **AI assistance appears as pre-filled, editable fields**, visually marked as suggestions with a subtle accent border or a small "suggested" chip. It is never a separate magic surface, and the user can always edit or discard. Same `TextField` and `Button` as auth.
 
+**Category (ROADMAP 2.1)** is a pressable field, not chips: a `Sheet`-based two-level drill-down (`CategoryPickerSheet`) picks a top-level group, then one of its leaves, since ~35 leaves across 6 groups would be an unusable wall of chips.
+
 ### 14.5 Inbox
 
-Pure `ListRow` + `Avatar`. The calmest surface in the app — it is the negative space that makes the feed feel loud. Unread is indicated by weight, a dot, **and** an accessible label; never color alone.
+Pure `ListRow` + `Avatar`, with a small listing cover thumbnail in the row's trailing slot. The calmest surface in the app — it is the negative space that makes the feed feel loud. Unread is indicated by weight, a dot, **and** an accessible label; never color alone.
 
 ### 14.6 Listing detail
 
@@ -454,7 +458,13 @@ The feed card unfolded: same elements, same order, more room.
 
 Horizontally paged gallery (same image wrapper) → price → title → attribute chips → seller row → description → pinned bottom action bar.
 
+**Attribute chips (ROADMAP 2.1)** are three, not two: condition, size, and a category breadcrumb (e.g. "Women › Shoes"). Unlike the feed card's "at most two chips," this screen has no numeric cap.
+
 **[OPEN] — dark treatment.** The media/gallery area may be dark while the informational portion follows the system theme. Not locked; decide with the real design in hand.
+
+### 14.7 Conversation thread
+
+**[OPEN] — no visual spec yet.** Shipped as a deliberate functional placeholder: plain left/right-aligned `Text` rows (own messages right, the other party's left), no bubble fill, shape, or shadow invented. Replace the styling once a real design exists; the data contract (message list + composer) is not expected to change.
 
 ---
 
@@ -485,4 +495,4 @@ Tracked deliberately. Each must be resolved explicitly, not by improvisation.
 | 8 | **Destructive-button treatment** | Specified in §8, **still not implemented, still blocking.** The Olive & Oat palette removed the hue collision that motivated it (1° → 82°), which lowers the urgency but not the requirement: §12.4 forbids color-only status, and the dark-scheme margin leans on hue, which dichromats lose. |
 | 4 | **Exact elevation shadow values** | `raised` now has concrete values (§8). `overlay`/`modal` remain unspecified. |
 | 9 | **Ambient glow intensity on oat** | Alphas were carried over from the red-on-cream tuning and are almost certainly wrong for olive-on-oat — a low-chroma green reads as a shadow rather than a glow if too faint. Retune on device (§4a). |
-| 5 | **Schema gaps blocking these patterns** | No `size` column, and no `categories`, `favorites`, or `follows` tables exist. The feed hierarchy (§14.1) and Search filters (§14.2) depend on them. |
+| 5 | ~~**Schema gaps blocking these patterns**~~ | **Closed.** `size`, `favorites`, `categories`, and now `follows` (ROADMAP 3.1) are all shipped — `size`/`favorites` for the feed hierarchy §14.1 / Search filters §14.2's dependencies, `categories` via ROADMAP 2.1's seeded taxonomy table, `follows` backing §14.3's identity header (counts, follow button). |

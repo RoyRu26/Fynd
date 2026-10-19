@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { SymbolView } from 'expo-symbols';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Directions, Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -19,16 +19,20 @@ import { duration, spring } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 
 /**
- * Tap handling for the Home feed's full-bleed photo: a single tap opens the
- * listing detail screen, a double tap favorites it (with a centered,
- * decorative heart pop). Isolated here so feed-card.tsx stays a thin
- * composition of this plus the existing favorite button, rather than
- * growing its own gesture/animation code.
+ * Tap and swipe handling for the Home feed's full-bleed photo: a single tap
+ * or a leftward swipe both open the listing detail screen (the swipe is a
+ * second, more forgiving way to reach the same "see this post's info"
+ * destination — a quick horizontal flick is far more reliable to land than
+ * a precise stationary tap on a screen that is simultaneously being paged
+ * vertically), a double tap favorites it (with a centered, decorative heart
+ * pop). Isolated here so feed-card.tsx stays a thin composition of this
+ * plus the existing favorite button, rather than growing its own
+ * gesture/animation code.
  *
  * This only ever wraps the photo, never the metadata/favorite-button
  * overlay rendered above it in feed-card.tsx — those are separate sibling
  * views higher in z-order, so a tap landing on the heart IconButton is
- * handled by that Pressable directly and never reaches these Tap gestures.
+ * handled by that Pressable directly and never reaches these gestures.
  *
  * Single vs double tap is `Gesture.Exclusive(doubleTap, singleTap)` — RNGH's
  * own documented pattern for this exact ambiguity, not a hand-rolled
@@ -40,11 +44,27 @@ import { useAppTheme } from '@/design/theme-provider';
  * recognized — the cost is a single tap waiting out that same short window,
  * which is the inherent, unavoidable trade-off of supporting both gestures
  * on the same target (the same trade-off Instagram/every double-tap-to-like
- * feed makes). Either gesture's own `maxDistance` default is what makes a
- * scroll/drag fail both outright, so normal FlatList paging is untouched.
- * `.runOnJS(true)` on both because the callbacks reach a TanStack mutation
- * and `expo-router` navigation on the JS thread anyway, and neither has a
- * latency budget tight enough to need UI-thread handling.
+ * feed makes).
+ *
+ * Both tap gestures set an explicit, generous `.maxDistance` (RNGH's own
+ * default is tight — a few pixels — which is what made taps feel like they
+ * only landed in a tiny patch of the card: completely ordinary finger
+ * jitter during a press was enough to make the recognizer treat it as a
+ * drag and fail the tap outright). The wider budget still fails outright,
+ * and defers to the surrounding FlatList, for any touch that moves far
+ * enough to be an actual scroll/drag — normal vertical paging is untouched.
+ *
+ * `swipeLeft` is a separate `Gesture.Fling()` constrained to
+ * `Directions.LEFT` — direction-gated, so a vertical flick (paging to the
+ * next post) never satisfies it and falls through to the FlatList exactly
+ * as before. Composed with the tap pair via `Gesture.Race`: a fling and a
+ * (near-)stationary tap can never both be the same touch, but Race still
+ * guarantees whichever recognizes first cancels the other outright rather
+ * than risking both callbacks firing for one gesture.
+ *
+ * `.runOnJS(true)` on all three because the callbacks reach a TanStack
+ * mutation and `expo-router` navigation on the JS thread anyway, and none
+ * has a latency budget tight enough to need UI-thread handling.
  *
  * The heart animation's trigger is routed through a counter + `useEffect`
  * rather than mutating the shared values directly inside the gesture
@@ -70,6 +90,11 @@ const APPEAR_DURATION = duration.instant;
 const HOLD_DURATION = duration.slow;
 const FADE_DURATION = duration.normal;
 const TAP_WINDOW_MS = 250;
+// See the header comment: RNGH's own Tap default is a few pixels, tight
+// enough that ordinary finger jitter during a press reads as a drag and
+// fails the tap. A touch still has to move this far before it's treated as
+// one, so a real scroll/drag is unaffected.
+const TAP_MAX_DISTANCE = 24;
 
 export type FeedCardGesturesProps = {
   children: ReactNode;
@@ -79,7 +104,11 @@ export type FeedCardGesturesProps = {
    * component only detects the gesture and plays the animation.
    */
   onDoubleTap: () => void;
-  /** Called once per recognized single tap — opens the listing detail. */
+  /**
+   * Called once per recognized single tap OR leftward swipe — both open
+   * the listing detail; see the header comment for why the swipe exists as
+   * a second way to reach it.
+   */
   onSingleTap: () => void;
 };
 
@@ -123,6 +152,7 @@ export function FeedCardGestures({ children, onDoubleTap, onSingleTap }: FeedCar
         .numberOfTaps(2)
         .maxDuration(TAP_WINDOW_MS)
         .maxDelay(TAP_WINDOW_MS)
+        .maxDistance(TAP_MAX_DISTANCE)
         .runOnJS(true)
         .onEnd((_event, success) => {
           if (!success) return;
@@ -141,6 +171,7 @@ export function FeedCardGestures({ children, onDoubleTap, onSingleTap }: FeedCar
       Gesture.Tap()
         .numberOfTaps(1)
         .maxDuration(TAP_WINDOW_MS)
+        .maxDistance(TAP_MAX_DISTANCE)
         .runOnJS(true)
         .onEnd((_event, success) => {
           if (success) onSingleTap();
@@ -148,10 +179,31 @@ export function FeedCardGestures({ children, onDoubleTap, onSingleTap }: FeedCar
     [onSingleTap],
   );
 
-  // doubleTap gets first refusal — see the header comment for exactly why
-  // this ordering is what makes a single tap wait out the double-tap window
-  // instead of firing immediately.
-  const composedGesture = useMemo(() => Gesture.Exclusive(doubleTap, singleTap), [doubleTap, singleTap]);
+  // Direction-gated, so a vertical flick (paging to the next post) never
+  // satisfies this and falls straight through to the FlatList. See the
+  // header comment for why this exists alongside the tap above rather than
+  // replacing it.
+  const swipeLeft = useMemo(
+    () =>
+      Gesture.Fling()
+        .direction(Directions.LEFT)
+        .runOnJS(true)
+        .onEnd((_event, success) => {
+          if (success) onSingleTap();
+        }),
+    [onSingleTap],
+  );
+
+  // doubleTap gets first refusal within the tap pair — see the header
+  // comment for exactly why this ordering is what makes a single tap wait
+  // out the double-tap window instead of firing immediately. The tap pair
+  // races against swipeLeft: a fling and a (near-)stationary tap can never
+  // both be the same touch, but Race still guarantees whichever recognizes
+  // first cancels the other outright.
+  const composedGesture = useMemo(
+    () => Gesture.Race(Gesture.Exclusive(doubleTap, singleTap), swipeLeft),
+    [doubleTap, singleTap, swipeLeft],
+  );
 
   const heartStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,

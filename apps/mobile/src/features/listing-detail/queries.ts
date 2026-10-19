@@ -35,12 +35,14 @@ type FeedInfiniteData = InfiniteData<FeedListing[], FeedCursor>;
  * `FAVORITE_MUTATION_KEY` (so a toggle in flight from either screen is
  * visible to both), and the feed's own `setFavoriteInPages` helper. The only
  * new logic is patching this screen's own query cache entry — plus, in the
- * same `onMutate`, patching Home's already-mounted feed cache too (both
- * `includeOwn` variants, unconditionally; `setFavoriteInPages` is a no-op
- * when a given cache entry doesn't currently hold this listing). Pushed
- * Stack screens don't unmount the screen underneath them, so without this,
- * favoriting here and navigating back to Home would show a stale heart
- * until the next feed refetch.
+ * same `onMutate`, patching Home's already-mounted feed cache too (every
+ * `includeOwn` x `followingOnly` combination, unconditionally;
+ * `setFavoriteInPages` is a no-op when a given cache entry doesn't currently
+ * hold this listing — Home only ever has one of the two `followingOnly`
+ * entries mounted at a time, via its `key={scope}` remount, so patching both
+ * is cheap and never wrong). Pushed Stack screens don't unmount the screen
+ * underneath them, so without this, favoriting here and navigating back to
+ * Home would show a stale heart until the next feed refetch.
  */
 export function useToggleFavoriteFromDetail(listingId: string) {
   const queryClient = useQueryClient();
@@ -65,14 +67,16 @@ export function useToggleFavoriteFromDetail(listingId: string) {
         current ? setFavoriteInDetail(current, !isFavorited) : current,
       );
 
-      const feedSnapshots = ([false, true] as const).map((includeOwn) => {
-        const key = feedKeys.list(includeOwn);
-        const previous = queryClient.getQueryData<FeedInfiniteData>(key);
-        queryClient.setQueryData<FeedInfiniteData>(key, (current) =>
-          current ? setFavoriteInPages(current, listingId, !isFavorited) : current,
-        );
-        return { key, previous };
-      });
+      const feedSnapshots = ([false, true] as const).flatMap((includeOwn) =>
+        ([false, true] as const).map((followingOnly) => {
+          const key = feedKeys.list(includeOwn, followingOnly);
+          const previous = queryClient.getQueryData<FeedInfiniteData>(key);
+          queryClient.setQueryData<FeedInfiniteData>(key, (current) =>
+            current ? setFavoriteInPages(current, listingId, !isFavorited) : current,
+          );
+          return { key, previous };
+        }),
+      );
 
       return { previousDetail, feedSnapshots };
     },

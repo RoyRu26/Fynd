@@ -8,16 +8,14 @@
  * directly unit-testable.
  */
 
-export type SellerProfile = {
+export type NormalizedSellerProfile = {
   sellerId: string;
   username: string | null;
   displayName: string | null;
-  /** Unresolved — there is no signed-URL pipeline for avatars yet (same gap
-   * every other screen in this app already lives with; see Avatar's own
-   * `source` prop and DESIGN.md §13's note that avatar_path is null for
-   * every user today). Kept here so the field travels, not rendered. */
   avatarPath: string | null;
 };
+
+export type SellerProfile = NormalizedSellerProfile & { avatarUrl: string | null };
 
 export type SellerProfileRow = {
   id: string;
@@ -27,7 +25,7 @@ export type SellerProfileRow = {
 };
 
 /** `null` means the seller id didn't resolve to a row at all. */
-export function normalizeSellerProfileRow(row: SellerProfileRow | null): SellerProfile | null {
+export function normalizeSellerProfileRow(row: SellerProfileRow | null): NormalizedSellerProfile | null {
   if (row === null) {
     return null;
   }
@@ -36,6 +34,23 @@ export function normalizeSellerProfileRow(row: SellerProfileRow | null): SellerP
     username: row.username,
     displayName: row.display_name,
     avatarPath: row.avatar_path,
+  };
+}
+
+/**
+ * Attaches the resolved avatar URL. Null-tolerant, NOT throw-on-missing —
+ * unlike `associateSellerListingCoverUrls` below, an avatar is a legitimate
+ * permanent null state (onboarding never sets one), matching
+ * `associateInboxCoverUrls`'s tolerant pattern rather than
+ * `associateCoverUrls`'s strict one.
+ */
+export function associateSellerAvatarUrl(
+  profile: NormalizedSellerProfile,
+  urlsByPath: Record<string, string>,
+): SellerProfile {
+  return {
+    ...profile,
+    avatarUrl: profile.avatarPath ? urlsByPath[profile.avatarPath] ?? null : null,
   };
 }
 

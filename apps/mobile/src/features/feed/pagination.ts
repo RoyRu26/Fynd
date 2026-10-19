@@ -35,12 +35,17 @@ export type FeedListing = {
   sellerUsername: string | null;
   sellerDisplayName: string | null;
   sellerAvatarPath: string | null;
+  sellerAvatarUrl: string | null;
   coverStoragePath: string;
   coverUrl: string;
   isFavorited: boolean;
 };
 
-export type NormalizedFeedRow = Omit<FeedListing, 'coverUrl'>;
+export type NormalizedFeedRow = Omit<FeedListing, 'coverUrl' | 'sellerAvatarUrl'>;
+
+/** The intermediate shape after cover-url resolution but before seller
+ * avatar-url resolution — see api.ts's `fetchFeedPage`. */
+export type FeedListingWithCover = Omit<FeedListing, 'sellerAvatarUrl'>;
 
 /**
  * Row -> domain normalization.
@@ -102,7 +107,7 @@ export function normalizeFeedRow(row: FeedListingRpcRow): NormalizedFeedRow {
 export function associateCoverUrls(
   rows: NormalizedFeedRow[],
   urlsByPath: Record<string, string>,
-): FeedListing[] {
+): FeedListingWithCover[] {
   return rows.map((row) => {
     const coverUrl = urlsByPath[row.coverStoragePath];
     if (!coverUrl) {
@@ -110,6 +115,25 @@ export function associateCoverUrls(
     }
     return { ...row, coverUrl };
   });
+}
+
+/**
+ * Attaches each row's resolved seller avatar URL, keyed by storage path.
+ * Null-tolerant, NOT throw-on-missing — unlike `associateCoverUrls` above,
+ * an avatar is a legitimate permanent null state (onboarding never sets
+ * one), matching `associateInboxCoverUrls`'s tolerant pattern rather than
+ * `associateCoverUrls`'s strict one. Callers dedupe seller avatar paths
+ * across a page before requesting signed URLs (see api.ts) — this function
+ * itself is a plain keyed lookup and does not need to know about that.
+ */
+export function associateAvatarUrls(
+  rows: FeedListingWithCover[],
+  urlsByPath: Record<string, string>,
+): FeedListing[] {
+  return rows.map((row) => ({
+    ...row,
+    sellerAvatarUrl: row.sellerAvatarPath ? urlsByPath[row.sellerAvatarPath] ?? null : null,
+  }));
 }
 
 /**

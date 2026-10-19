@@ -1,5 +1,7 @@
 import { createListingImageUrls } from '@/features/listings/api';
+import { createAvatarUrls } from '@/features/profile/api';
 import {
+  associateSellerAvatarUrl,
   associateSellerListingCoverUrls,
   normalizeSellerListingRow,
   normalizeSellerProfileRow,
@@ -43,7 +45,13 @@ export async function fetchSellerProfile(sellerId: string): Promise<SellerProfil
     .maybeSingle();
   if (error) throw error;
 
-  return normalizeSellerProfileRow(data as SellerProfileRow | null);
+  const normalized = normalizeSellerProfileRow(data as SellerProfileRow | null);
+  if (normalized === null) {
+    return null;
+  }
+
+  const urlsByPath = await createAvatarUrls(normalized.avatarPath ? [normalized.avatarPath] : []);
+  return associateSellerAvatarUrl(normalized, urlsByPath);
 }
 
 export async function fetchSellerListingsPage(params: {

@@ -29,15 +29,19 @@ export const feedKeys = {
   // includeOwn stays part of the key — production Home always calls this
   // with false, but keeping it here rather than hardcoding it is what lets
   // local testing flip it on for the single-account fixture without the
-  // two modes silently sharing a cache entry.
-  list: (includeOwn: boolean) => [...feedKeys.all, 'list', includeOwn] as const,
+  // two modes silently sharing a cache entry. followingOnly joins it for
+  // the same reason, ROADMAP 3.2's "For you"/"Following" toggle: the two
+  // scopes are different result sets entirely, so they need their own
+  // cache entries rather than one key that silently mixes them.
+  list: (includeOwn: boolean, followingOnly: boolean) =>
+    [...feedKeys.all, 'list', includeOwn, followingOnly] as const,
 };
 
-export function useFeed(includeOwn: boolean = false) {
+export function useFeed(includeOwn: boolean = false, followingOnly: boolean = false) {
   return useInfiniteQuery({
-    queryKey: feedKeys.list(includeOwn),
+    queryKey: feedKeys.list(includeOwn, followingOnly),
     queryFn: ({ pageParam }: { pageParam: FeedCursor }) =>
-      fetchFeedPage({ limit: FEED_PAGE_SIZE, cursor: pageParam, includeOwn }),
+      fetchFeedPage({ limit: FEED_PAGE_SIZE, cursor: pageParam, includeOwn, followingOnly }),
     initialPageParam: null as FeedCursor,
     getNextPageParam: (lastPage: FeedListing[]) => deriveNextCursor(lastPage, FEED_PAGE_SIZE),
   });
@@ -85,10 +89,15 @@ type FeedInfiniteData = InfiniteData<FeedListing[], FeedCursor>;
  * signing call), and can re-slice page boundaries under a user who is
  * mid-scroll. The optimistic value is already what the server now holds;
  * `onError` restores the pre-mutation snapshot if it isn't.
+ *
+ * `includeOwn`/`followingOnly` must match the `useFeed` call backing the
+ * screen that renders the card doing the toggling, so this patches the SAME
+ * `feedKeys.list` entry that screen is reading — a favorite toggled on the
+ * "Following" tab must land in that tab's own cache, not "For you"'s.
  */
-export function useToggleFavorite(includeOwn: boolean = false) {
+export function useToggleFavorite(includeOwn: boolean = false, followingOnly: boolean = false) {
   const queryClient = useQueryClient();
-  const queryKey = feedKeys.list(includeOwn);
+  const queryKey = feedKeys.list(includeOwn, followingOnly);
 
   // Derived from the mutation cache, not from local state, so every card
   // reading this hook agrees about what is in flight.

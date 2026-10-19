@@ -10,12 +10,15 @@ import {
 } from '@/features/listings/schemas';
 import { LISTING_SIZES } from '@/features/listings/size';
 
+const VALID_CATEGORY_ID = 'c0000001-0000-4000-8000-000000000001';
+
 const validForm = {
   title: 'Vintage denim jacket',
   description: 'Barely worn.',
   price: '24.50',
   condition: 'good' as const,
   size: 'alpha_m' as const,
+  categoryId: VALID_CATEGORY_ID,
 };
 
 describe('draftListingSchema', () => {
@@ -27,10 +30,12 @@ describe('draftListingSchema', () => {
       price: 2450,
       condition: 'good',
       size: 'alpha_m',
+      categoryId: VALID_CATEGORY_ID,
     });
   });
 
-  // M1 made title/price/condition nullable precisely so this is legal.
+  // M1 made title/price/condition nullable precisely so this is legal; size
+  // and categoryId (ROADMAP 2.1) follow the same rule.
   it('accepts a fully empty draft, mapping blanks to null', () => {
     const result = draftListingSchema.parse({
       title: '',
@@ -38,6 +43,7 @@ describe('draftListingSchema', () => {
       price: '',
       condition: null,
       size: null,
+      categoryId: null,
     });
     expect(result).toEqual({
       title: null,
@@ -45,6 +51,7 @@ describe('draftListingSchema', () => {
       price: null,
       condition: null,
       size: null,
+      categoryId: null,
     });
   });
 
@@ -120,6 +127,18 @@ describe('draftListingSchema', () => {
       expect(draftListingSchema.safeParse({ ...validForm, size }).success).toBe(true);
     }
   });
+
+  // The draft half of the category contract (ROADMAP 2.1): a seller can save
+  // progress before picking a category, exactly as with size.
+  it('accepts a draft with no category', () => {
+    expect(draftListingSchema.safeParse({ ...validForm, categoryId: null }).success).toBe(true);
+  });
+
+  it('rejects a categoryId that is not a UUID', () => {
+    expect(draftListingSchema.safeParse({ ...validForm, categoryId: 'women-tops' }).success).toBe(
+      false,
+    );
+  });
 });
 
 describe('publishableListingSchema', () => {
@@ -130,6 +149,7 @@ describe('publishableListingSchema', () => {
       price: 2450,
       condition: 'good',
       size: 'alpha_m',
+      categoryId: VALID_CATEGORY_ID,
     });
   });
 
@@ -170,6 +190,19 @@ describe('publishableListingSchema', () => {
       true,
     );
   });
+
+  // ROADMAP 2.1: publishing now requires a category, same as condition/size.
+  it('requires a category', () => {
+    expect(
+      publishableListingSchema.safeParse({ ...validForm, categoryId: null }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a categoryId that is not a UUID', () => {
+    expect(
+      publishableListingSchema.safeParse({ ...validForm, categoryId: 'women-tops' }).success,
+    ).toBe(false);
+  });
 });
 
 describe('publishBlockers', () => {
@@ -178,6 +211,7 @@ describe('publishBlockers', () => {
     price_amount: 2450,
     condition: 'good' as const,
     size: 'alpha_m' as const,
+    category_id: VALID_CATEGORY_ID as string | null,
     status: 'draft' as const,
   };
 
@@ -206,6 +240,11 @@ describe('publishBlockers', () => {
     expect(publishBlockers({ ...completeDraft, size: 'one_size' }, 1)).toEqual([]);
   });
 
+  // ROADMAP 2.1's own new publish requirement, mirroring size exactly.
+  it('reports a missing category on an otherwise-complete listing', () => {
+    expect(publishBlockers({ ...completeDraft, category_id: null }, 1)).toEqual(['category']);
+  });
+
   it('reports zero photos', () => {
     expect(publishBlockers(completeDraft, 0)).toEqual(['photos']);
   });
@@ -225,11 +264,18 @@ describe('publishBlockers', () => {
   it('reports every blocker at once', () => {
     expect(
       publishBlockers(
-        { title: null, price_amount: null, condition: null, size: null, status: 'draft' },
+        {
+          title: null,
+          price_amount: null,
+          condition: null,
+          size: null,
+          category_id: null,
+          status: 'draft',
+        },
         0,
       ),
       // Order matches publish_listing's own guard order, so the first
       // blocker a seller is shown is the first one the server would hit.
-    ).toEqual(['title', 'price', 'condition', 'size', 'photos']);
+    ).toEqual(['title', 'price', 'condition', 'size', 'category', 'photos']);
   });
 });

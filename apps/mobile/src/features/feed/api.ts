@@ -1,8 +1,10 @@
 import { Image } from 'expo-image';
 
 import { createListingImageUrls } from '@/features/listings/api';
+import { createAvatarUrls } from '@/features/profile/api';
 import { supabase } from '@/lib/supabase';
 import {
+  associateAvatarUrls,
   associateCoverUrls,
   normalizeFeedRow,
   type FeedCursor,
@@ -36,14 +38,16 @@ export async function fetchFeedPage(params: {
   limit: number;
   cursor: FeedCursor;
   includeOwn: boolean;
+  followingOnly: boolean;
 }): Promise<FeedListing[]> {
-  const { limit, cursor, includeOwn } = params;
+  const { limit, cursor, includeOwn, followingOnly } = params;
 
   const { data, error } = await supabase.rpc('feed_listings', {
     p_limit: limit,
     p_cursor_created_at: cursor?.createdAt,
     p_cursor_id: cursor?.id,
     p_include_own: includeOwn,
+    p_following_only: followingOnly,
   });
   if (error) throw error;
 
@@ -52,8 +56,21 @@ export async function fetchFeedPage(params: {
     return [];
   }
 
-  const urlsByPath = await createListingImageUrls(rows.map((row) => row.coverStoragePath));
-  return associateCoverUrls(rows, urlsByPath);
+  // Deduped: many cards on a page can share the same seller (and therefore
+  // the same avatar path), so signing the same path twice would be wasted
+  // work, not a correctness issue — same dedup discipline as the inbox
+  // page's own avatar resolution.
+  const avatarPaths = Array.from(
+    new Set(rows.map((row) => row.sellerAvatarPath).filter((path): path is string => path !== null)),
+  );
+
+  const [coverUrlsByPath, avatarUrlsByPath] = await Promise.all([
+    createListingImageUrls(rows.map((row) => row.coverStoragePath)),
+    createAvatarUrls(avatarPaths),
+  ]);
+
+  const withCovers = associateCoverUrls(rows, coverUrlsByPath);
+  return associateAvatarUrls(withCovers, avatarUrlsByPath);
 }
 
 /**

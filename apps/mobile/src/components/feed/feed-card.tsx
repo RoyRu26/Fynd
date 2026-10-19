@@ -14,9 +14,10 @@ import type { FeedListing } from '@/features/feed/pagination';
 
 /**
  * One page of the Home feed: full-bleed cover photo (wrapped in
- * FeedCardGestures for single-tap-to-open-detail and double-tap-to-like), a
- * bottom scrim, and the DESIGN.md §14.1 tier 2-4 overlay — price, title, a
- * condition + size chip pair, a seller row, and a favorite action. Still
+ * FeedCardGestures for tap-or-swipe-left-to-open-detail and
+ * double-tap-to-like), a bottom scrim, and the DESIGN.md §14.1 tier 2-4
+ * overlay — price, title, a condition + size chip pair, a seller row, and a
+ * favorite action. Still
  * deliberately minimal beyond that — no share, comments, follow, chat,
  * timestamps, or shipping metadata; those are later slices, not omissions.
  *
@@ -41,9 +42,12 @@ export type FeedCardProps = {
   /** Forwarded to useToggleFavorite so it targets the same cache entry the
    * visible feed is actually reading — see useFeed's own includeOwn flag. */
   includeOwn?: boolean;
+  /** Forwarded to useToggleFavorite alongside includeOwn — see useFeed's own
+   * followingOnly flag (ROADMAP 3.2's "For you"/"Following" toggle). */
+  followingOnly?: boolean;
 };
 
-export function FeedCard({ listing, includeOwn }: FeedCardProps) {
+export function FeedCard({ listing, includeOwn, followingOnly }: FeedCardProps) {
   const router = useRouter();
 
   // Formatted from the listing's OWN stored currency, never a hardcoded
@@ -65,7 +69,7 @@ export function FeedCard({ listing, includeOwn }: FeedCardProps) {
   // Cache-optimistic toggle + the same "disable while this listing's own
   // mutation is in flight" race guard the hook already implements — nothing
   // feed-card-specific to add here, just wiring.
-  const { toggleFavorite, pendingListingIds } = useToggleFavorite(includeOwn);
+  const { toggleFavorite, pendingListingIds } = useToggleFavorite(includeOwn, followingOnly);
   const favoritePending = pendingListingIds.has(listing.listingId);
 
   // Double-tap is never a toggle: it only ever favorites, and only when
@@ -117,10 +121,7 @@ export function FeedCard({ listing, includeOwn }: FeedCardProps) {
             <Chip label={formatSizeLabel(listing.size)} />
           </View>
           <View style={styles.sellerRow}>
-            {/* source is always omitted: sellerAvatarPath has no bucket to
-                resolve against yet (see Phase 1 findings), so every seller
-                renders as initials. Avatar's own fallback handles this. */}
-            <Avatar size="sm" name={sellerName} />
+            <Avatar size="sm" source={listing.sellerAvatarUrl ?? undefined} name={sellerName} />
             <Text variant="label" color="textOnMedia" numberOfLines={1} style={styles.sellerName}>
               {sellerName}
             </Text>

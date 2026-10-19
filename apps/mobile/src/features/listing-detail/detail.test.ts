@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   associateListingDetailImageUrls,
+  associateListingDetailSellerAvatarUrl,
   normalizeListingDetailRow,
   setFavoriteInDetail,
   type ListingDetail,
   type ListingDetailRow,
+  type ListingDetailWithImages,
 } from '@/features/listing-detail/detail';
 
 function row(overrides: Partial<ListingDetailRow> = {}): ListingDetailRow {
@@ -25,6 +27,7 @@ function row(overrides: Partial<ListingDetailRow> = {}): ListingDetailRow {
       { id: 'image-1', storage_path: 'seller-1/listing-1/1.jpg', position: 0 },
     ],
     favorites: [],
+    categories: { id: 'cat-women-tops', name: 'Tops', parent: { id: 'cat-women', name: 'Women' } },
     ...overrides,
   };
 }
@@ -38,12 +41,16 @@ function detail(overrides: Partial<ListingDetail> = {}): ListingDetail {
     currency: 'ILS',
     condition: 'good',
     size: 'alpha_m',
+    categoryId: 'cat-women-tops',
+    categoryName: 'Tops',
+    categoryParentName: 'Women',
     sellerId: 'seller-1',
     sellerUsername: 'roy',
     sellerDisplayName: 'Roy',
     sellerAvatarPath: 'seller-1/avatar.jpg',
     images: [{ id: 'image-1', storagePath: 'seller-1/listing-1/1.jpg', url: 'https://example.com/1' }],
     isFavorited: false,
+    sellerAvatarUrl: 'https://example.com/avatar.jpg',
     ...overrides,
   };
 }
@@ -58,6 +65,9 @@ describe('normalizeListingDetailRow', () => {
       currency: 'ILS',
       condition: 'good',
       size: 'alpha_m',
+      categoryId: 'cat-women-tops',
+      categoryName: 'Tops',
+      categoryParentName: 'Women',
       sellerId: 'seller-1',
       sellerUsername: 'roy',
       sellerDisplayName: 'Roy',
@@ -108,15 +118,30 @@ describe('normalizeListingDetailRow', () => {
     expect(result?.isFavorited).toBe(false);
   });
 
-  // listings_complete_when_not_draft guarantees these four are non-null on
+  // listings_complete_when_not_draft guarantees these five are non-null on
   // every non-draft row — an active row violating that is a constraint
   // breach, not a value this function should silently paper over.
-  it.each(['title', 'price_amount', 'condition', 'size'] as const)(
+  it.each(['title', 'price_amount', 'condition', 'size', 'categories'] as const)(
     'throws if an active row is somehow missing %s',
     (field) => {
       expect(() => normalizeListingDetailRow(row({ [field]: null }))).toThrow();
     },
   );
+
+  it('throws if an active row\'s category has no parent -- a taxonomy data bug', () => {
+    expect(() =>
+      normalizeListingDetailRow(row({ categories: { id: 'cat-x', name: 'X', parent: null } })),
+    ).toThrow();
+  });
+
+  it('maps the category embed to categoryId/categoryName/categoryParentName', () => {
+    const result = normalizeListingDetailRow(
+      row({ categories: { id: 'cat-men-shoes', name: 'Shoes', parent: { id: 'cat-men', name: 'Men' } } }),
+    );
+    expect(result?.categoryId).toBe('cat-men-shoes');
+    expect(result?.categoryName).toBe('Shoes');
+    expect(result?.categoryParentName).toBe('Men');
+  });
 });
 
 describe('associateListingDetailImageUrls', () => {
@@ -140,6 +165,32 @@ describe('associateListingDetailImageUrls', () => {
     if (normalized === null) throw new Error('expected a normalized detail');
 
     expect(() => associateListingDetailImageUrls(normalized, {})).toThrow();
+  });
+});
+
+describe('associateListingDetailSellerAvatarUrl', () => {
+  function withImages(overrides: Partial<ListingDetailWithImages> = {}): ListingDetailWithImages {
+    const { sellerAvatarUrl: _unused, ...rest } = detail();
+    return { ...rest, ...overrides };
+  }
+
+  it('resolves sellerAvatarUrl when the path has a matching signed url', () => {
+    const result = associateListingDetailSellerAvatarUrl(withImages(), {
+      'seller-1/avatar.jpg': 'https://example.com/avatar.jpg',
+    });
+    expect(result.sellerAvatarUrl).toBe('https://example.com/avatar.jpg');
+  });
+
+  it('does not throw when sellerAvatarPath is null — resolves sellerAvatarUrl to null', () => {
+    const d = withImages({ sellerAvatarPath: null });
+    expect(() => associateListingDetailSellerAvatarUrl(d, {})).not.toThrow();
+    expect(associateListingDetailSellerAvatarUrl(d, {}).sellerAvatarUrl).toBeNull();
+  });
+
+  it('does not throw when the path fails to resolve a signed url — resolves sellerAvatarUrl to null', () => {
+    const d = withImages({ sellerAvatarPath: 'seller-1/avatar.jpg' });
+    expect(() => associateListingDetailSellerAvatarUrl(d, {})).not.toThrow();
+    expect(associateListingDetailSellerAvatarUrl(d, {}).sellerAvatarUrl).toBeNull();
   });
 });
 

@@ -15,36 +15,39 @@ Source of truth for what gets built next. The `autopilot` skill works through th
 
 ## Milestone 1 — Complete the core loop
 
-- [ ] **1.1 Missing UI primitives** — Build `ListRow`, `Sheet`, `Skeleton`, `EmptyState` per DESIGN.md §13, only as far as items in this milestone need them (second-caller rule).
+- [x] **1.1 Missing UI primitives** — Build `ListRow`, `Sheet`, `Skeleton`, `EmptyState` per DESIGN.md §13, only as far as items in this milestone need them (second-caller rule).
   Done when: each has state-logic tests where it has logic, and is used by at least one screen below.
-- [ ] **1.2 Inbox** — Inbox tab listing conversations (DESIGN.md §14.5) using the existing chat RPCs: other party avatar + name, listing thumbnail, last message, unread (weight + dot + accessibility label).
+  Note: `ListRow`/`Skeleton`/`EmptyState` are in real use (My Listings retrofit). `Sheet` is fully built and tested but has no real screen caller yet — its first consumer lands with 1.6 or 1.7.
+- [x] **1.2 Inbox** — Inbox tab listing conversations (DESIGN.md §14.5) using the existing chat RPCs: other party avatar + name, listing thumbnail, last message, unread (weight + dot + accessibility label).
   Done when: conversations sort by latest message, unread clears on open, empty state shows when there are none.
-- [ ] **1.3 Conversation screen** — Message thread with realtime updates, send box, optimistic send, pagination of older messages, listing header that links to the listing.
+  Note: `inbox/[id].tsx` is a deliberate minimal stub (marks read, shows header, placeholder body) — 1.3 fills in the real thread UI.
+- [x] **1.3 Conversation screen** — Message thread with realtime updates, send box, optimistic send, pagination of older messages, listing header that links to the listing.
   Done when: two signed-in users can chat live; sending fails gracefully offline.
-- [ ] **1.4 "Message seller"** — Primary action on listing detail opens (or creates) the conversation for that listing. Hidden on your own listing.
+  Note: chat UI is a deliberate minimal placeholder (plain text rows, no bubble styling) per Roy's decision — DESIGN.md §14.7 documents this pending a real design pass.
+- [x] **1.4 "Message seller"** — Primary action on listing detail opens (or creates) the conversation for that listing. Hidden on your own listing.
   Done when: tapping it twice never creates two conversations.
-- [ ] **1.5 My listings** — Own Profile tab shows my listings across statuses (active, draft, reserved, sold), with status filter chips.
-- [ ] **1.6 Manage a listing** — Edit an active listing; mark reserved / sold / back to active; remove; delete a draft. Server-controlled transitions (RPC), never direct status writes from the client.
+- [x] **1.5 My listings** — Own Profile tab shows my listings across statuses (active, draft, reserved, sold), with status filter chips.
+- [x] **1.6 Manage a listing** — Edit an active listing; mark reserved / sold / back to active; remove; delete a draft. Server-controlled transitions (RPC), never direct status writes from the client.
   Done when: pgTAP covers allowed and forbidden transitions, including another user trying them.
-- [ ] **1.7 Edit profile + avatars** — Edit display name, username, bio; upload avatar to Storage; signed-URL pipeline so avatars render everywhere `Avatar` is used (closes the avatar_path gap noted in DESIGN.md §13).
-- [ ] **1.8 Saved items** — Screen listing my favorites (3-up grid tile), reachable from my profile.
-- [ ] **Checkpoint 1** — Stop. Summarize what was built and give Roy a test script (step-by-step things to try on the phone).
+- [x] **1.7 Edit profile + avatars** — Edit display name, username, bio; upload avatar to Storage; signed-URL pipeline so avatars render everywhere `Avatar` is used (closes the avatar_path gap noted in DESIGN.md §13).
+- [x] **1.8 Saved items** — Screen listing my favorites (3-up grid tile), reachable from my profile.
+- [x] **Checkpoint 1** — Stop. Summarize what was built and give Roy a test script (step-by-step things to try on the phone).
 
 ## Milestone 2 — Discovery
 
-- [ ] **2.1 Categories** — `categories` table (two-level: e.g. Women › Shoes), seeded; `category_id` on listings; category step in the sell flow; shown on listing detail.
-- [ ] **2.2 Search backend** — Postgres full-text search over title/description + filters (category, size, condition, price range) + sort (newest, price) in one RPC with keyset pagination. Indexed.
+- [x] **2.1 Categories** — `categories` table (two-level: e.g. Women › Shoes), seeded; `category_id` on listings; category step in the sell flow; shown on listing detail.
+- [x] **2.2 Search backend** — Postgres full-text search over title/description + filters (category, size, condition, price range) + sort (newest, price) in one RPC with keyset pagination. Indexed.
   Done when: pgTAP covers filters and that drafts/removed listings never appear.
-- [ ] **2.3 Explore tab** — DESIGN.md §14.2: search bar, 3-up grid reusing the grid tile, filters in a `Sheet` using `Chip`, active-filter chips, empty state.
-- [ ] **2.4 Recent searches** — Stored locally, shown when the search bar is focused.
-- [ ] **Checkpoint 2**
+- [x] **2.3 Explore tab** — DESIGN.md §14.2: search bar, 3-up grid reusing the grid tile, filters in a `Sheet` using `Chip`, active-filter chips, empty state.
+- [x] **2.4 Recent searches** — Stored locally, shown when the search bar is focused.
+- [x] **Checkpoint 2**
 
 ## Milestone 3 — Social
 
-- [ ] **3.1 Follows** — `follows` table with RLS; follow/unfollow button on seller profile (DESIGN.md §14.3); follower/following counts.
-- [ ] **3.2 Following feed** — Toggle on Home between "For you" and "Following".
-- [ ] **3.3 Followers lists** — Tappable counts open follower / following lists (`ListRow`).
-- [ ] **Checkpoint 3**
+- [x] **3.1 Follows** — `follows` table with RLS; follow/unfollow button on seller profile (DESIGN.md §14.3); follower/following counts.
+- [x] **3.2 Following feed** — Toggle on Home between "For you" and "Following".
+- [x] **3.3 Followers lists** — Tappable counts open follower / following lists (`ListRow`).
+- [x] **Checkpoint 3**
 
 ## Milestone 4 — AI listing assist
 
@@ -76,3 +79,31 @@ Source of truth for what gets built next. The `autopilot` skill works through th
 ## Progress log
 
 Autopilot appends one line per finished item: date, item, commit hash, notes.
+
+**Milestone 3 started** on branch `autopilot/m3` (branched from `autopilot/m2`'s tip, since Milestones 1-2 aren't merged to `main` yet). A local dev seed script (`pnpm seed:dev`) and a permanent "never reset the local database" rule landed on `main` first, by Roy's explicit request, before this milestone began — see CLAUDE.md's Local Database Safety section.
+
+- 2026-10-19 — 3.1 Follows — `f3017d8` — Added a `follows` table: composite PK, self-follow CHECK, and a deliberately PUBLIC select policy (unlike `favorites`'s owner-scoped one) since follower/following lists need to be visible to other users per 3.3. Extracted `requireUserId` into a shared `lib/session.ts` — it turned out to have three duplicate copies (favorites, conversation, and the new follows module), not two as assumed going in. Seller profile screen gained its first ownership branch (`isOwnProfile`) to show counts and a Follow/Unfollow button only on other users' profiles. Along the way, found and fixed unrelated pre-existing pgTAP fragility in `feed.sql`/`search.sql`: two tests assumed an empty table and started failing once persistent seed/dev data (now never reset, per the new policy) outranked their older fixtures by `created_at` — fixed by scoping those assertions, committed separately (`9ea39da`) from the feature itself. Both independent reviews (code + security, the latter cross-checking the live Postgres catalog directly rather than trusting the migration file) came back clean on first pass; no fix round needed.
+- 2026-10-19 — 3.2 Following feed — `22f554a` — Added a "For you"/"Following" toggle to Home. `feed_listings` gained a `p_following_only` parameter instead of a new RPC (same row/cursor shape, `SECURITY INVOKER` still correct since `follows` is public-read) — the DROP+CREATE correctly replaced the old 4-arg overload rather than leaving a stale one, confirmed live via `pg_proc`. `follows_not_self` makes `p_include_own` + `p_following_only` together provably unable to leak the viewer's own listing; backed by a pgTAP regression case, re-derived independently by both reviews from the live constraint rather than taken on faith. Toggling remounts the feed list (`key={scope}`) for a clean scroll reset without disturbing the feed's impression-session state, deliberately left stable across the switch. Retrofitted Home's error/empty states onto the `EmptyState` primitive while there — the one screen that still predated it. Both independent reviews came back clean (no Must-fix/Should-fix); added one extra pgTAP assertion the security review flagged as a worthwhile gap (asserting the *total* row count under the new filter, not just that eligible rows are present, so a hypothetical leak of the followed seller's draft/imageless listings would be caught) before committing.
+- 2026-10-19 — 3.3 Followers lists — `96d7bbc` — Tapping a seller profile's follower/following counts now opens a paginated list (`ListRow` + `Avatar`), each row linking to that user's own profile. No SQL changes needed: `follows` references `auth.users`, not `profiles`, so there's no FK edge for PostgREST to embed across — two explicit queries (page `follows`, batch-fetch `profiles`), the same pattern `seller-profile/api.ts` already uses for the identical reason. Code review (no security review needed — nothing under `supabase/` touched) found no Must-fix issues but two worth fixing before committing: the counts' hitSlop, sized evenly to reach the 44pt touch target, ate 5px into the Follow/Unfollow button's hit area sitting right below it (made asymmetric — 18 top / 8 bottom — to clear it); and the `.in()`-response reordering step (profiles come back unordered, must be re-walked by id) had no direct test of its own, correct only by inspection — extracted into a pure `reorderFollowListRows` function with 3 new unit tests.
+
+**Milestone 3 complete.** All 3 items + checkpoint done. See the checkpoint summary delivered to Roy alongside this entry for the full test script.
+
+**Milestone 2 started** on branch `autopilot/m2` (branched from `autopilot/m1`'s tip, since Milestone 1 isn't merged to `main` yet).
+
+- 2026-10-18 — 2.1 Categories — `22edffb` — Added a real categories table (self-referencing, two levels), seeded with Roy's approved 6-group/35-leaf taxonomy after flagging it as a content decision rather than inventing one. category_id follows condition/size's nullable-on-draft pattern; update_listing_details needed DROP+CREATE since its arg list grew. Sell flow uses a Sheet-based drill-down picker (chips would be unusable at this taxonomy size); listing detail shows a breadcrumb chip via a self-join embed whose correct PostgREST syntax had to be found empirically. Both independent reviews (code + security) came back clean; one cosmetic accessibility nit fixed directly.
+- 2026-10-18 — 2.2 Search backend — `d4be7be` — Added search_listings: full-text search (generated tsvector + GIN index) combined with category/condition/size/price filters and two sort modes, each with its own keyset cursor shape; cross-mode cursors rejected rather than silently reinterpreted. SECURITY INVOKER, not DEFINER — verified correct by both the build and the independent security review (no auth.uid() read, status=active is already a strict subset of RLS). Backend + data layer only. Both reviews came back clean on first pass; the code reviewer mutation-tested the RPC to confirm the pgTAP suite has real teeth.
+- 2026-10-18 — 2.3 Explore tab — `12885ed` — Added a 5th tab (search bar, 3-up grid, filter Sheet, active-filter chips) consuming 2.2's search RPC. Condition/size filters are single-select because the RPC's params are scalar, not arrays — a backend constraint, not a style choice. Review found a real bug: the category-picker hand-off briefly mounted two Sheets at once (React batching + Sheet's ~240ms close animation); fixed by merging into one Sheet with an internal view-mode switch instead of two Sheets handing off to each other. Extracted a shared useDebouncedValue hook and added react-test-renderer as a dev dependency — the first stateful hook in the codebase, with no existing way to test React lifecycle behavior without one. Re-review passed clean.
+- 2026-10-18 — 2.4 Recent searches — `e5610e7` — Added locally-persisted recent searches (AsyncStorage, already linked, no new dependency), capped and deduped, recorded on blur using the live input so a fast-typed search still records before the debounce settles. Caught and avoided a real structural risk before it shipped: naively swapping FlatLists to toggle grid/recent-searches would have remounted the search TextField and dropped keyboard focus — fixed by hoisting the search row into a persistent sibling. Review found no Must-fix issues; two trivial nits fixed directly.
+
+**Milestone 2 complete.** All 4 items + checkpoint done. See the checkpoint summary delivered to Roy alongside this entry for the full test script.
+
+- 2026-10-12 — 1.1 Missing UI primitives — `98d3f30` — Built ListRow, Sheet, Skeleton(+SkeletonRow/SkeletonListingCard), EmptyState(+ErrorState) and retrofitted My Listings to use them. Sheet has no real screen caller yet; deferred to 1.6/1.7. One review round found and fixed a stale-drag-offset bug in Sheet plus two should-fix items (keyboard avoidance, a duplicated DISABLED_OPACITY constant); re-review passed clean.
+- 2026-10-12 — 1.2 Inbox — `ef72b0d` — Added the Inbox tab and list, consuming existing chat RPCs (no new migration). Added a minimal inbox/[id].tsx stub for 1.3 to build on. One review round found two must-fix items (missing test coverage for a normalizer, a detail query bypassing the inboxKeys convention) and two should-fix items (a misleading RPC doc comment, DESIGN.md §14.5 not documenting the listing thumbnail the roadmap requires); all fixed, re-review passed clean.
+- 2026-10-13 — 1.3 Conversation screen — `b8c40bb` — Replaced the inbox stub with the real thread: new conversation_messages RPC (SECURITY INVOKER), realtime via Postgres Changes (first in the app), optimistic send with client_nonce idempotency. Roy chose a minimal token-only placeholder UI over inventing bubble styling, since DESIGN.md had no spec for this screen (flagged and asked rather than improvised) — documented in new §14.7. Independent code review and supabase-security-reviewer both came back clean on first pass; no fix round needed.
+- 2026-10-13 — 1.4 Message seller — `51162b0` — Added the pinned "Message seller" action bar to listing detail, reusing the existing get_or_create_listing_conversation RPC (no new migration). Review found one real bug (ScrollView missing its own flex:1 style, so the pinned action bar wouldn't actually stay pinned on any real listing) plus a minor hydration-window nit; both fixed, re-review passed clean.
+- 2026-10-13 — 1.5 My listings — `7f3323e` — Found the Profile tab was a bare stub, so gave it a real hub + a new My listings screen with status filter chips over the already-fetched listing set (no new query). Extracted sell/index.tsx's row renderer into a shared component now used by both screens. Review came back clean on first pass.
+- 2026-10-14 — 1.6 Manage a listing — `9c5c24a` — Added 5 status-transition RPCs (reserved/sold/active/remove/edit-active), full pgTAP transition matrix including cross-user attempts, and gave Sheet its first real caller (an overflow action menu). Build was heavily interrupted by repeated machine sleep; the final PublishedFieldsSection piece was finished directly rather than via subagent. Review found and fixed a real bug (mutation errors set on a Sheet that had already closed itself, so never visible to the user) plus a missing cache invalidation and a minor validation gap; re-review passed clean.
+- 2026-10-15 — 1.7 Edit profile + avatars — `8155f03` — Added profile editing (display name/username/bio) and a full avatar upload+signed-URL pipeline, wired into all 5 existing Avatar call sites. Also closed a pre-existing gap where profiles had no column-level grants at all. Security review independently reproduced a real identity-spoofing bug (avatar_path had no ownership binding — a user could point their own profile at another user's real photo) and a CHECK constraint fix landed in a separate migration. Should-fix test coverage and a nit were also fixed; re-review passed clean. Build and fix rounds were both heavily interrupted by repeated machine sleep/stalls.
+- 2026-10-15 — 1.8 Saved items — `07cfaaf` — Added a 3-up grid of the viewer's favorited active listings, no new migration (direct PostgREST embedded-select mirroring the seller-profile grid, with `listings!inner` + a status filter to drop sold/removed favorites silently — verified empirically against the local stack). No un-favorite affordance on the tile itself, by design (shared component, DESIGN.md §14.2 bars chips at this size). The research subagent for this item stalled repeatedly without ever producing output, so this one was researched and built directly rather than via subagent. Review came back clean; one tiny query-key-typing nit fixed directly.
+
+**Milestone 1 complete.** All 8 items + checkpoint done. See the checkpoint summary delivered to Roy alongside this entry for the full test script.

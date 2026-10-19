@@ -13,7 +13,14 @@ function escapeForIlike(value: string): string {
   return value.replace(/[%_]/g, (char) => `\\${char}`);
 }
 
-export function useUsernameAvailability(username: string) {
+/**
+ * `excludeUserId` lets the edit-profile screen check availability while
+ * keeping the viewer's own current username — without it, re-saving your
+ * own unchanged username would always show "taken" (it matches your own
+ * row). Onboarding's call site passes no second argument and is unaffected:
+ * `.neq('id', undefined)` is never applied.
+ */
+export function useUsernameAvailability(username: string, excludeUserId?: string) {
   const [debounced, setDebounced] = useState(username);
 
   useEffect(() => {
@@ -24,13 +31,13 @@ export function useUsernameAvailability(username: string) {
   const isValidFormat = USERNAME_REGEX.test(debounced);
 
   const query = useQuery({
-    queryKey: ['username-availability', debounced.toLowerCase()],
+    queryKey: ['username-availability', debounced.toLowerCase(), excludeUserId],
     queryFn: async (): Promise<boolean> => {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id')
-        .ilike('username', escapeForIlike(debounced))
-        .maybeSingle();
+      let request = supabase.from('profiles').select('id').ilike('username', escapeForIlike(debounced));
+      if (excludeUserId) {
+        request = request.neq('id', excludeUserId);
+      }
+      const { data, error } = await request.maybeSingle();
       if (error) throw error;
       return data === null;
     },

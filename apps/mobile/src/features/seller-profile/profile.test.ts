@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  associateSellerAvatarUrl,
   associateSellerListingCoverUrls,
   deriveNextSellerListingsOffset,
   normalizeSellerListingRow,
   normalizeSellerProfileRow,
   type NormalizedSellerListing,
+  type NormalizedSellerProfile,
   type SellerListingRow,
   type SellerListingsPage,
   type SellerProfileRow,
@@ -63,6 +65,37 @@ describe('normalizeSellerProfileRow', () => {
     );
     expect(result?.username).toBeNull();
     expect(result?.displayName).toBeNull();
+  });
+});
+
+describe('associateSellerAvatarUrl', () => {
+  function normalizedProfile(overrides: Partial<NormalizedSellerProfile> = {}): NormalizedSellerProfile {
+    return {
+      sellerId: 'seller-1',
+      username: 'roy',
+      displayName: 'Roy',
+      avatarPath: 'seller-1/avatar.jpg',
+      ...overrides,
+    };
+  }
+
+  it('resolves avatarUrl when the path has a matching signed url', () => {
+    const result = associateSellerAvatarUrl(normalizedProfile(), {
+      'seller-1/avatar.jpg': 'https://example.com/avatar.jpg',
+    });
+    expect(result).toEqual({ ...normalizedProfile(), avatarUrl: 'https://example.com/avatar.jpg' });
+  });
+
+  it('resolves avatarUrl to null when avatarPath is null, never throwing', () => {
+    const profile = normalizedProfile({ avatarPath: null });
+    expect(() => associateSellerAvatarUrl(profile, {})).not.toThrow();
+    expect(associateSellerAvatarUrl(profile, {}).avatarUrl).toBeNull();
+  });
+
+  it('resolves avatarUrl to null when the path fails to resolve a signed url, never throwing', () => {
+    const profile = normalizedProfile({ avatarPath: 'seller-1/avatar.jpg' });
+    expect(() => associateSellerAvatarUrl(profile, {})).not.toThrow();
+    expect(associateSellerAvatarUrl(profile, {}).avatarUrl).toBeNull();
   });
 });
 

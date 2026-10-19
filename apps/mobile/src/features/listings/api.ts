@@ -1,5 +1,5 @@
 import { LISTING_IMAGES_BUCKET, LISTING_IMAGE_CONTENT_TYPE } from '@/features/listings/paths';
-import type { DraftListingInput } from '@/features/listings/schemas';
+import type { DraftListingInput, PublishableListingInput } from '@/features/listings/schemas';
 import { supabase } from '@/lib/supabase';
 import type { Tables } from '@/types/database';
 
@@ -146,6 +146,7 @@ export async function updateDraft(
       price_amount: input.price,
       condition: input.condition,
       size: input.size,
+      category_id: input.categoryId,
     })
     .eq('id', listingId)
     .select();
@@ -181,6 +182,75 @@ export async function deleteDraft(listingId: string): Promise<StorageCleanup> {
 
 export async function publishListing(listingId: string): Promise<ListingRow> {
   const { data, error } = await supabase.rpc('publish_listing', { p_listing_id: listingId });
+  if (error) throw error;
+  return data;
+}
+
+// ============================================================
+// Post-publish lifecycle (ROADMAP 1.6 "Manage a listing")
+// ============================================================
+// Every status transition below goes through a SECURITY DEFINER RPC, never
+// a direct client UPDATE: the direct-UPDATE RLS policy on listings stays
+// locked to status = 'draft' only, so these RPCs are the entire edit/
+// transition surface for an active or reserved listing. See
+// supabase/migrations/..._listing_status_transitions.sql for the full
+// transition matrix each one enforces.
+
+/** active -> reserved. Freely reversible with markListingActive. */
+export async function markListingReserved(listingId: string): Promise<ListingRow> {
+  const { data, error } = await supabase.rpc('mark_listing_reserved', { p_listing_id: listingId });
+  if (error) throw error;
+  return data;
+}
+
+/** reserved -> active. A draft must use publishListing instead. */
+export async function markListingActive(listingId: string): Promise<ListingRow> {
+  const { data, error } = await supabase.rpc('mark_listing_active', { p_listing_id: listingId });
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * active|reserved -> sold. Deliberately the simple no-buyer-tracking
+ * version -- no buyer id. ROADMAP 5.3 adds buyer selection later.
+ */
+export async function markListingSold(listingId: string): Promise<ListingRow> {
+  const { data, error } = await supabase.rpc('mark_listing_sold', { p_listing_id: listingId });
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * active|reserved -> removed. Sold is NOT removable through this path --
+ * sold is treated as permanent history. A draft is removed via deleteDraft
+ * instead.
+ */
+export async function removeListing(listingId: string): Promise<ListingRow> {
+  const { data, error } = await supabase.rpc('remove_listing', { p_listing_id: listingId });
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Edits an active or reserved listing's details. Reuses
+ * `publishableListingSchema`'s inferred shape (the same completeness rules
+ * `publish_listing` already enforces), since the RPC re-validates exactly
+ * that: a trimmed title, a positive price, and condition/size/category all
+ * set. Never touches status/seller_id/currency/images.
+ */
+export async function updateListingDetails(
+  listingId: string,
+  input: PublishableListingInput,
+): Promise<ListingRow> {
+  const { data, error } = await supabase.rpc('update_listing_details', {
+    p_listing_id: listingId,
+    p_title: input.title,
+    p_description: input.description,
+    p_price_amount: input.price,
+    p_condition: input.condition,
+    p_size: input.size,
+    p_category_id: input.categoryId,
+  });
   if (error) throw error;
   return data;
 }

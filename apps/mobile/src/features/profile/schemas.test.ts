@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { onboardingSchema } from '@/features/profile/schemas';
+import { bioSchema, editProfileSchema, onboardingSchema } from '@/features/profile/schemas';
 
 function parse(username: string, displayName: string) {
   return onboardingSchema.safeParse({ username, displayName });
@@ -59,5 +59,62 @@ describe('onboardingSchema displayName', () => {
 
   it('rejects more than 50 trimmed characters', () => {
     expect(parse('roy', 'A'.repeat(51)).success).toBe(false);
+  });
+});
+
+describe('bioSchema', () => {
+  it('accepts a normal bio', () => {
+    expect(bioSchema.safeParse('Selling gently loved clothes.').success).toBe(true);
+  });
+
+  it('accepts exactly 160 characters', () => {
+    expect(bioSchema.safeParse('a'.repeat(160)).success).toBe(true);
+  });
+
+  it('rejects 161 characters', () => {
+    expect(bioSchema.safeParse('a'.repeat(161)).success).toBe(false);
+  });
+
+  it('accepts an empty string', () => {
+    expect(bioSchema.safeParse('').success).toBe(true);
+  });
+
+  it('trims the value and stores the trimmed result', () => {
+    const result = bioSchema.safeParse('  Hello  ');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toBe('Hello');
+    }
+  });
+
+  it('trims before measuring length, so whitespace padding cannot push it over 160', () => {
+    const result = bioSchema.safeParse(`  ${'a'.repeat(160)}  `);
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('editProfileSchema', () => {
+  function parseEdit(input: { username: string; displayName: string; bio: string }) {
+    return editProfileSchema.safeParse(input);
+  }
+
+  it('accepts a fully valid input', () => {
+    expect(parseEdit({ username: 'roy', displayName: 'Roy', bio: 'Vintage finds only.' }).success).toBe(
+      true,
+    );
+  });
+
+  it('accepts an empty bio', () => {
+    expect(parseEdit({ username: 'roy', displayName: 'Roy', bio: '' }).success).toBe(true);
+  });
+
+  it('rejects when bio exceeds 160 characters', () => {
+    expect(
+      parseEdit({ username: 'roy', displayName: 'Roy', bio: 'a'.repeat(161) }).success,
+    ).toBe(false);
+  });
+
+  it('rejects when username is invalid, independent of a valid bio', () => {
+    expect(parseEdit({ username: 'a b', displayName: 'Roy', bio: 'Hello' }).success).toBe(false);
   });
 });
