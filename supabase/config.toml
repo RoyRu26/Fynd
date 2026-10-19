@@ -370,6 +370,14 @@ authorization_url_path = "/oauth/consent"
 # Allow dynamic client registration
 allow_dynamic_registration = false
 
+# Supabase's first Edge Function (ROADMAP 4.2). Explicit, though it matches
+# the CLI's own default: the platform gateway rejects any request with no
+# valid JWT before this function's code ever runs, so index.ts can assume
+# `Authorization` carries a real (if possibly unauthorized-for-this-row)
+# caller.
+[functions.suggest-listing]
+verify_jwt = true
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
