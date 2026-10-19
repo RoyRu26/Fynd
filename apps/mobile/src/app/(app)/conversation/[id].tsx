@@ -26,6 +26,19 @@ import type { ConversationMessage, PendingMessage } from '@/features/conversatio
  * screen yet (see the new §14.7 note): the message list below is a
  * deliberate, minimal PLACEHOLDER built only from `MessageBubble` (plain
  * text rows) and existing primitives, pending a real design pass.
+ *
+ * Lives at the root, outside (tabs), same reasoning as listing/[id],
+ * seller/[id], and follows/[id]: a screen entered from more than one tab's
+ * own context doesn't belong inside any single tab's nested stack. This one
+ * used to live under (tabs)/inbox/[id] — fine for the Inbox tab's own entry
+ * point, but listing/[id].tsx's "Message seller" action (reachable from
+ * Home, Explore, a seller profile...) pushed the SAME nested route from
+ * outside the Inbox tab's own history, which is what caused a real bug:
+ * back() from the conversation had no inbox/index screen underneath it on
+ * that tab's stack to return to, and fell all the way back to whatever tab
+ * was active before the user ever opened a listing. Rooting it here, like
+ * every other multi-entry-point screen, makes back() always return to
+ * whatever screen actually pushed it.
  */
 
 const BACK_ICON: IconName = { ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' };

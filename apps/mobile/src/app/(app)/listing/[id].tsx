@@ -59,7 +59,7 @@ export default function ListingDetailScreen() {
     if (startConversation.isPending) return; // belt-and-suspenders on top of the Button's own loading-gated disable
     startConversation.mutate(listingId, {
       onSuccess: (conversationId) => {
-        router.push({ pathname: '/(app)/(tabs)/inbox/[id]', params: { id: conversationId } });
+        router.push({ pathname: '/(app)/conversation/[id]', params: { id: conversationId } });
       },
     });
   }

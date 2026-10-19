@@ -68,7 +68,7 @@ export default function InboxIndex() {
   const openConversation = useCallback(
     (conversation: InboxConversation) => {
       router.push({
-        pathname: '/(app)/(tabs)/inbox/[id]',
+        pathname: '/(app)/conversation/[id]',
         params: { id: conversation.conversationId, lastMessageAt: conversation.lastMessageAt },
       });
     },
