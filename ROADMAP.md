@@ -53,7 +53,7 @@ Source of truth for what gets built next. The `autopilot` skill works through th
 
 - [x] **4.1 [DECISION] AI provider** — Which model/API to call, and Roy adds the API key as a Supabase secret. Ask before starting.
   **Answer (2026-10-19):** Anthropic Claude Haiku 4.5 (`claude-haiku-4-5-20251001`), via the Messages API's vision input (base64/URL image blocks) directly from the Edge Function — no separate image-captioning step. Chosen over Sonnet 5 for cost-per-call on a rate-limited, per-listing suggestion feature where "good enough, cheap, fast" beats frontier reasoning. Secret name: `ANTHROPIC_API_KEY`, set via `supabase secrets set ANTHROPIC_API_KEY=sk-ant-...` for the hosted project, and `supabase/functions/.env` (gitignored) for local `supabase functions serve`.
-- [ ] **4.2 Suggest-from-photos Edge Function** — Takes the draft's uploaded photos, returns suggested title, category, condition, description and a price range. Key stays server-side; rate-limited per user.
+- [x] **4.2 Suggest-from-photos Edge Function** — Takes the draft's uploaded photos, returns suggested title, category, condition, description and a price range. Key stays server-side; rate-limited per user.
 - [ ] **4.3 Suggestions in the sell flow** — Pre-filled, editable fields marked "suggested" (DESIGN.md §14.4). Never auto-publishes. Works fine if the function fails.
 - [ ] **Checkpoint 4**
 
@@ -80,6 +80,10 @@ Source of truth for what gets built next. The `autopilot` skill works through th
 ## Progress log
 
 Autopilot appends one line per finished item: date, item, commit hash, notes.
+
+**Milestone 4 started** on branch `autopilot/m4` (branched from `main`'s tip — Milestones 1-3 are merged and pushed to `main` as of this milestone's start).
+
+- 2026-10-19 — 4.2 Suggest-from-photos Edge Function — `fafecc2` — The first Edge Function in this repo. Runs entirely on the caller's own JWT (never the service role key) via Claude Haiku 4.5 forced tool-use, with an explicit `seller_id`+draft-status re-check before the new rate-limit RPC and before any Anthropic call. The independent security review caught a real bug pre-commit: `ai_suggestion_calls.listing_id` was `on delete cascade`, so deleting the draft that accrued calls deleted the ledger rows with it — a free way to reset the 20-calls/24h quota (burn calls, delete the draft, get 20 more). Fixed to `on delete set null` with a regression test proving the quota survives the listing's deletion. The review also caught an overclaiming test comment: pgTAP's sequential execution can't actually prove the rate-limit RPC's advisory lock serializes concurrent callers — corrected to say so honestly (the lock itself was verified by hand against two real concurrent `psql` sessions instead) and added direct grant-lockdown assertions so a future grants regression doesn't rely on review alone to catch it. Model output is validated the same as any other untrusted input: integer-only ILS price range, condition against the real 5-value enum, category resolved against a live query of the real taxonomy (never a model-fabricated id). Not wired into the sell flow UI — that's 4.3.
 
 **Milestone 3 started** on branch `autopilot/m3` (branched from `autopilot/m2`'s tip, since Milestones 1-2 aren't merged to `main` yet). A local dev seed script (`pnpm seed:dev`) and a permanent "never reset the local database" rule landed on `main` first, by Roy's explicit request, before this milestone began — see CLAUDE.md's Local Database Safety section.
 
