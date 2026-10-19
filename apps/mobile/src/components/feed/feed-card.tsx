@@ -14,9 +14,10 @@ import type { FeedListing } from '@/features/feed/pagination';
 
 /**
  * One page of the Home feed: full-bleed cover photo (wrapped in
- * FeedCardGestures for single-tap-to-open-detail and double-tap-to-like), a
- * bottom scrim, and the DESIGN.md §14.1 tier 2-4 overlay — price, title, a
- * condition + size chip pair, a seller row, and a favorite action. Still
+ * FeedCardGestures for tap-or-swipe-left-to-open-detail and
+ * double-tap-to-like), a bottom scrim, and the DESIGN.md §14.1 tier 2-4
+ * overlay — price, title, a condition + size chip pair, a seller row, and a
+ * favorite action. Still
  * deliberately minimal beyond that — no share, comments, follow, chat,
  * timestamps, or shipping metadata; those are later slices, not omissions.
  *
