@@ -44,7 +44,7 @@ Source of truth for what gets built next. The `autopilot` skill works through th
 
 ## Milestone 3 — Social
 
-- [ ] **3.1 Follows** — `follows` table with RLS; follow/unfollow button on seller profile (DESIGN.md §14.3); follower/following counts.
+- [x] **3.1 Follows** — `follows` table with RLS; follow/unfollow button on seller profile (DESIGN.md §14.3); follower/following counts.
 - [ ] **3.2 Following feed** — Toggle on Home between "For you" and "Following".
 - [ ] **3.3 Followers lists** — Tappable counts open follower / following lists (`ListRow`).
 - [ ] **Checkpoint 3**
@@ -79,6 +79,10 @@ Source of truth for what gets built next. The `autopilot` skill works through th
 ## Progress log
 
 Autopilot appends one line per finished item: date, item, commit hash, notes.
+
+**Milestone 3 started** on branch `autopilot/m3` (branched from `autopilot/m2`'s tip, since Milestones 1-2 aren't merged to `main` yet). A local dev seed script (`pnpm seed:dev`) and a permanent "never reset the local database" rule landed on `main` first, by Roy's explicit request, before this milestone began — see CLAUDE.md's Local Database Safety section.
+
+- 2026-10-19 — 3.1 Follows — `f3017d8` — Added a `follows` table: composite PK, self-follow CHECK, and a deliberately PUBLIC select policy (unlike `favorites`'s owner-scoped one) since follower/following lists need to be visible to other users per 3.3. Extracted `requireUserId` into a shared `lib/session.ts` — it turned out to have three duplicate copies (favorites, conversation, and the new follows module), not two as assumed going in. Seller profile screen gained its first ownership branch (`isOwnProfile`) to show counts and a Follow/Unfollow button only on other users' profiles. Along the way, found and fixed unrelated pre-existing pgTAP fragility in `feed.sql`/`search.sql`: two tests assumed an empty table and started failing once persistent seed/dev data (now never reset, per the new policy) outranked their older fixtures by `created_at` — fixed by scoping those assertions, committed separately (`9ea39da`) from the feature itself. Both independent reviews (code + security, the latter cross-checking the live Postgres catalog directly rather than trusting the migration file) came back clean on first pass; no fix round needed.
 
 **Milestone 2 started** on branch `autopilot/m2` (branched from `autopilot/m1`'s tip, since Milestone 1 isn't merged to `main` yet).
 
