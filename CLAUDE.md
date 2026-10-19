@@ -42,6 +42,28 @@ Payments will use Stripe Connect.
 - Money must be stored as integer minor units.
 - Critical operations must be transactional and server-controlled.
 - Run type checking and linting after changes.
+
+## Local Database Safety
+
+Never delete, reset, truncate, recreate, or otherwise wipe local database contents unless I explicitly instruct you to do so in that specific task.
+
+This includes:
+- never run `supabase db reset`
+- never truncate tables
+- never delete existing dev users/listings/messages/favorites just to make tests pass
+- never replace current dev data with fixtures
+- never run destructive seed/reset scripts
+
+Prefer:
+- `supabase migration up --local`
+- additive/idempotent seed logic
+- fixture-scoped tests
+- targeted changes that preserve unrelated data
+
+If a proposed change would require deleting or resetting data, stop and ask first.
+
+Existing dev data should be treated as persistent unless explicitly told otherwise.
+
 ## Repo layout
 
 - pnpm monorepo. App lives in `apps/mobile`, database in `supabase/`.
@@ -64,8 +86,9 @@ Run from `apps/mobile` unless noted:
 - Unit tests: `pnpm test`
 - Regenerate DB types: `pnpm gen:types`
 - New migration (repo root): `pnpm exec supabase migration new <snake_case_name>`
-- Apply migrations locally (repo root): `pnpm exec supabase db reset`
+- Apply new migrations locally, without resetting (repo root): `pnpm exec supabase migration up --local`
 - DB tests (repo root): `pnpm exec supabase test db --local`
+- Seed local dev data (repo root): `pnpm seed:dev` — additive and idempotent, see Local Database Safety above
 
 ## Design
 
