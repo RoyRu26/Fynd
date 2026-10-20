@@ -20,7 +20,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(46);
+select plan(54);
 
 -- ============================================================
 -- FIXTURES
@@ -519,6 +519,82 @@ select is(
 select ok(
   exists(select 1 from public.search_listings(p_query := 'leather') where title = 'Leather Viewer Own'),
   'the viewer''s own active listing IS returned -- Search is a catalog lookup, not a discover-others feed'
+);
+
+-- ============================================================
+-- 15a. Blocks (ROADMAP 5.2) -- both sort modes, both directions
+-- ============================================================
+-- Still viewer C. 'Leather Jacket' (owned by A) is a single, uniquely-
+-- titled row -- a plain exists(... where title = 'X') check needs no
+-- fixture-scoping table against unrelated dev data, per this file's own
+-- header note, so this mirrors every other single-row assertion in this
+-- suite rather than introducing feed.sql's count-based scoping machinery
+-- for no reason here.
+
+select ok(
+  exists(select 1 from public.search_listings(p_query := 'Leather Jacket') where title = 'Leather Jacket'),
+  'sanity: before any block, C sees A''s listing under newest sort'
+);
+
+select ok(
+  exists(select 1 from public.search_listings(p_sort := 'price', p_query := 'Leather Jacket') where title = 'Leather Jacket'),
+  'sanity: before any block, C sees A''s listing under price sort too'
+);
+
+-- C blocks A.
+insert into public.blocks (blocker_id, blocked_id)
+values ('b9000000-0000-0000-0000-00000000000c', 'b9000000-0000-0000-0000-00000000000a');
+
+select ok(
+  not exists(select 1 from public.search_listings(p_query := 'Leather Jacket') where title = 'Leather Jacket'),
+  'after C blocks A, A''s listing is suppressed under newest sort'
+);
+
+select ok(
+  not exists(select 1 from public.search_listings(p_sort := 'price', p_query := 'Leather Jacket') where title = 'Leather Jacket'),
+  'after C blocks A, A''s listing is suppressed under price sort too -- both branches carry the filter'
+);
+
+-- Unblocking restores visibility, both sort modes.
+delete from public.blocks
+ where blocker_id = 'b9000000-0000-0000-0000-00000000000c'
+   and blocked_id = 'b9000000-0000-0000-0000-00000000000a';
+
+select ok(
+  exists(select 1 from public.search_listings(p_query := 'Leather Jacket') where title = 'Leather Jacket'),
+  'unblocking A restores the listing under newest sort'
+);
+
+select ok(
+  exists(select 1 from public.search_listings(p_sort := 'price', p_query := 'Leather Jacket') where title = 'Leather Jacket'),
+  'unblocking A restores the listing under price sort too'
+);
+
+-- The REVERSE direction: A blocks C (C never blocked anyone). C is still
+-- the viewer running the query.
+set local request.jwt.claims = '{"sub":"b9000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+insert into public.blocks (blocker_id, blocked_id)
+values ('b9000000-0000-0000-0000-00000000000a', 'b9000000-0000-0000-0000-00000000000c');
+
+set local request.jwt.claims = '{"sub":"b9000000-0000-0000-0000-00000000000c","role":"authenticated"}';
+
+select ok(
+  not exists(select 1 from public.search_listings(p_query := 'Leather Jacket') where title = 'Leather Jacket'),
+  'A blocking C ALSO suppresses A''s listing from C''s results -- has_block_between is symmetric, not blocker-scoped'
+);
+
+set local request.jwt.claims = '{"sub":"b9000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+delete from public.blocks
+ where blocker_id = 'b9000000-0000-0000-0000-00000000000a'
+   and blocked_id = 'b9000000-0000-0000-0000-00000000000c';
+
+set local request.jwt.claims = '{"sub":"b9000000-0000-0000-0000-00000000000c","role":"authenticated"}';
+
+select ok(
+  exists(select 1 from public.search_listings(p_query := 'Leather Jacket') where title = 'Leather Jacket'),
+  'unblocking from the blocker''s side restores visibility again'
 );
 
 -- ============================================================

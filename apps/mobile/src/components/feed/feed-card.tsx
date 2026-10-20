@@ -176,6 +176,7 @@ export function FeedCard({ listing, includeOwn, followingOnly }: FeedCardProps) 
         onClose={() => setMoreMenuOpen(false)}
         target={{ listingId: listing.listingId }}
         targetKind="listing"
+        blockTargetUserId={listing.sellerId}
       />
     </View>
   );

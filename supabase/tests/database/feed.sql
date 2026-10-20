@@ -16,7 +16,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(60);
+select plan(64);
 
 -- ============================================================
 -- FIXTURES
@@ -423,6 +423,77 @@ select is(
   ),
   'Active two,Active one',
   'the keyset cursor returns the next page with no gap and no duplicate under p_following_only => true too'
+);
+
+-- ============================================================
+-- 3b. feed_listings -- blocks (ROADMAP 5.2)
+-- ============================================================
+-- Still viewer C, who follows A (not p_following_only here -- the default
+-- "for you" scope). feed_fixture is exactly A's 4 feed-eligible listings
+-- (section 1's own scope), so an exact total count through that join is
+-- the same discipline this file's own header insists on for any
+-- aggregating assertion -- not just "this one listing is missing", which
+-- is exactly the assert-presence-only mistake this suite's header warns
+-- against repeating.
+
+-- 1. C blocks A (the seller of every feed_fixture row) -- A's listings
+-- must disappear from C's feed entirely.
+insert into public.blocks (blocker_id, blocked_id)
+values ('f3000000-0000-0000-0000-00000000000c', 'f3000000-0000-0000-0000-00000000000a');
+
+select is(
+  (select count(*)::int from public.feed_listings(50) f
+    join feed_fixture ff on ff.listing_id = f.listing_id),
+  0,
+  'after C blocks A, none of A''s feed-eligible listings appear in C''s feed'
+);
+
+-- 2. Unblocking restores visibility.
+delete from public.blocks
+ where blocker_id = 'f3000000-0000-0000-0000-00000000000c'
+   and blocked_id = 'f3000000-0000-0000-0000-00000000000a';
+
+select is(
+  (select count(*)::int from public.feed_listings(50) f
+    join feed_fixture ff on ff.listing_id = f.listing_id),
+  4,
+  'unblocking A restores all 4 of C''s feed-eligible listings from them'
+);
+
+-- 3. The REVERSE direction: A blocks C (not the other way around). C is
+-- still the viewer running the query -- suppression must hold from C's
+-- side even though C never blocked anyone. Act as A only long enough to
+-- write the row (blocks' own INSERT policy is owner-scoped to
+-- blocker_id = auth.uid(), same as every other write in this table).
+set local request.jwt.claims = '{"sub":"f3000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+insert into public.blocks (blocker_id, blocked_id)
+values ('f3000000-0000-0000-0000-00000000000a', 'f3000000-0000-0000-0000-00000000000c');
+
+set local request.jwt.claims = '{"sub":"f3000000-0000-0000-0000-00000000000c","role":"authenticated"}';
+
+select is(
+  (select count(*)::int from public.feed_listings(50) f
+    join feed_fixture ff on ff.listing_id = f.listing_id),
+  0,
+  'A blocking C ALSO suppresses A''s listings from C''s feed -- has_block_between is symmetric, not blocker-scoped'
+);
+
+-- 4. Unblocking (from A's side, since A is the blocker this time) restores
+-- visibility again.
+set local request.jwt.claims = '{"sub":"f3000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+delete from public.blocks
+ where blocker_id = 'f3000000-0000-0000-0000-00000000000a'
+   and blocked_id = 'f3000000-0000-0000-0000-00000000000c';
+
+set local request.jwt.claims = '{"sub":"f3000000-0000-0000-0000-00000000000c","role":"authenticated"}';
+
+select is(
+  (select count(*)::int from public.feed_listings(50) f
+    join feed_fixture ff on ff.listing_id = f.listing_id),
+  4,
+  'unblocking from the blocker''s side restores visibility again'
 );
 
 -- ============================================================

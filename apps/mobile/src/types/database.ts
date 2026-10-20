@@ -63,6 +63,24 @@ export type Database = {
           },
         ]
       }
+      blocks: {
+        Row: {
+          blocked_id: string
+          blocker_id: string
+          created_at: string
+        }
+        Insert: {
+          blocked_id: string
+          blocker_id: string
+          created_at?: string
+        }
+        Update: {
+          blocked_id?: string
+          blocker_id?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
       categories: {
         Row: {
           created_at: string
@@ -552,6 +570,7 @@ export type Database = {
         }[]
       }
       inbox_unread_count: { Args: never; Returns: number }
+      is_blocked_with: { Args: { p_other_user_id: string }; Returns: boolean }
       mark_conversation_read: {
         Args: { p_conversation_id: string; p_up_to?: string }
         Returns: undefined

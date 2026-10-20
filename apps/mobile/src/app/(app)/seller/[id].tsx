@@ -147,6 +147,7 @@ export default function SellerProfileScreen() {
       onClose={() => setMoreMenuOpen(false)}
       target={{ reportedUserId: id }}
       targetKind="user"
+      blockTargetUserId={id}
     />
   );
 

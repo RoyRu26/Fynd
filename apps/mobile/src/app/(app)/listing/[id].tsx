@@ -8,6 +8,7 @@ import { MoreActionsSheet } from '@/components/report/more-actions-sheet';
 import { space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 import { useAuth } from '@/features/auth/auth-provider';
+import { useIsBlockedEitherWay } from '@/features/blocks/queries';
 import { formatCategoryBreadcrumb } from '@/features/categories/categories';
 import { mapInboxError } from '@/features/inbox/errors';
 import { useStartConversation } from '@/features/inbox/queries';
@@ -28,7 +29,7 @@ import { useListingDetail, useToggleFavoriteFromDetail } from '@/features/listin
  * Stack), so opening it pushes over Home and hides the floating tab bar —
  * no custom bottom nav was added for it.
  *
- * Deliberately NOT ownership-aware, with ONE narrow exception: favoriting and
+ * Deliberately NOT ownership-aware, with narrow exceptions: favoriting and
  * the seller row stay ownership-agnostic (the caller's own active listing
  * renders through the exact same branch as anyone else's — see the RLS note
  * below), but the pinned "Message seller" action bar (DESIGN.md §14.6) is
@@ -39,6 +40,14 @@ import { useListingDetail, useToggleFavoriteFromDetail } from '@/features/listin
  * owner see their own draft/reserved/sold/removed listing here, which is why
  * useListingDetail's own normalization treats anything but an active row as
  * "unavailable" regardless of who's asking — see detail.ts's doc comment.
+ *
+ * ROADMAP 5.2 adds a second reason to hide that same action bar: a block
+ * between the viewer and this seller, in either direction
+ * (`useIsBlockedEitherWay`, via `public.is_blocked_with`). This is
+ * proactive UX only — the real enforcement is server-side
+ * (`get_or_create_listing_conversation` and the `messages` INSERT policy),
+ * so a race between this check resolving and a block landing fails closed
+ * at the server, never open.
  */
 
 const BACK_ICON: IconName = { ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' };
@@ -59,6 +68,23 @@ export default function ListingDetailScreen() {
   const detailQuery = useListingDetail(id);
   const { toggleFavorite, isPending: favoritePending } = useToggleFavoriteFromDetail(id);
   const startConversation = useStartConversation();
+  // ROADMAP 5.2 -- proactive UX on top of the server-side RLS/RPC
+  // enforcement (get_or_create_listing_conversation and the messages
+  // INSERT policy are what actually prevent messaging either way): hides
+  // the "Message seller" action bar once a block exists between the
+  // viewer and this seller, in EITHER direction. `is_blocked_with` never
+  // reveals which side blocked which -- see its own migration's header.
+  //
+  // Defaulting `?? false` while this query is still pending would show the
+  // action bar for an instant on every load before flipping it away for a
+  // genuinely blocked pair -- unlike isOwnListing (synchronous) or
+  // isFavorited (bundled into detailQuery's own single fetch), this is a
+  // SECOND round trip with nothing to piggyback on. The action bar's own
+  // gate below additionally waits on `isBlockedEitherWayQuery.isPending`,
+  // so "don't know yet" reads as "don't show yet," not "assume not blocked."
+  const isBlockedEitherWayQuery = useIsBlockedEitherWay(detailQuery.data?.sellerId);
+  const isBlockedEitherWay = isBlockedEitherWayQuery.data ?? false;
+  const isBlockedEitherWayPending = isBlockedEitherWayQuery.isPending;
   // ROADMAP 5.1 — the "more" menu's Report entry point. Hidden entirely on
   // the viewer's own listing (see `isOwnListing` below and the header row),
   // so this only ever opens for someone else's listing.
@@ -175,7 +201,7 @@ export default function ListingDetailScreen() {
       </View>
     );
 
-    if (!isOwnListing) {
+    if (!isOwnListing && !isBlockedEitherWay && !isBlockedEitherWayPending) {
       actionBar = (
         <View
           style={[
@@ -221,6 +247,7 @@ export default function ListingDetailScreen() {
           onClose={() => setMoreMenuOpen(false)}
           target={{ listingId: detailQuery.data.listingId }}
           targetKind="listing"
+          blockTargetUserId={detailQuery.data.sellerId}
         />
       ) : null}
     </Screen>
