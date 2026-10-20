@@ -59,7 +59,7 @@ Source of truth for what gets built next. The `autopilot` skill works through th
 
 ## Milestone 5 — Trust & safety
 
-- [ ] **5.1 Report** — Report a listing or user (reason + note) from the feed "more" menu, listing detail and profiles. `reports` table, insert-only for users.
+- [x] **5.1 Report** — Report a listing or user (reason + note) from the feed "more" menu, listing detail and profiles. `reports` table, insert-only for users.
 - [ ] **5.2 Block** — Block a user: their listings disappear from my feed/search, and neither side can message the other. Enforced in RLS/RPCs, not just the UI.
 - [ ] **5.3 Mark sold to a buyer** — When marking sold, pick the buyer from people who messaged about the listing.
 - [ ] **5.4 Reviews** — After 5.3, buyer and seller can each leave one rating + comment. Average rating and count on seller profiles.
@@ -80,6 +80,10 @@ Source of truth for what gets built next. The `autopilot` skill works through th
 ## Progress log
 
 Autopilot appends one line per finished item: date, item, commit hash, notes.
+
+**Milestone 5 started** on branch `autopilot/m5` (branched from `autopilot/m4`'s tip — M4 itself isn't merged into `main` yet, continuing the same branch-chaining pattern 3.x used before the M1-3 merge).
+
+- 2026-10-20 — 5.1 Report — `fd8f523` — A new "more" action rail (feed card, listing detail, seller profile) opens a reason+note report sheet against a listing or a user, reusing the explore tab's chip-wall single-select and the owner-side action-sheet's Sheet+ListRow shape. `reports` is genuinely insert-only — no SELECT policy or grant to any client role at all, stronger than every other table's read shape in this app, matching ROADMAP's own "insert-only for users" wording; `service_role` is the only reader today, and building an admin surface is explicitly out of scope for this item. This branch had silently missed main's scrim-confinement fix (`249b30f`, landed after `autopilot/m4` branched) — caught by code review before commit, since the new action rail touched the exact lines that fix touches; reapplied alongside the new rail rather than left to collide in a future merge. Security review caught three real issues: `listing_id`/`reported_user_id` were `on delete cascade` — the same bug class 4.2's `ai_suggestion_calls` was already fixed for once — which would have let deleting a reported listing/user erase the report itself; changed to `on delete set null`, which in turn required loosening the "exactly one target" CHECK to "at most one" once review-driven testing showed `SET NULL`'s internal UPDATE was tripping the stricter version on every cascade. Also found and fixed the identity sequence not being covered by the table-level revoke (anon/authenticated could read `reports_id_seq` directly to infer report volume) and a `btrim()`-based note-required check that a tab- or no-break-space-only note could slip past.
 
 **Milestone 4 started** on branch `autopilot/m4` (branched from `main`'s tip — Milestones 1-3 are merged and pushed to `main` as of this milestone's start).
 
