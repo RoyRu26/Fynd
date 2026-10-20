@@ -122,6 +122,7 @@ function conversationDetailRpcRow(
     other_username: 'roy',
     other_display_name: 'Roy',
     other_avatar_path: 'other-1/avatar.jpg',
+    can_review: false,
     ...overrides,
   };
 }
@@ -138,7 +139,16 @@ describe('normalizeConversationHeader', () => {
       otherUsername: 'roy',
       otherDisplayName: 'Roy',
       otherAvatarPath: 'other-1/avatar.jpg',
+      canReview: false,
     });
+  });
+
+  // ROADMAP 5.4: canReview is never null by construction -- the migration's
+  // own `coalesce(..., false)` guarantees it, so normalizeConversationHeader
+  // does no correction of its own here, unlike the nullable fields above.
+  it('passes canReview through as-is -- true when the RPC says the sale is reviewable', () => {
+    const row = conversationDetailRpcRow({ can_review: true });
+    expect(normalizeConversationHeader(row).canReview).toBe(true);
   });
 
   // Same nullability lie as normalizeInboxRow corrects for
@@ -286,6 +296,7 @@ describe('associateConversationHeaderAvatarUrl', () => {
       otherUsername: 'roy',
       otherDisplayName: 'Roy',
       otherAvatarPath: 'other-1/avatar.jpg',
+      canReview: false,
       ...overrides,
     };
   }

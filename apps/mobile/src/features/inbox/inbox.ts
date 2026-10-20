@@ -190,6 +190,12 @@ export type ConversationDetailRpcRow =
  * as `inbox_conversations` (see that function's row type and
  * `normalizeInboxRow`'s doc comment) — a hard-deleted listing, or a
  * not-yet-onboarded profile, both land here as genuine nulls at runtime.
+ *
+ * `canReview` (ROADMAP 5.4) is the one column that is genuinely never
+ * null, by construction — `20261020113820_conversation_detail_can_review.sql`
+ * wraps its whole expression in `coalesce(..., false)` server-side
+ * specifically so a hard-deleted listing's `left join` nulls resolve to a
+ * clean `false` rather than leaking a nullable boolean into this type.
  */
 export type ConversationHeader = {
   conversationId: string;
@@ -202,6 +208,7 @@ export type ConversationHeader = {
   otherDisplayName: string | null;
   otherAvatarPath: string | null;
   otherAvatarUrl: string | null;
+  canReview: boolean;
 };
 
 export type NormalizedConversationHeader = Omit<ConversationHeader, 'otherAvatarUrl'>;
@@ -217,6 +224,7 @@ export function normalizeConversationHeader(row: ConversationDetailRpcRow): Norm
     otherUsername: row.other_username,
     otherDisplayName: row.other_display_name,
     otherAvatarPath: row.other_avatar_path,
+    canReview: row.can_review,
   };
 }
 

@@ -9,5 +9,6 @@ export { ListRow, type ListRowProps } from '@/components/ui/list-row';
 export { Screen, type ScreenProps } from '@/components/ui/screen';
 export { Sheet, type SheetProps } from '@/components/ui/sheet';
 export { Skeleton, SkeletonListingCard, SkeletonRow, type SkeletonProps } from '@/components/ui/skeleton';
+export { StarRating, type StarFill, type StarRatingProps } from '@/components/ui/star-rating';
 export { Text, type TextColor, type TextProps, type TextVariant } from '@/components/ui/text';
 export { TextField, type TextFieldProps } from '@/components/ui/text-field';

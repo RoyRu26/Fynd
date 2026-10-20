@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View, type ListRenderItemInfo } from 'react-native';
 
-import { Avatar, Button, IconButton, Screen, Text, type IconName } from '@/components/ui';
+import { Avatar, Button, IconButton, Screen, StarRating, Text, type IconName } from '@/components/ui';
 import { ListingGridTile, type ListingGridTileItem } from '@/components/listing/listing-grid-tile';
 import { MoreActionsSheet } from '@/components/report/more-actions-sheet';
 import { space } from '@/design/tokens';
@@ -10,14 +10,19 @@ import { useAppTheme } from '@/design/theme-provider';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useFollowCounts, useIsFollowing, useToggleFollow } from '@/features/follows/queries';
 import { mapListingError } from '@/features/listings/errors';
+import { formatAverageRatingLabel } from '@/features/reviews/reviews';
+import { useSellerReviewSummary } from '@/features/reviews/queries';
 import { useSellerListings, useSellerProfile } from '@/features/seller-profile/queries';
 
 /**
  * Public Seller Profile v1 — DESIGN.md §14.3's "Instagram-shaped structure":
  * identity header (avatar, display name, handle, counts, follow button) is
  * now complete as of ROADMAP 3.1, then a photo grid reusing the Search
- * tile. Still defers reviews/ratings/verification/location and any edit
- * affordance — none of those have a real destination yet.
+ * tile. ROADMAP 5.4 adds the average-rating/review-count third count,
+ * pushing `reviews/[id]` the same way the followers/following counts
+ * already push `follows/[id]` — see ROADMAP 3.3's own precedent for that
+ * shape. Still defers verification/location and any edit affordance — none
+ * of those have a real destination yet.
  *
  * Deliberately NOT ownership-aware, with ONE narrow exception — mirroring
  * `listing/[id].tsx`'s own exact framing for its one exception (the pinned
@@ -89,6 +94,7 @@ export default function SellerProfileScreen() {
   const listingsQuery = useSellerListings(id);
   const followCountsQuery = useFollowCounts(id);
   const isFollowingQuery = useIsFollowing(viewerId, id);
+  const reviewSummaryQuery = useSellerReviewSummary(id);
   const { toggleFollow, isPending: followPending } = useToggleFollow(id, viewerId);
 
   const listings = useMemo(
@@ -110,6 +116,10 @@ export default function SellerProfileScreen() {
     },
     [router, id],
   );
+
+  const openReviews = useCallback(() => {
+    router.push({ pathname: '/(app)/reviews/[id]', params: { id } });
+  }, [router, id]);
 
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<ListingGridTileItem>) => (
@@ -202,6 +212,7 @@ export default function SellerProfileScreen() {
   const followersCount = followCountsQuery.data?.followersCount ?? null;
   const followingCount = followCountsQuery.data?.followingCount ?? null;
   const isFollowing = isFollowingQuery.data ?? false;
+  const reviewSummary = reviewSummaryQuery.data ?? null;
 
   const listHeader = (
     <View style={styles.listHeader}>
@@ -237,6 +248,24 @@ export default function SellerProfileScreen() {
               onPress={() => openFollowList('following')}>
               <Text variant="caption" color="textTertiary">
                 {followingCount === 1 ? '1 following' : `${followingCount} following`}
+              </Text>
+            </Pressable>
+          ) : null}
+          {reviewSummary !== null ? (
+            // Same always-tappable-even-at-zero pattern ROADMAP 3.3 already
+            // established for the followers/following counts above — a
+            // seller with no reviews yet still pushes `reviews/[id]`,
+            // landing on that screen's own empty state, rather than hiding
+            // the row until there is something to show.
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Rating: ${formatAverageRatingLabel(reviewSummary.averageRating, reviewSummary.reviewCount)}`}
+              hitSlop={COUNT_HIT_SLOP}
+              onPress={openReviews}
+              style={styles.ratingPressable}>
+              <StarRating value={reviewSummary.averageRating} size="sm" accessibilityLabel="Average rating" />
+              <Text variant="caption" color="textTertiary">
+                {formatAverageRatingLabel(reviewSummary.averageRating, reviewSummary.reviewCount)}
               </Text>
             </Pressable>
           ) : null}
@@ -334,7 +363,13 @@ const styles = StyleSheet.create({
   },
   countsRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: space[4],
+  },
+  ratingPressable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space[1],
   },
   footerSpinner: {
     paddingVertical: space[5],

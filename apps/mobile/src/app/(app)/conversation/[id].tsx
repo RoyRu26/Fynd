@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -9,9 +9,10 @@ import {
   type ListRenderItemInfo,
 } from 'react-native';
 
-import { Avatar, Button, IconButton, Screen, Text, type IconName } from '@/components/ui';
+import { Avatar, Button, Icon, IconButton, ListRow, Screen, Text, type IconName } from '@/components/ui';
 import { Composer } from '@/components/conversation/composer';
 import { MessageBubble } from '@/components/conversation/message-bubble';
+import { ReviewSheet } from '@/components/review/review-sheet';
 import { space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 import { useAuth } from '@/features/auth/auth-provider';
@@ -42,6 +43,11 @@ import type { ConversationMessage, PendingMessage } from '@/features/conversatio
  */
 
 const BACK_ICON: IconName = { ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' };
+// Verified against the installed packages, same discipline as every other
+// IconName constant in this codebase: 'star' exists in sf-symbols-
+// typescript's types, and 'star_border' exists in expo-symbols' android/
+// symbols.json.
+const REVIEW_ICON: IconName = { ios: 'star', android: 'star_border', web: 'star_border' };
 
 function messageKey(message: ConversationMessage): string {
   return message.kind === 'pending' ? message.tempId : message.id;
@@ -56,6 +62,11 @@ export default function ConversationScreen() {
 
   const detailQuery = useConversationDetail(id);
   const markRead = useMarkConversationRead();
+
+  // ROADMAP 5.4 -- the review-submission sheet, opened from the "Leave a
+  // review" row below. Lives here, not as query-driven visibility, because
+  // nothing about dismissing it should ever re-trigger from a refetch.
+  const [reviewSheetOpen, setReviewSheetOpen] = useState(false);
 
   const historyQuery = useMessageHistory(id);
   const { sendMessage, retryMessage, isSending } = useSendMessage(id);
@@ -88,6 +99,11 @@ export default function ConversationScreen() {
       <IconButton icon={BACK_ICON} accessibilityLabel="Back" onPress={() => router.back()} />
     </View>
   );
+
+  // Mounted only once `header`/`name` are known (the sheet needs both as
+  // props) -- fine, since it can only ever be opened from the "Leave a
+  // review" row in that same branch below, never before.
+  let reviewSheet: ReactNode = null;
 
   let body: ReactNode;
   if (detailQuery.isPending) {
@@ -194,6 +210,21 @@ export default function ConversationScreen() {
           )}
         </View>
 
+        {/* ROADMAP 5.4 -- rendered only when conversation_detail's own
+            `canReview` says this sale is reviewable by the viewer right
+            now: a completed sale between exactly these two participants,
+            not yet reviewed by the viewer. Disappears on its own once the
+            submission succeeds and invalidates this same query, with no
+            manual state to flip here. */}
+        {header.canReview ? (
+          <ListRow
+            leading={<Icon name={REVIEW_ICON} color={colors.accent} />}
+            title={`Leave a review for ${name}`}
+            onPress={() => setReviewSheetOpen(true)}
+            accessibilityLabel={`Leave a review for ${name}`}
+          />
+        ) : null}
+
         <FlatList
           style={styles.list}
           inverted
@@ -216,6 +247,17 @@ export default function ConversationScreen() {
         <Composer onSend={sendMessage} isSending={isSending} />
       </View>
     );
+
+    reviewSheet = (
+      <ReviewSheet
+        visible={reviewSheetOpen}
+        onClose={() => setReviewSheetOpen(false)}
+        conversationId={id}
+        listingId={header.listingId}
+        revieweeId={header.otherParticipantId}
+        revieweeName={name}
+      />
+    );
   }
 
   return (
@@ -225,6 +267,7 @@ export default function ConversationScreen() {
     <Screen contentContainerStyle={styles.content} keyboardAvoiding scroll={false}>
       {backRow}
       {body}
+      {reviewSheet}
     </Screen>
   );
 }

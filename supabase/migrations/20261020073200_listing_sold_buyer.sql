@@ -169,6 +169,15 @@ begin
     raise exception 'Only an active or reserved listing can be marked as sold' using errcode = 'P0001';
   end if;
 
+  -- This guard (and the absence, anywhere in this schema, of any RPC that
+  -- transitions a listing OUT of 'sold') is what makes 'sold' terminal.
+  -- ROADMAP 5.4's `reviews` table leans on that invariant directly: its
+  -- natural key is `unique (listing_id, reviewer_id)` alone, with no
+  -- status/round-trip component, which is only correct because a listing
+  -- cannot be sold, then un-sold, then sold again to a different buyer. If
+  -- a future migration ever adds such a transition, `reviews_unique_
+  -- listing_reviewer` (20261020113819) must be revisited first.
+
   if p_buyer_id is not null then
     -- `is not distinct from`, not `=`: the seller id is already known
     -- non-null here (every listing has one), but the habit matters more

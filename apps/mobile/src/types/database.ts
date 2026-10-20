@@ -478,6 +478,44 @@ export type Database = {
           },
         ]
       }
+      reviews: {
+        Row: {
+          comment: string | null
+          created_at: string
+          id: number
+          listing_id: string
+          rating: number
+          reviewee_id: string
+          reviewer_id: string
+        }
+        Insert: {
+          comment?: string | null
+          created_at?: string
+          id?: never
+          listing_id: string
+          rating: number
+          reviewee_id: string
+          reviewer_id: string
+        }
+        Update: {
+          comment?: string | null
+          created_at?: string
+          id?: never
+          listing_id?: string
+          rating?: number
+          reviewee_id?: string
+          reviewer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reviews_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -502,6 +540,7 @@ export type Database = {
       conversation_detail: {
         Args: { p_conversation_id: string }
         Returns: {
+          can_review: boolean
           conversation_id: string
           cover_storage_path: string
           listing_id: string
@@ -762,9 +801,34 @@ export type Database = {
           title: string
         }[]
       }
+      seller_review_summary: {
+        Args: { p_seller_id: string }
+        Returns: {
+          average_rating: number
+          review_count: number
+        }[]
+      }
       set_listing_image_order: {
         Args: { p_image_ids: string[]; p_listing_id: string }
         Returns: undefined
+      }
+      submit_review: {
+        Args: { p_comment?: string; p_listing_id: string; p_rating: number }
+        Returns: {
+          comment: string | null
+          created_at: string
+          id: number
+          listing_id: string
+          rating: number
+          reviewee_id: string
+          reviewer_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "reviews"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       update_listing_details: {
         Args: {
