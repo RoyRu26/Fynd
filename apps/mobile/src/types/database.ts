@@ -307,6 +307,7 @@ export type Database = {
           search_tsv: unknown
           seller_id: string
           size: Database["public"]["Enums"]["listing_size"] | null
+          sold_to_user_id: string | null
           status: Database["public"]["Enums"]["listing_status"]
           title: string | null
           updated_at: string
@@ -322,6 +323,7 @@ export type Database = {
           search_tsv?: unknown
           seller_id: string
           size?: Database["public"]["Enums"]["listing_size"] | null
+          sold_to_user_id?: string | null
           status?: Database["public"]["Enums"]["listing_status"]
           title?: string | null
           updated_at?: string
@@ -337,6 +339,7 @@ export type Database = {
           search_tsv?: unknown
           seller_id?: string
           size?: Database["public"]["Enums"]["listing_size"] | null
+          sold_to_user_id?: string | null
           status?: Database["public"]["Enums"]["listing_status"]
           title?: string | null
           updated_at?: string
@@ -352,6 +355,13 @@ export type Database = {
           {
             foreignKeyName: "listings_seller_id_fkey"
             columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "listings_sold_to_user_id_fkey"
+            columns: ["sold_to_user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -571,6 +581,17 @@ export type Database = {
       }
       inbox_unread_count: { Args: never; Returns: number }
       is_blocked_with: { Args: { p_other_user_id: string }; Returns: boolean }
+      listing_conversation_buyers: {
+        Args: { p_listing_id: string }
+        Returns: {
+          buyer_avatar_path: string
+          buyer_display_name: string
+          buyer_id: string
+          buyer_username: string
+          last_message_at: string
+          last_message_body: string
+        }[]
+      }
       mark_conversation_read: {
         Args: { p_conversation_id: string; p_up_to?: string }
         Returns: undefined
@@ -588,6 +609,7 @@ export type Database = {
           search_tsv: unknown
           seller_id: string
           size: Database["public"]["Enums"]["listing_size"] | null
+          sold_to_user_id: string | null
           status: Database["public"]["Enums"]["listing_status"]
           title: string | null
           updated_at: string
@@ -612,6 +634,7 @@ export type Database = {
           search_tsv: unknown
           seller_id: string
           size: Database["public"]["Enums"]["listing_size"] | null
+          sold_to_user_id: string | null
           status: Database["public"]["Enums"]["listing_status"]
           title: string | null
           updated_at: string
@@ -624,7 +647,7 @@ export type Database = {
         }
       }
       mark_listing_sold: {
-        Args: { p_listing_id: string }
+        Args: { p_buyer_id?: string; p_listing_id: string }
         Returns: {
           category_id: string | null
           condition: Database["public"]["Enums"]["listing_condition"] | null
@@ -636,6 +659,7 @@ export type Database = {
           search_tsv: unknown
           seller_id: string
           size: Database["public"]["Enums"]["listing_size"] | null
+          sold_to_user_id: string | null
           status: Database["public"]["Enums"]["listing_status"]
           title: string | null
           updated_at: string
@@ -660,6 +684,7 @@ export type Database = {
           search_tsv: unknown
           seller_id: string
           size: Database["public"]["Enums"]["listing_size"] | null
+          sold_to_user_id: string | null
           status: Database["public"]["Enums"]["listing_status"]
           title: string | null
           updated_at: string
@@ -699,6 +724,7 @@ export type Database = {
           search_tsv: unknown
           seller_id: string
           size: Database["public"]["Enums"]["listing_size"] | null
+          sold_to_user_id: string | null
           status: Database["public"]["Enums"]["listing_status"]
           title: string | null
           updated_at: string
@@ -761,6 +787,7 @@ export type Database = {
           search_tsv: unknown
           seller_id: string
           size: Database["public"]["Enums"]["listing_size"] | null
+          sold_to_user_id: string | null
           status: Database["public"]["Enums"]["listing_status"]
           title: string | null
           updated_at: string

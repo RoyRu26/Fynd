@@ -1,5 +1,11 @@
 import { LISTING_IMAGES_BUCKET, LISTING_IMAGE_CONTENT_TYPE } from '@/features/listings/paths';
+import { createAvatarUrls } from '@/features/profile/api';
 import type { DraftListingInput, PublishableListingInput } from '@/features/listings/schemas';
+import {
+  associateSoldBuyerAvatarUrls,
+  normalizeSoldBuyerRow,
+  type SoldBuyerCandidate,
+} from '@/features/listings/sold-buyer';
 import { supabase } from '@/lib/supabase';
 import type { Tables } from '@/types/database';
 
@@ -211,13 +217,68 @@ export async function markListingActive(listingId: string): Promise<ListingRow> 
 }
 
 /**
- * active|reserved -> sold. Deliberately the simple no-buyer-tracking
- * version -- no buyer id. ROADMAP 5.3 adds buyer selection later.
+ * active|reserved -> sold. `buyerId` is `null` for "sold outside Fynd" --
+ * the pre-5.3 behaviour, still fully supported -- or the id of someone who
+ * actually messaged about THIS listing (enforced server-side; the RPC
+ * rejects a buyer who never messaged about it, even one who messaged the
+ * same seller about a different listing). See
+ * supabase/migrations/20261020073200_listing_sold_buyer.sql for the full
+ * validation this RPC performs, including why a since-blocked buyer may
+ * still be selected.
  */
-export async function markListingSold(listingId: string): Promise<ListingRow> {
-  const { data, error } = await supabase.rpc('mark_listing_sold', { p_listing_id: listingId });
+export async function markListingSold(
+  listingId: string,
+  buyerId: string | null,
+): Promise<ListingRow> {
+  const { data, error } = await supabase.rpc('mark_listing_sold', {
+    p_listing_id: listingId,
+    // The generated Args type is `string | undefined` -- RPC Args codegen
+    // does not model a parameter's SQL `default null` as `| null` the way
+    // table-column nullability is modelled -- so `null` (our own domain's
+    // "no buyer" value) is converted at this one boundary. The server side
+    // treats an omitted argument and an explicit `null` identically either
+    // way (`p_buyer_id uuid default null`).
+    p_buyer_id: buyerId ?? undefined,
+  });
   if (error) throw error;
   return data;
+}
+
+/**
+ * ROADMAP 5.3: the people who messaged about this listing, who may
+ * therefore be picked as the sold-to buyer -- most-recent-conversation
+ * first, exactly the order `listing_conversation_buyers` already returns.
+ *
+ * A SECURITY DEFINER RPC, not a direct client query, because of a
+ * COLUMN-GRANT gap rather than an RLS gap: `conversations` only grants
+ * `select (id, buyer_id, seller_id)` to `authenticated` (see
+ * `20260929090000_chat_conversations_and_messages.sql`), so a client
+ * cannot even NAME `listing_id` in a query, regardless of what RLS would
+ * have allowed. See the RPC's own migration comment for the full
+ * reasoning.
+ *
+ * Avatar URLs are resolved the same batched way `inbox/api.ts`'s
+ * `fetchInboxPage` already does: one signed-URL round trip for every
+ * non-null avatar path in the result, never one request per buyer.
+ */
+export async function fetchListingConversationBuyers(
+  listingId: string,
+): Promise<SoldBuyerCandidate[]> {
+  const { data, error } = await supabase.rpc('listing_conversation_buyers', {
+    p_listing_id: listingId,
+  });
+  if (error) throw error;
+
+  const rows = data.map(normalizeSoldBuyerRow);
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const avatarPaths = Array.from(
+    new Set(rows.map((row) => row.avatarPath).filter((path): path is string => path !== null)),
+  );
+  const urlsByPath = await createAvatarUrls(avatarPaths);
+  return associateSoldBuyerAvatarUrls(rows, urlsByPath);
 }
 
 /**

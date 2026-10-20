@@ -6,6 +6,7 @@ import {
   createListingImageUrls,
   deleteDraft,
   fetchListing,
+  fetchListingConversationBuyers,
   fetchListingImages,
   fetchMyListings,
   markListingActive,
@@ -29,6 +30,8 @@ export const listingKeys = {
   mine: (sellerId: string | undefined) => [...listingKeys.all, 'mine', sellerId] as const,
   detail: (listingId: string | undefined) => [...listingKeys.all, 'detail', listingId] as const,
   images: (listingId: string | undefined) => [...listingKeys.all, 'images', listingId] as const,
+  conversationBuyers: (listingId: string | undefined) =>
+    [...listingKeys.all, 'conversationBuyers', listingId] as const,
 };
 
 // Images are keyed separately from the listing detail on purpose: photo churn
@@ -256,12 +259,27 @@ export function useMarkListingSold(sellerId: string | undefined) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (listingId: string) => markListingSold(listingId),
-    onSuccess: (_listing, listingId) => {
+    mutationFn: ({ listingId, buyerId }: { listingId: string; buyerId: string | null }) =>
+      markListingSold(listingId, buyerId),
+    onSuccess: (_listing, { listingId }) => {
       queryClient.invalidateQueries({ queryKey: listingKeys.detail(listingId) });
       queryClient.invalidateQueries({ queryKey: listingKeys.mine(sellerId) });
       queryClient.invalidateQueries({ queryKey: listingDetailKeys.byId(listingId) });
     },
+  });
+}
+
+/**
+ * ROADMAP 5.3: the candidate buyers for the "Mark as sold" picker --
+ * everyone who messaged about this listing, most-recent-first. `enabled:
+ * !!listingId` mirrors every other listing-scoped query in this file
+ * (`useListing`, `useListingImages`).
+ */
+export function useListingConversationBuyers(listingId: string | undefined) {
+  return useQuery({
+    queryKey: listingKeys.conversationBuyers(listingId),
+    queryFn: () => fetchListingConversationBuyers(listingId as string),
+    enabled: !!listingId,
   });
 }
 
