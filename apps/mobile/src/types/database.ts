@@ -34,6 +34,35 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_suggestion_calls: {
+        Row: {
+          created_at: string
+          id: number
+          listing_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          listing_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          listing_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_suggestion_calls_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       categories: {
         Row: {
           created_at: string
@@ -383,6 +412,44 @@ export type Database = {
         }
         Relationships: []
       }
+      reports: {
+        Row: {
+          created_at: string
+          id: number
+          listing_id: string | null
+          note: string | null
+          reason: Database["public"]["Enums"]["report_reason"]
+          reported_user_id: string | null
+          reporter_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          listing_id?: string | null
+          note?: string | null
+          reason: Database["public"]["Enums"]["report_reason"]
+          reported_user_id?: string | null
+          reporter_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          listing_id?: string | null
+          note?: string | null
+          reason?: Database["public"]["Enums"]["report_reason"]
+          reported_user_id?: string | null
+          reporter_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reports_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -585,6 +652,13 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      record_ai_suggestion_attempt: {
+        Args: { p_listing_id: string }
+        Returns: {
+          allowed: boolean
+          remaining: number
+        }[]
+      }
       record_listing_impression: {
         Args: {
           p_feed_position?: number
@@ -707,6 +781,13 @@ export type Database = {
         | "eu_shoe_46"
         | "eu_shoe_47"
       listing_status: "draft" | "active" | "reserved" | "sold" | "removed"
+      report_reason:
+        | "spam"
+        | "prohibited_item"
+        | "scam_or_fraud"
+        | "inappropriate_content"
+        | "harassment"
+        | "other"
       search_sort: "newest" | "price"
     }
     CompositeTypes: {
@@ -865,6 +946,14 @@ export const Constants = {
         "eu_shoe_47",
       ],
       listing_status: ["draft", "active", "reserved", "sold", "removed"],
+      report_reason: [
+        "spam",
+        "prohibited_item",
+        "scam_or_fraud",
+        "inappropriate_content",
+        "harassment",
+        "other",
+      ],
       search_sort: ["newest", "price"],
     },
   },

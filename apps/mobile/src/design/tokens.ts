@@ -35,17 +35,20 @@ export { neutral, oat, olive, rose, teal, crimson, amber } from "@/design/palett
 // gradient-angle syntax for top-to-bottom, matching the original numeric
 // `angle: 180` this replaces exactly.
 //
-// The bottom stop is a plateau (65%-100%, both at 0.75 opacity), not a single
-// point at 100%. The overlay content it sits behind is pushed up from the
-// true bottom edge by a safe-area-derived amount that varies per device, so
-// the darkest band has to cover a range of possible resting positions, not
-// just the literal last pixel row.
+// The feed card applies this to the overlay content's OWN box (bottom-
+// anchored, height intrinsic to its content), not the full card — so these
+// percentages span only that much shorter region, not the whole photo.
+// Reaching full opacity by 45% keeps the price/title near the top of the
+// block adequately backed without needing the ramp to run the entire
+// height; the short plateau to 100% is margin for text descenders right at
+// the content's own bottom edge, not a hedge against where that edge might
+// land (the box's bottom IS the true, safe-area-adjusted edge, always).
 export const gradientScrim: LinearGradientValue = {
   type: "linear-gradient",
   direction: "180deg",
   colorStops: [
     { color: "rgba(12,10,11,0)", positions: ["0%"] },
-    { color: "rgba(12,10,11,0.75)", positions: ["65%"] },
+    { color: "rgba(12,10,11,0.75)", positions: ["45%"] },
     { color: "rgba(12,10,11,0.75)", positions: ["100%"] },
   ],
 };

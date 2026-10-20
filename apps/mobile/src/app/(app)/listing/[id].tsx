@@ -1,9 +1,10 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Avatar, Button, Chip, IconButton, Screen, Text, type IconName } from '@/components/ui';
 import { ListingGallery } from '@/components/listing/listing-gallery';
+import { MoreActionsSheet } from '@/components/report/more-actions-sheet';
 import { space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 import { useAuth } from '@/features/auth/auth-provider';
@@ -43,6 +44,10 @@ import { useListingDetail, useToggleFavoriteFromDetail } from '@/features/listin
 const BACK_ICON: IconName = { ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' };
 const HEART_ICON: IconName = { ios: 'heart', android: 'favorite_border', web: 'favorite_border' };
 const HEART_FILLED_ICON: IconName = { ios: 'heart.fill', android: 'favorite', web: 'favorite' };
+// Verified against the installed packages: 'ellipsis' exists in
+// sf-symbols-typescript's types, and 'more_vert' exists in expo-symbols'
+// android/symbols.json.
+const MORE_ICON: IconName = { ios: 'ellipsis', android: 'more_vert', web: 'more_vert' };
 
 export default function ListingDetailScreen() {
   const router = useRouter();
@@ -54,6 +59,10 @@ export default function ListingDetailScreen() {
   const detailQuery = useListingDetail(id);
   const { toggleFavorite, isPending: favoritePending } = useToggleFavoriteFromDetail(id);
   const startConversation = useStartConversation();
+  // ROADMAP 5.1 — the "more" menu's Report entry point. Hidden entirely on
+  // the viewer's own listing (see `isOwnListing` below and the header row),
+  // so this only ever opens for someone else's listing.
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
 
   function handleMessageSeller(listingId: string) {
     if (startConversation.isPending) return; // belt-and-suspenders on top of the Button's own loading-gated disable
@@ -66,6 +75,10 @@ export default function ListingDetailScreen() {
 
   let body: ReactNode;
   let actionBar: ReactNode = null;
+  // Lifted out of the loaded-data branch below so the header row (always
+  // rendered, even while loading) can gate the "more" button on it without
+  // waiting for `detailQuery.data`.
+  let isOwnListing = false;
   if (detailQuery.isPending) {
     body = (
       <View style={styles.centered}>
@@ -105,7 +118,7 @@ export default function ListingDetailScreen() {
     // on the viewer's own listing for an instant; harmless, since
     // get_or_create_listing_conversation's own guard rejects messaging
     // yourself server-side regardless.
-    const isOwnListing = viewerId === listing.sellerId;
+    isOwnListing = viewerId === listing.sellerId;
 
     body = (
       <View style={styles.body}>
@@ -186,6 +199,14 @@ export default function ListingDetailScreen() {
     <Screen contentContainerStyle={styles.content} scroll={false}>
       <View style={styles.header}>
         <IconButton icon={BACK_ICON} accessibilityLabel="Back" onPress={() => router.back()} />
+        {/* Default/neutral variant, NOT onMedia -- this header sits over the
+            plain screen background, not over media (unlike the feed card's
+            own rail). Hidden on the viewer's own listing, mirroring how the
+            "Message seller" action bar above is already hidden for the same
+            reason. */}
+        {!isOwnListing && detailQuery.data ? (
+          <IconButton icon={MORE_ICON} accessibilityLabel="More actions" onPress={() => setMoreMenuOpen(true)} />
+        ) : null}
       </View>
       <ScrollView
         style={styles.scrollArea}
@@ -194,6 +215,14 @@ export default function ListingDetailScreen() {
         {body}
       </ScrollView>
       {actionBar}
+      {detailQuery.data ? (
+        <MoreActionsSheet
+          visible={moreMenuOpen}
+          onClose={() => setMoreMenuOpen(false)}
+          target={{ listingId: detailQuery.data.listingId }}
+          targetKind="listing"
+        />
+      ) : null}
     </Screen>
   );
 }
@@ -206,6 +235,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
   scrollArea: {
     flex: 1,

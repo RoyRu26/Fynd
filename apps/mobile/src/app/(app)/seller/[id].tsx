@@ -1,9 +1,10 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useMemo, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View, type ListRenderItemInfo } from 'react-native';
 
 import { Avatar, Button, IconButton, Screen, Text, type IconName } from '@/components/ui';
 import { ListingGridTile, type ListingGridTileItem } from '@/components/listing/listing-grid-tile';
+import { MoreActionsSheet } from '@/components/report/more-actions-sheet';
 import { space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 import { useAuth } from '@/features/auth/auth-provider';
@@ -44,6 +45,10 @@ import { useSellerListings, useSellerProfile } from '@/features/seller-profile/q
  */
 
 const BACK_ICON: IconName = { ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' };
+// Verified against the installed packages: 'ellipsis' exists in
+// sf-symbols-typescript's types, and 'more_vert' exists in expo-symbols'
+// android/symbols.json.
+const MORE_ICON: IconName = { ios: 'ellipsis', android: 'more_vert', web: 'more_vert' };
 
 // DESIGN.md §15.1: touch targets must reach 44×44pt via minimum height or
 // hitSlop, never left bare at the call site. The counts' caption text is
@@ -72,6 +77,13 @@ export default function SellerProfileScreen() {
   // doc comment).
   const viewerId = session?.user.id;
   const isOwnProfile = viewerId === id;
+
+  // ROADMAP 5.1 — the "more" menu's Report entry point, targeting this
+  // profile's own route id directly. Independent of `profileQuery`'s own
+  // loading state (unlike the listing detail screen's analogous button,
+  // which needs the loaded row for its listingId) -- the route `id` IS the
+  // reported_user_id, so this can open from the very first render.
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
 
   const profileQuery = useSellerProfile(id);
   const listingsQuery = useSellerListings(id);
@@ -115,7 +127,27 @@ export default function SellerProfileScreen() {
   const backRow = (
     <View style={styles.header}>
       <IconButton icon={BACK_ICON} accessibilityLabel="Back" onPress={() => router.back()} />
+      {/* Default/neutral variant, NOT onMedia -- this header sits over the
+          plain screen background. Hidden on the viewer's own profile,
+          mirroring the Follow/Unfollow button's own `!isOwnProfile` gate
+          below. */}
+      {!isOwnProfile ? (
+        <IconButton icon={MORE_ICON} accessibilityLabel="More actions" onPress={() => setMoreMenuOpen(true)} />
+      ) : null}
     </View>
+  );
+
+  // Mounted on every return path below -- the "more" button in `backRow`
+  // is visible (and, per the gate above, only ever rendered) regardless of
+  // `profileQuery`'s own loading state, since its target is the route id
+  // itself, not anything profileQuery resolves.
+  const moreActionsSheet = (
+    <MoreActionsSheet
+      visible={moreMenuOpen}
+      onClose={() => setMoreMenuOpen(false)}
+      target={{ reportedUserId: id }}
+      targetKind="user"
+    />
   );
 
   if (profileQuery.isPending) {
@@ -125,6 +157,7 @@ export default function SellerProfileScreen() {
         <View style={styles.centered}>
           <ActivityIndicator color={colors.textTertiary} />
         </View>
+        {moreActionsSheet}
       </Screen>
     );
   }
@@ -141,6 +174,7 @@ export default function SellerProfileScreen() {
             Try again
           </Button>
         </View>
+        {moreActionsSheet}
       </Screen>
     );
   }
@@ -157,6 +191,7 @@ export default function SellerProfileScreen() {
             Go back
           </Button>
         </View>
+        {moreActionsSheet}
       </Screen>
     );
   }
@@ -264,6 +299,7 @@ export default function SellerProfileScreen() {
           ) : null
         }
       />
+      {moreActionsSheet}
     </Screen>
   );
 }
@@ -279,6 +315,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
   centered: {
     alignItems: 'center',

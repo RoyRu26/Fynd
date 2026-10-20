@@ -1,10 +1,11 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar, Chip, IconButton, ListingImage, Text, type IconName } from '@/components/ui';
 import { FeedCardGestures } from '@/components/feed/feed-card-gestures';
+import { MoreActionsSheet } from '@/components/report/more-actions-sheet';
 import { gradientScrim, space } from '@/design/tokens';
 import { useToggleFavorite } from '@/features/feed/queries';
 import { CONDITION_LABELS } from '@/features/listings/condition';
@@ -15,14 +16,27 @@ import type { FeedListing } from '@/features/feed/pagination';
 /**
  * One page of the Home feed: full-bleed cover photo (wrapped in
  * FeedCardGestures for tap-or-swipe-left-to-open-detail and
- * double-tap-to-like), a bottom scrim, and the DESIGN.md §14.1 tier 2-4
- * overlay — price, title, a condition + size chip pair, a seller row, and a
- * favorite action. Still
- * deliberately minimal beyond that — no share, comments, follow, chat,
- * timestamps, or shipping metadata; those are later slices, not omissions.
+ * double-tap-to-like) and the DESIGN.md §14.1 tier 2-4 overlay — price,
+ * title, a condition + size chip pair, a seller row, and a right-edge
+ * action rail (favorite, then "more" — ROADMAP 5.1's Report entry point,
+ * via `MoreActionsSheet`). Still deliberately minimal beyond that — no
+ * share, comments, follow, chat, timestamps, or shipping metadata; those
+ * are later slices, not omissions. Share specifically is named in
+ * DESIGN.md §14.1's own rail but not in any shipped ROADMAP item, so the
+ * rail only carries the two actions that exist.
  *
- * No card-within-card: every layer here is a plain full-size View stacked
- * on the photo, never an inset surface with its own background/border.
+ * The overlay's gradient scrim lives on that block's own box, not a
+ * separate full-card layer: the box is bottom-anchored with no `top`, so
+ * it (and the gradient painted on it) is only ever as tall as the content
+ * actually needs — the rest of the photo above it is never darkened. The
+ * two-icon action rail sits inside this same box, bottom-aligned with the
+ * metadata column; it doesn't push the box any taller than the metadata
+ * column already makes it, since `alignItems: 'flex-end'` just aligns the
+ * rail to the box's bottom edge rather than adding its own height to it.
+ *
+ * No card-within-card otherwise: every OTHER layer here is a plain
+ * full-size View stacked on the photo, never an inset surface with its
+ * own background/border.
  */
 
 // Breathing room between the overlay's lowest content and the tab bar's own
@@ -36,6 +50,10 @@ const FEED_OVERLAY_BOTTOM_GAP = space[5];
 // expo-symbols' android/symbols.json.
 const FAVORITE_ICON: IconName = { ios: 'heart', android: 'favorite_border', web: 'favorite_border' };
 const FAVORITED_ICON: IconName = { ios: 'heart.fill', android: 'favorite', web: 'favorite' };
+// Verified against the installed packages: 'ellipsis' exists in
+// sf-symbols-typescript's types, and 'more_vert' exists in expo-symbols'
+// android/symbols.json.
+const MORE_ICON: IconName = { ios: 'ellipsis', android: 'more_vert', web: 'more_vert' };
 
 export type FeedCardProps = {
   listing: FeedListing;
@@ -72,6 +90,10 @@ export function FeedCard({ listing, includeOwn, followingOnly }: FeedCardProps) 
   const { toggleFavorite, pendingListingIds } = useToggleFavorite(includeOwn, followingOnly);
   const favoritePending = pendingListingIds.has(listing.listingId);
 
+  // ROADMAP 5.1 — the "more" menu's Report entry point. Local to this card
+  // instance, same as every other piece of this card's own UI state.
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+
   // Double-tap is never a toggle: it only ever favorites, and only when
   // there's something to do — already-favorited and already-pending both
   // skip the mutation (never a duplicate send, never an unfavorite) while
@@ -97,15 +119,15 @@ export function FeedCard({ listing, includeOwn, followingOnly }: FeedCardProps) 
         />
       </FeedCardGestures>
 
-      <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.scrim]} />
-
       {/* box-none: the row itself must never swallow the vertical swipe that
-          pages the feed. Only the IconButton below — an actual Pressable —
-          ever claims a touch. */}
+          pages the feed. Only the IconButtons below — actual Pressables —
+          ever claim a touch. The scrim lives on THIS view, not a separate
+          full-card layer: it is bottom-anchored with no `top`, so its own
+          height — and therefore the gradient's extent — is whatever this
+          content actually needs, not an arbitrary fraction of the photo. */}
       <View
         pointerEvents="box-none"
         style={[
-          StyleSheet.absoluteFill,
           styles.overlay,
           { paddingBottom: insets.bottom + FEED_OVERLAY_BOTTOM_GAP },
         ]}>
@@ -128,15 +150,33 @@ export function FeedCard({ listing, includeOwn, followingOnly }: FeedCardProps) 
           </View>
         </View>
 
-        <IconButton
-          icon={listing.isFavorited ? FAVORITED_ICON : FAVORITE_ICON}
-          accessibilityLabel={listing.isFavorited ? 'Remove from favorites' : 'Add to favorites'}
-          onPress={() => toggleFavorite(listing.listingId, listing.isFavorited)}
-          disabled={favoritePending}
-          variant="onMedia"
-          color={listing.isFavorited ? 'favoriteActive' : undefined}
-        />
+        {/* DESIGN.md §14.1: "A right-edge vertical rail carries favorite /
+            share / more." Share is out of scope per ROADMAP -- only
+            favorite and more (Report) exist today. */}
+        <View style={styles.actionRail}>
+          <IconButton
+            icon={listing.isFavorited ? FAVORITED_ICON : FAVORITE_ICON}
+            accessibilityLabel={listing.isFavorited ? 'Remove from favorites' : 'Add to favorites'}
+            onPress={() => toggleFavorite(listing.listingId, listing.isFavorited)}
+            disabled={favoritePending}
+            variant="onMedia"
+            color={listing.isFavorited ? 'favoriteActive' : undefined}
+          />
+          <IconButton
+            icon={MORE_ICON}
+            accessibilityLabel="More actions"
+            onPress={() => setMoreMenuOpen(true)}
+            variant="onMedia"
+          />
+        </View>
       </View>
+
+      <MoreActionsSheet
+        visible={moreMenuOpen}
+        onClose={() => setMoreMenuOpen(false)}
+        target={{ listingId: listing.listingId }}
+        targetKind="listing"
+      />
     </View>
   );
 }
@@ -145,10 +185,16 @@ const styles = StyleSheet.create({
   card: {
     flex: 1,
   },
-  scrim: {
-    experimental_backgroundImage: [gradientScrim],
-  },
   overlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    // No `top`: height is intrinsic to the content (metadata + action rail
+    // + padding) rather than stretched to the full card, which is what
+    // keeps the gradient below confined to this block instead of washing
+    // over most of the photo.
+    experimental_backgroundImage: [gradientScrim],
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
@@ -173,5 +219,9 @@ const styles = StyleSheet.create({
   },
   sellerName: {
     flexShrink: 1,
+  },
+  actionRail: {
+    flexDirection: 'column',
+    gap: space[2],
   },
 });
