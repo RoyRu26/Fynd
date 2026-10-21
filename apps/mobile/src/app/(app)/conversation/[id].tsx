@@ -23,7 +23,7 @@ import {
 import { Composer } from '@/components/conversation/composer';
 import { MessageBubble } from '@/components/conversation/message-bubble';
 import { ReviewSheet } from '@/components/review/review-sheet';
-import { space } from '@/design/tokens';
+import { minTouchTarget, space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 import { useAuth } from '@/features/auth/auth-provider';
 import { mapInboxError } from '@/features/inbox/errors';
@@ -317,6 +317,11 @@ const styles = StyleSheet.create({
   },
   titlePressable: {
     flexShrink: 1,
+    // DESIGN.md §12.1: never left to the call site. The two stacked Text
+    // lines alone fall well short of 44pt tall, so the touch target is
+    // floored here rather than relying on the surrounding row's height.
+    minHeight: minTouchTarget,
+    justifyContent: 'center',
   },
   list: {
     flex: 1,

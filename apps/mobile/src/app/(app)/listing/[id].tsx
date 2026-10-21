@@ -16,7 +16,7 @@ import {
 } from '@/components/ui';
 import { ListingGallery } from '@/components/listing/listing-gallery';
 import { MoreActionsSheet } from '@/components/report/more-actions-sheet';
-import { space } from '@/design/tokens';
+import { minTouchTarget, space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useIsBlockedEitherWay } from '@/features/blocks/queries';
@@ -222,7 +222,14 @@ export default function ListingDetailScreen() {
             { opacity: pressed ? 0.7 : 1 },
           ]}>
           {/* One Pressable for the whole row, not the avatar and name
-              separately. */}
+              separately. DESIGN.md §12.1 ("never left to the call site"):
+              `ListRow` was tried here first but its own built-in horizontal
+              padding (list-row.tsx) stacks on top of this screen's `Screen`
+              padding, visibly indenting this row relative to every other
+              element above it (gallery/price/title/chips all sit flush) --
+              reverted in favor of a floored minHeight directly on this
+              Pressable's own style instead, which reaches 44pt with no
+              padding side effect. */}
           <Avatar size="md" source={listing.sellerAvatarUrl ?? undefined} name={sellerName} />
           <Text variant="bodyStrong">{sellerName}</Text>
         </Pressable>
@@ -322,5 +329,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: space[3],
+    // DESIGN.md §12.1: "never left to the call site" — floored directly
+    // here rather than via ListRow (see this Pressable's own comment for
+    // why ListRow was reverted). Avatar (40pt) + bodyStrong text (24pt
+    // lineHeight) alone fall short of 44pt; minHeight closes that gap with
+    // no padding/layout side effect on the rest of this screen.
+    minHeight: minTouchTarget,
   },
 });

@@ -109,14 +109,22 @@ export function FeedCard({ listing, includeOwn, followingOnly }: FeedCardProps) 
 
   return (
     <View style={styles.card}>
-      <FeedCardGestures onDoubleTap={handleDoubleTap} onSingleTap={handleSingleTap}>
-        <ListingImage
-          uri={listing.coverUrl}
-          fill
-          contentFit="cover"
-          recyclingKey={listing.listingId}
-          accessibilityLabel={listing.title}
-        />
+      <FeedCardGestures
+        onDoubleTap={handleDoubleTap}
+        onSingleTap={handleSingleTap}
+        // Covers everything the metadata overlay below shows a sighted
+        // user (title, price, condition, size, seller) — not just
+        // title+price the way listing-grid-tile.tsx's own label does,
+        // because that overlay's own Text nodes are hidden from the
+        // accessibility tree below (`metadata`'s own
+        // importantForAccessibility) to avoid a double-read: without this,
+        // a screen-reader user would hear this composed label AND then
+        // separately hear each overlay Text node again as its own stop.
+        // Hiding those nodes means this label is the ONLY place that
+        // information reaches an AT user, so it has to carry all of it,
+        // not just title+price.
+        accessibilityLabel={`${listing.title}, ${price}, ${CONDITION_LABELS[listing.condition]}, ${formatSizeLabel(listing.size)}, sold by ${sellerName}`}>
+        <ListingImage uri={listing.coverUrl} fill contentFit="cover" recyclingKey={listing.listingId} />
       </FeedCardGestures>
 
       {/* box-none: the row itself must never swallow the vertical swipe that
@@ -131,7 +139,11 @@ export function FeedCard({ listing, includeOwn, followingOnly }: FeedCardProps) 
           styles.overlay,
           { paddingBottom: insets.bottom + FEED_OVERLAY_BOTTOM_GAP },
         ]}>
-        <View pointerEvents="none" style={styles.metadata}>
+        <View
+          pointerEvents="none"
+          importantForAccessibility="no-hide-descendants"
+          accessibilityElementsHidden
+          style={styles.metadata}>
           <Text variant="price" color="textOnMedia">
             {price}
           </Text>

@@ -110,9 +110,26 @@ export type FeedCardGesturesProps = {
    * a second way to reach it.
    */
   onSingleTap: () => void;
+  /**
+   * DESIGN.md §12.6: this is the feed's primary navigation gesture (§14.1
+   * "Tapping the photo opens detail"), but it's a raw gesture recognizer on
+   * a plain View, invisible to VoiceOver/TalkBack by default. Composed from
+   * the listing's title + price by the caller (see listing-grid-tile.tsx
+   * for the same convention) and applied to the gesture's own wrapping View
+   * below, with `onAccessibilityTap` wired to the SAME `onSingleTap` the
+   * gesture recognizer already calls — so a screen-reader double-tap reaches
+   * the identical "open detail" outcome a sighted single tap does. Purely
+   * additive: none of the gesture/animation wiring above changes.
+   */
+  accessibilityLabel: string;
 };
 
-export function FeedCardGestures({ children, onDoubleTap, onSingleTap }: FeedCardGesturesProps) {
+export function FeedCardGestures({
+  children,
+  onDoubleTap,
+  onSingleTap,
+  accessibilityLabel,
+}: FeedCardGesturesProps) {
   const { colors } = useAppTheme();
   const reducedMotion = useReducedMotion();
 
@@ -212,7 +229,29 @@ export function FeedCardGestures({ children, onDoubleTap, onSingleTap }: FeedCar
 
   return (
     <GestureDetector gesture={composedGesture}>
-      <View style={styles.container}>
+      <View
+        style={styles.container}
+        accessible
+        accessibilityRole="imagebutton"
+        accessibilityLabel={accessibilityLabel}
+        // `onAccessibilityTap` is iOS-only (VoiceOver's own activate
+        // gesture) -- confirmed against the installed react-native source,
+        // there is no Android dispatch path for it at all. A bare View
+        // wrapped by GestureDetector (not Pressable/Touchable, which wire a
+        // native click listener Android's accessibility layer falls back
+        // to) has nothing for TalkBack's ACTION_CLICK to land on without
+        // this. `accessibilityActions`/`onAccessibilityAction` with the
+        // reserved 'activate' name is RN's documented cross-platform
+        // mechanism for exactly this case -- Android's TalkBack double-tap
+        // maps to it directly; iOS keeps using `onAccessibilityTap` above
+        // (redundant with 'activate' there, kept for clarity/parity, not
+        // required). Both call the SAME onSingleTap the gesture recognizer
+        // already does -- still no change to the gesture/animation logic.
+        accessibilityActions={[{ name: 'activate' }]}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === 'activate') onSingleTap();
+        }}
+        onAccessibilityTap={onSingleTap}>
         {children}
         {/* Transient and purely visual: never read as favorite state by
             anything else, and never intercepts a touch. */}
