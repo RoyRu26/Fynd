@@ -71,7 +71,7 @@ export async function fetchListingDetail(listingId: string): Promise<ListingDeta
       size,
       status,
       seller_id,
-      profiles (
+      profiles!listings_seller_id_fkey (
         username,
         display_name,
         avatar_path
