@@ -5,6 +5,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { StyleSheet, View } from 'react-native';
 
 import { AmbientBackground } from '@/components/ambient-background';
+import { BrandMark } from '@/components/brand-mark';
 import { Button, Screen, Text, TextField } from '@/components/ui';
 import { space } from '@/design/tokens';
 import { signIn } from '@/features/auth/api';
@@ -52,7 +53,7 @@ export default function SignIn() {
         contentContainerStyle={styles.contentContainer}>
         <View style={styles.content}>
           <View style={styles.identity}>
-            <Text variant="wordmark">Fynd</Text>
+            <BrandMark />
             <Text variant="title">Welcome back</Text>
             <Text variant="body" color="textSecondary">
               Sign in to continue discovering.

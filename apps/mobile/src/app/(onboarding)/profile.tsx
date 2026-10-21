@@ -4,6 +4,7 @@ import { Controller, useForm, useWatch } from 'react-hook-form';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { AmbientBackground } from '@/components/ambient-background';
+import { BrandMark } from '@/components/brand-mark';
 import { Button, Icon, Screen, Text, TextField, type IconName } from '@/components/ui';
 import { space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
@@ -77,7 +78,7 @@ export default function OnboardingProfile() {
         contentContainerStyle={styles.contentContainer}>
         <View style={styles.content}>
           <View style={styles.identity}>
-            <Text variant="wordmark">Fynd</Text>
+            <BrandMark />
             <Text variant="title">Set up your profile</Text>
             <Text variant="body" color="textSecondary">
               Choose how other people see you on Fynd.

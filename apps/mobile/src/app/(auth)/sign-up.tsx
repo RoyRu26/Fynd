@@ -5,6 +5,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { StyleSheet, View } from 'react-native';
 
 import { AmbientBackground } from '@/components/ambient-background';
+import { BrandMark } from '@/components/brand-mark';
 import { Button, Screen, Text, TextField } from '@/components/ui';
 import { space } from '@/design/tokens';
 import { signUp } from '@/features/auth/api';
@@ -57,7 +58,7 @@ export default function SignUp() {
         <AmbientBackground />
         <Screen scroll style={styles.screen} contentContainerStyle={styles.contentContainer}>
           <View style={styles.identity}>
-            <Text variant="wordmark">Fynd</Text>
+            <BrandMark />
             <Text variant="title">Check your email</Text>
             <Text variant="body" color="textSecondary">
               We sent a confirmation link to {checkEmail}.
@@ -78,7 +79,7 @@ export default function SignUp() {
         contentContainerStyle={styles.contentContainer}>
         <View style={styles.content}>
           <View style={styles.identity}>
-            <Text variant="wordmark">Fynd</Text>
+            <BrandMark />
             <Text variant="title">Create your account</Text>
             <Text variant="body" color="textSecondary">
               Join Fynd to discover, buy, and sell second-hand.
