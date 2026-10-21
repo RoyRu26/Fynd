@@ -16,7 +16,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(64);
+select plan(66);
 
 -- ============================================================
 -- FIXTURES
@@ -726,6 +726,35 @@ select is(
     where e.user_id = 'f3000000-0000-0000-0000-00000000000a'),
   0,
   'another user''s events are not readable'
+);
+
+-- ============================================================
+-- 6a. listing_events_id_seq -- identity sequence lockdown (ROADMAP 6.4)
+-- ============================================================
+-- Same bug class as reports_id_seq/reviews_id_seq (both already fixed and
+-- tested elsewhere): `generated always as identity` backs this column with
+-- its OWN sequence, granted rwU to anon/authenticated by pg_default_acl
+-- INDEPENDENTLY of the table's own grants above -- the table-level revoke
+-- never reaches it. RLS scopes SELECT on the table to the caller's own
+-- rows, but `last_value` on the raw sequence bypasses RLS entirely,
+-- leaking global impression-volume platform-wide. Fixed in
+-- 20261021101950_identity_sequence_privilege_cleanup.sql.
+
+set local role anon;
+
+select throws_ok(
+  $$select last_value from public.listing_events_id_seq$$,
+  '42501', null,
+  'anon cannot read the listing_events_id_seq identity sequence -- no row-count inference'
+);
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"f3000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+select throws_ok(
+  $$select last_value from public.listing_events_id_seq$$,
+  '42501', null,
+  'authenticated cannot read listing_events_id_seq either -- the revoke is not owner-scoped, it is total'
 );
 
 -- ============================================================

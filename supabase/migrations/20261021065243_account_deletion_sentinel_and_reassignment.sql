@@ -194,12 +194,62 @@
 -- proceeds to the actual password check -- which then fails deterministically
 -- on the unparseable hash, the intended mechanism, rather than never
 -- reaching password verification at all (which is what the 500 above was
--- actually masking before this fix). `on conflict (id) do nothing` makes
--- the whole block safe to re-run (this migration is applied once per
--- environment but the insert should never error if it somehow runs twice).
+-- actually masking before this fix).
+--
+-- ============================================================
+-- CRITICAL, caught by ROADMAP 6.4's full-schema security audit: `email_
+-- confirmed_at` must be set at creation, not left NULL
+-- ============================================================
+-- This repo's local Auth config runs with `enable_confirmations = false`
+-- (supabase/config.toml), which also governs how GoTrue treats a plain
+-- `POST /auth/v1/signup` call against an email that already exists but has
+-- never been confirmed: it does NOT reject it -- it treats the row as "an
+-- abandoned signup, let this complete it," silently accepting a brand-new
+-- attacker-supplied password and handing back a FULLY VALID, FULLY
+-- AUTHENTICATED SESSION for that user id. No knowledge of the bogus
+-- `encrypted_password` above is needed at all -- this path never checks it.
+-- Verified live, end to end, against this exact row before this fix: an
+-- anonymous `POST /auth/v1/signup` with this email and an arbitrary
+-- password returned HTTP 200 with a real access token whose `sub` was this
+-- sentinel's id. Because this id is the permanent reassignment target of
+-- EVERY account deletion's `listings`/`conversations`/`messages` rows
+-- (forever, across the whole lifetime of this product), that session would
+-- let an attacker read every conversation any deleted user was ever part
+-- of (via the ordinary "participants read own conversations" RLS, now
+-- satisfied), send new messages into those threads as "Deleted user," and
+-- take ownership of every reassigned listing -- turning the exact
+-- protection this migration exists to provide into the privacy breach
+-- itself.
+--
+-- The fix: `email_confirmed_at` set to a real, non-null timestamp AT
+-- CREATION, not left to default NULL the way an unconfirmed real signup's
+-- row would read. Verified live: with this column populated, the identical
+-- signup call against this email now correctly returns `422
+-- user_already_exists` instead of a session -- GoTrue's signup-merge
+-- behavior above is specifically scoped to NULL (never-confirmed) rows,
+-- and an already-confirmed existing email hits its ordinary "already
+-- registered" rejection instead, the same as any real user's email would.
+-- `confirmed_at` is a generated column derived from this one -- nothing
+-- else to set.
+--
+-- Residual, accepted: `POST /auth/v1/recover` against this email still
+-- returns 200 (GoTrue's deliberate anti-enumeration behavior -- it always
+-- does, for any email) and does generate a real `recovery_token` row.
+-- Unlike the signup path above, this requires the attacker to actually
+-- RECEIVE that token via email to do anything with it -- and this email's
+-- domain, `fynd.invalid`, is the IANA-reserved `.invalid` TLD (RFC 2606),
+-- structurally guaranteed to never resolve to a real mail exchanger in any
+-- real deployment, so no such email can ever actually be delivered outside
+-- a local dev stack's own mail-capture tooling. Not hardened further here;
+-- revisit only if this project ever points its Auth config at a real SMTP
+-- provider that could somehow still accept mail for an unresolvable domain.
+--
+-- `on conflict (id) do nothing` makes the whole block safe to re-run (this
+-- migration is applied once per environment but the insert should never
+-- error if it somehow runs twice).
 insert into auth.users (
-  id, instance_id, aud, role, email, encrypted_password, created_at, updated_at,
-  confirmation_token, recovery_token, email_change_token_new
+  id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
+  created_at, updated_at, confirmation_token, recovery_token, email_change_token_new
 )
 values (
   '00000000-0000-0000-0000-000000000001',
@@ -208,6 +258,7 @@ values (
   'authenticated',
   'deleted-user@fynd.invalid',
   '$SENTINEL$NOT-A-REAL-HASH$NEVER-AUTHENTICATES$',
+  now(),
   now(),
   now(),
   '',

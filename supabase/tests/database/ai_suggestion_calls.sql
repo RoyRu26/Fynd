@@ -11,7 +11,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(21);
+select plan(23);
 
 -- ============================================================
 -- FIXTURES
@@ -265,8 +265,31 @@ select throws_ok(
   'anon cannot INSERT into ai_suggestion_calls'
 );
 
+-- ============================================================
+-- 6a. ai_suggestion_calls_id_seq -- identity sequence lockdown (ROADMAP 6.4)
+-- ============================================================
+-- Same bug class as reports_id_seq/reviews_id_seq (already fixed and
+-- tested elsewhere): the identity column's own backing sequence is granted
+-- rwU to anon/authenticated by pg_default_acl independently of the table's
+-- own grants above, and a direct `last_value` read bypasses this table's
+-- RLS entirely, leaking global suggestion-call volume platform-wide. Fixed
+-- in 20261021101950_identity_sequence_privilege_cleanup.sql. Still `anon`
+-- from the section above.
+
+select throws_ok(
+  $$select last_value from public.ai_suggestion_calls_id_seq$$,
+  '42501', null,
+  'anon cannot read the ai_suggestion_calls_id_seq identity sequence -- no row-count inference'
+);
+
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"f8000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+select throws_ok(
+  $$select last_value from public.ai_suggestion_calls_id_seq$$,
+  '42501', null,
+  'authenticated cannot read ai_suggestion_calls_id_seq either -- the revoke is not owner-scoped, it is total'
+);
 
 select * from finish();
 

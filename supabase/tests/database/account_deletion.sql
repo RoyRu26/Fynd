@@ -17,7 +17,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(40);
+select plan(45);
 
 -- ============================================================
 -- FIXTURES
@@ -161,6 +161,29 @@ select ok(
      and email_change is not null
      from auth.users where id = '00000000-0000-0000-0000-000000000001'),
   'the sentinel has no NULL text columns that would break GoTrue''s Admin API user-listing scan'
+);
+
+-- Regression guard for the Critical finding from ROADMAP 6.4's full-schema
+-- security audit: with Auth confirmations disabled (this repo's local
+-- config), a plain POST /auth/v1/signup against an email that exists but
+-- has NEVER been confirmed (email_confirmed_at null) is treated by GoTrue
+-- as completing an abandoned signup -- it silently accepts a new
+-- attacker-chosen password and returns a fully valid, fully authenticated
+-- session for that user id, never checking the existing encrypted_password
+-- at all. Verified live against a real local stack before this fix: an
+-- anonymous signup call against the sentinel's email returned a real
+-- session whose `sub` was the sentinel's id -- a full account takeover
+-- that would expose every deleted user's reassigned conversations/listings
+-- to anyone who simply read this migration file's own hardcoded email.
+-- Fixed by setting email_confirmed_at at creation time; verified live that
+-- the identical signup call now correctly returns 422 user_already_exists
+-- instead. pgTAP has no path to GoTrue's own HTTP API to re-run that exact
+-- exploit as a test, so this asserts the one column whose NULL-ness is what
+-- made the exploit reachable in the first place -- the same proxy-assertion
+-- shape as the NULL-text-column guard immediately above.
+select ok(
+  (select email_confirmed_at is not null from auth.users where id = '00000000-0000-0000-0000-000000000001'),
+  'the sentinel is pre-confirmed, so an unauthenticated signup against its email cannot hijack it'
 );
 
 -- ============================================================
@@ -504,15 +527,40 @@ select is(
 );
 
 -- ============================================================
--- 16. reviews -- cascades entirely regardless of role, unchanged by this migration
+-- 16. reviews.reviewer_id/reviewee_id reassigned to the sentinel
 -- ============================================================
+-- Fixed by 20261021101633 -- reviews.reviewer_id/reviewee_id used to
+-- reference auth.users directly, bypassing this trigger entirely and
+-- cascading away regardless of role (BUY's own, otherwise-untouched review
+-- content was collateral damage of D's unrelated deletion). Retargeted
+-- through profiles, same as every other reassigned column, so both of D's
+-- review rows now survive this delete with D's own side reassigned --
+-- BUY's own side of each row is untouched, since BUY was never deleted.
 
 select is(
   (select count(*)::int from public.reviews
     where reviewer_id = 'fc000000-0000-0000-0000-000000000003'
        or reviewee_id = 'fc000000-0000-0000-0000-000000000003'),
   0,
-  'both reviews involving D (as reviewer and as reviewee) are gone'
+  'D no longer appears as reviewer or reviewee under D''s own former id'
+);
+
+select is(
+  (select count(*)::int from public.reviews
+    where listing_id = 'fcee0000-0000-0000-0000-000000000007'
+      and reviewer_id = '00000000-0000-0000-0000-000000000001'
+      and reviewee_id = 'fc000000-0000-0000-0000-000000000005'),
+  1,
+  'D''s own review of BUY survives, reviewer_id reassigned to the sentinel'
+);
+
+select is(
+  (select count(*)::int from public.reviews
+    where listing_id = 'fcee0000-0000-0000-0000-000000000007'
+      and reviewer_id = 'fc000000-0000-0000-0000-000000000005'
+      and reviewee_id = '00000000-0000-0000-0000-000000000001'),
+  1,
+  'BUY''s review of D survives, reviewee_id reassigned to the sentinel -- BUY''s own reviewer_id is untouched, BUY was never deleted'
 );
 
 -- ============================================================
@@ -528,7 +576,30 @@ set local request.jwt.claims = '{"sub":"fc000000-0000-0000-0000-000000000006","r
 -- E1 messages E2 about E2_L5 -- "CV_E".
 select public.get_or_create_listing_conversation('fcee0000-0000-0000-0000-000000000009');
 
+set local request.jwt.claims = '{"sub":"fc000000-0000-0000-0000-000000000007","role":"authenticated"}';
+
+-- E2 (the seller) marks E2_L5 sold to E1 -- required so both of E1/E2 can
+-- review each other below, and reused (not a separate fixture pair) so one
+-- coherent "two people who transacted, both later delete" story covers
+-- BOTH this file's own fix-(1)/(2) collisions AND 20261021101633's reviews
+-- collision in a single sequential-deletion scenario.
+select public.mark_listing_sold('fcee0000-0000-0000-0000-000000000009', 'fc000000-0000-0000-0000-000000000006');
+
+-- E2 reviews E1 -- reviewer=E2, reviewee=E1.
+select public.submit_review('fcee0000-0000-0000-0000-000000000009'::uuid, 5::smallint, 'Smooth buyer!');
+
+set local request.jwt.claims = '{"sub":"fc000000-0000-0000-0000-000000000006","role":"authenticated"}';
+
+-- E1 reviews E2 back -- reviewer=E1, reviewee=E2.
+select public.submit_review('fcee0000-0000-0000-0000-000000000009'::uuid, 5::smallint, 'Smooth seller!');
+
 reset role;
+
+select is(
+  (select count(*)::int from public.reviews where listing_id = 'fcee0000-0000-0000-0000-000000000009'),
+  2,
+  'sanity: E2_L5 has exactly two review rows (E1<->E2) before either account is deleted'
+);
 
 select lives_ok(
   $$delete from auth.users where id = 'fc000000-0000-0000-0000-000000000006'$$,
@@ -556,6 +627,21 @@ select is(
       and seller_id = '00000000-0000-0000-0000-000000000001'),
   1,
   'CV_E survives as a single row with BOTH sides now the sentinel'
+);
+
+-- Same collision, same fixture pair, for 20261021101633's reviews fix --
+-- the `lives_ok` on E2's own delete above already proves neither
+-- reviews_reviewer_not_reviewee (23514) nor the partial
+-- reviews_unique_listing_reviewer index (23505) raised; this confirms the
+-- two review rows actually ended up correctly reassigned, not just that
+-- nothing errored.
+select is(
+  (select count(*)::int from public.reviews
+    where listing_id = 'fcee0000-0000-0000-0000-000000000009'
+      and reviewer_id = '00000000-0000-0000-0000-000000000001'
+      and reviewee_id = '00000000-0000-0000-0000-000000000001'),
+  2,
+  'both of E1/E2''s reviews survive with BOTH sides now the sentinel, same as CV_E'
 );
 
 -- ============================================================
