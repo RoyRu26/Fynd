@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { updateNotificationPreferences } from '@/features/settings/api';
+import { requestAccountDeletion, updateNotificationPreferences } from '@/features/settings/api';
 import { profileKeys } from '@/features/profile/queries';
 
 export const settingsKeys = {
@@ -39,6 +39,35 @@ export function useUpdateNotificationPreferencesMutation(userId: string | undefi
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: profileKeys.detail(userId) });
+    },
+  });
+}
+
+/**
+ * Requests deletion of the signed-in user's own account (ROADMAP 6.1b).
+ *
+ * Throws on EITHER failure shape -- a transport/invoke error (already
+ * thrown by `requestAccountDeletion` itself) or a resolved `{ ok: false,
+ * reason, message }` payload (thrown HERE, since `requestAccountDeletion`
+ * is a thin passthrough that returns it rather than throwing it) -- so the
+ * Settings screen's single `catch` + `mapDeleteAccountError(err)` handles
+ * both uniformly, same discipline `ai-suggestions.ts`'s own
+ * transport-failure-collapsing established for its own feature, applied at
+ * the mutation layer instead of the api layer here.
+ *
+ * No cache invalidation on success: a successful deletion is immediately
+ * followed by `supabase.auth.signOut({ scope: 'local' })` at the call site,
+ * whose `SIGNED_OUT` auth-state-change handler already calls
+ * `queryClient.clear()` (auth-provider.tsx) -- a second, narrower
+ * invalidation here would be redundant with that blanket clear.
+ */
+export function useDeleteAccountMutation() {
+  return useMutation({
+    mutationFn: async () => {
+      const result = await requestAccountDeletion();
+      if (!result.ok) {
+        throw result;
+      }
     },
   });
 }

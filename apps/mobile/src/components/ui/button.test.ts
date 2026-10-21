@@ -31,11 +31,18 @@ describe('getButtonForegroundColor', () => {
     expect(getButtonForegroundColor('primary')).toBe('onAccent');
     expect(getButtonForegroundColor('secondary')).toBe('text');
     expect(getButtonForegroundColor('ghost')).toBe('accentText');
-    expect(getButtonForegroundColor('danger')).toBe('onDanger');
+    // 'danger', not 'onDanger' — the variant is tonal (dangerBg fill), not a
+    // solid fill, so its foreground is ink-on-tint like secondary/ghost, not
+    // white-on-solid like primary. See button-state.ts's own doc comment.
+    expect(getButtonForegroundColor('danger')).toBe('danger');
   });
 
   it('never maps danger to onAccent — the coupling this token split exists to prevent', () => {
     expect(getButtonForegroundColor('danger')).not.toBe('onAccent');
+  });
+
+  it('never maps danger to onDanger — that token is for a solid fill this variant deliberately does not use', () => {
+    expect(getButtonForegroundColor('danger')).not.toBe('onDanger');
   });
 });
 

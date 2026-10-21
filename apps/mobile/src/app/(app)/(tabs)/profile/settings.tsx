@@ -2,23 +2,21 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import { Button, Icon, ListRow, Screen, Switch, Text, type IconName } from '@/components/ui';
+import { Button, Icon, ListRow, Screen, Sheet, Switch, Text, type IconName } from '@/components/ui';
 import { space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 import { signOut } from '@/features/auth/api';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useProfile } from '@/features/profile/queries';
-import { mapNotificationPreferenceError } from '@/features/settings/errors';
-import { useUpdateNotificationPreferencesMutation } from '@/features/settings/queries';
+import { mapDeleteAccountError, mapNotificationPreferenceError } from '@/features/settings/errors';
+import { useDeleteAccountMutation, useUpdateNotificationPreferencesMutation } from '@/features/settings/queries';
 import { normalizeNotificationPreferences } from '@/features/settings/settings';
+import { supabase } from '@/lib/supabase';
 
 /**
- * Settings — ROADMAP 6.1a. Sign-out lives here (moved off the Profile tab
- * root, where it sat incorrectly) along with the real, persisted
- * notification-preference switches and the privacy/terms links.
- *
- * Account deletion is ROADMAP 6.1b, a separate later pass — deliberately
- * not built here.
+ * Settings — ROADMAP 6.1a (sign-out, the real notification-preference
+ * switches, privacy/terms links) plus 6.1b, the higher-risk self-service
+ * account deletion built here on top of it.
  *
  * No manual back control — same precedent as my-listings.tsx/saved.tsx
  * (profile/_layout.tsx's Stack sets headerShown: false, but the platform
@@ -80,7 +78,111 @@ export default function Settings() {
       <Button variant="secondary" size="sm" onPress={() => signOut()}>
         Sign out
       </Button>
+
+      <View style={styles.rows}>
+        <Text variant="label" color="textSecondary">
+          Account
+        </Text>
+        <DeleteAccountSection />
+      </View>
     </Screen>
+  );
+}
+
+/**
+ * ROADMAP 6.1b. `Button variant="danger"` is the outlined/tonal treatment
+ * DESIGN.md §8 requires for every destructive action (`dangerBg` fill +
+ * `danger` border + `danger` label — see button.tsx/button-state.ts,
+ * updated alongside this screen to land that compliant treatment for its
+ * first real consumer) — never the solid fill §8 forbids reaching a
+ * user-facing screen.
+ *
+ * Tapping the row alone deletes nothing: it only opens the confirmation
+ * `Sheet` below, which owns the actual destructive action behind its own
+ * explicit second confirm tap.
+ */
+function DeleteAccountSection() {
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const deleteAccount = useDeleteAccountMutation();
+
+  function openSheet() {
+    setError(null);
+    setSheetOpen(true);
+  }
+
+  function closeSheet() {
+    // Guard, not just the confirm/Cancel Buttons' own `disabled` props:
+    // `Sheet`'s backdrop tap, swipe-to-dismiss gesture, and Android back
+    // button (sheet.tsx) all call this SAME `onClose` prop directly and
+    // unconditionally — none of them know about `isPending` on their own.
+    // Without this check, dismissing the sheet mid-request doesn't stop the
+    // deletion (it's already in flight server-side); it only hides whether
+    // it succeeded or failed, which matters more here than for any other
+    // mutation in this app.
+    if (deleteAccount.isPending) return;
+    setSheetOpen(false);
+  }
+
+  async function handleConfirm() {
+    if (deleteAccount.isPending) return;
+    setError(null);
+    try {
+      await deleteAccount.mutateAsync();
+      // `local`, not the default `global` scope: the account is already
+      // gone server-side at this point, so a server round-trip sign-out
+      // could itself error confusingly for a session that no longer
+      // resolves to anything. This still fires the existing `SIGNED_OUT`
+      // auth-state-change handler (auth-provider.tsx), which clears the
+      // query cache, and the app's existing session-based redirect takes it
+      // from there — unchanged by this screen.
+      await supabase.auth.signOut({ scope: 'local' });
+      // No manual navigation here, mirroring the plain "Sign out" Button
+      // above exactly: the SIGNED_OUT event this triggers flows into
+      // useAuthRouteState, whose existing `unauthenticated` branch in
+      // (app)/_layout.tsx and app/index.tsx already redirects to sign-in —
+      // unchanged by this screen.
+      setSheetOpen(false);
+    } catch (err) {
+      if (__DEV__) {
+        console.error(err);
+      }
+      setError(mapDeleteAccountError(err).message);
+    }
+  }
+
+  return (
+    <>
+      <Button variant="danger" size="sm" onPress={openSheet}>
+        Delete account
+      </Button>
+
+      <Sheet visible={sheetOpen} onClose={closeSheet} title="Delete account?">
+        <View style={styles.deleteSheetContent}>
+          <Text variant="body" color="textSecondary">
+            This permanently deletes your account. Your listings will be removed from Fynd and this
+            can&apos;t be undone.
+          </Text>
+
+          {error ? (
+            <Text
+              variant="caption"
+              color="danger"
+              accessibilityLiveRegion="polite"
+              accessibilityRole="alert">
+              {error}
+            </Text>
+          ) : null}
+
+          <Button variant="secondary" onPress={closeSheet} disabled={deleteAccount.isPending}>
+            Cancel
+          </Button>
+          <Button variant="danger" onPress={handleConfirm} loading={deleteAccount.isPending}>
+            Delete my account
+          </Button>
+        </View>
+      </Sheet>
+    </>
   );
 }
 
@@ -206,5 +308,9 @@ const styles = StyleSheet.create({
   rowError: {
     paddingHorizontal: space[4],
     marginTop: -space[1],
+  },
+  deleteSheetContent: {
+    gap: space[4],
+    paddingBottom: space[4],
   },
 });

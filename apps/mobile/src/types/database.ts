@@ -784,6 +784,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      request_account_deletion: { Args: never; Returns: undefined }
       search_listings: {
         Args: {
           p_category_id?: string

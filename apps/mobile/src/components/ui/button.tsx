@@ -117,7 +117,17 @@ function getVariantStyle({
     case 'ghost':
       return { backgroundColor: 'transparent', opacity };
     case 'danger':
-      return { backgroundColor: colors.danger, opacity };
+      // Tonal, not solid — DESIGN.md §8: destructive actions must differ
+      // from `primary` by SILHOUETTE, never by hue alone, so a dichromat
+      // can still tell "Save" from "Delete" apart. `dangerBg` fill +
+      // `danger` border mirrors `secondary`'s own bordered shape, just in
+      // the danger palette instead of neutral.
+      return {
+        backgroundColor: colors.dangerBg,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: colors.danger,
+        opacity,
+      };
   }
 }
 

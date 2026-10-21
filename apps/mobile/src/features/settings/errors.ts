@@ -50,3 +50,71 @@ export function mapNotificationPreferenceError(error: unknown): MappedNotificati
 
   return { message: "Couldn't save that preference. Please try again." };
 }
+
+// ============================================================
+// Account deletion (ROADMAP 6.1b)
+// ============================================================
+
+export type MappedDeleteAccountError = {
+  message: string;
+};
+
+/**
+ * Shape of the thrown value `useDeleteAccountMutation` produces for a
+ * resolved-but-unsuccessful `delete-account` response (see queries.ts: it
+ * throws the `{ ok: false, reason, message }` payload itself, rather than
+ * wrapping it). Distinguished from a thrown transport error/PostgrestError
+ * by the presence of `ok === false`, not by `code` the way
+ * `isPostgrestErrorLike` above does -- this failure never carries a
+ * Postgres SQLSTATE at all, it is the Edge Function's own response body.
+ */
+function isDeleteAccountFailure(
+  error: unknown,
+): error is { ok: false; reason: string; message: string } {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'ok' in error &&
+    (error as { ok: unknown }).ok === false &&
+    'reason' in error
+  );
+}
+
+/**
+ * Maps a `delete-account` failure to safe, user-facing copy.
+ *
+ * Two distinct failure shapes, both handled here (matching
+ * `mapNotificationPreferenceError`'s own "one mapper, every shape" style,
+ * and `ai-suggestions.ts`'s precedent of collapsing a thrown/transport
+ * failure into the same contract as an expected one):
+ *
+ *   * a resolved `{ ok: false, reason, message }` payload -- mapped per
+ *     `reason`, never by surfacing the Edge Function's own `message`
+ *     directly (that string is written for this mapper to choose from, not
+ *     guaranteed stable wording a UI should commit to verbatim).
+ *   * a thrown transport/invoke error (network failure, function not
+ *     deployed, an unexpected 500) -- falls through to the network check
+ *     and then the generic fallback, same two-step `mapNotificationPreference
+ *     Error` already uses.
+ *
+ * Pure and side-effect-free; callers log the original error themselves.
+ */
+export function mapDeleteAccountError(error: unknown): MappedDeleteAccountError {
+  if (isDeleteAccountFailure(error)) {
+    switch (error.reason) {
+      case 'unauthorized':
+        return { message: 'Your session has expired. Sign in again and try once more.' };
+      case 'invalid_request':
+      case 'deletion_failed':
+        return { message: "Couldn't delete your account right now. Please try again." };
+      default:
+        return { message: "Couldn't delete your account right now. Please try again." };
+    }
+  }
+
+  if (isNetworkError(error)) {
+    return { message: 'Network error. Check your connection and try again.' };
+  }
+
+  return { message: "Couldn't delete your account right now. Please try again." };
+}
