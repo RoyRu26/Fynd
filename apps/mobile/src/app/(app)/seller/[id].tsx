@@ -2,10 +2,21 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View, type ListRenderItemInfo } from 'react-native';
 
-import { Avatar, Button, IconButton, Screen, StarRating, Text, type IconName } from '@/components/ui';
+import {
+  Avatar,
+  Button,
+  EmptyState,
+  IconButton,
+  Screen,
+  Skeleton,
+  SkeletonListingCard,
+  StarRating,
+  Text,
+  type IconName,
+} from '@/components/ui';
 import { ListingGridTile, type ListingGridTileItem } from '@/components/listing/listing-grid-tile';
 import { MoreActionsSheet } from '@/components/report/more-actions-sheet';
-import { space } from '@/design/tokens';
+import { minTouchTarget, space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useFollowCounts, useIsFollowing, useToggleFollow } from '@/features/follows/queries';
@@ -54,6 +65,14 @@ const BACK_ICON: IconName = { ios: 'chevron.left', android: 'arrow_back', web: '
 // sf-symbols-typescript's types, and 'more_vert' exists in expo-symbols'
 // android/symbols.json.
 const MORE_ICON: IconName = { ios: 'ellipsis', android: 'more_vert', web: 'more_vert' };
+// Same shape as explore.tsx/inbox/index.tsx's own ERROR_ICON constants.
+const ERROR_ICON: IconName = { ios: 'exclamationmark.triangle', android: 'warning', web: 'warning' };
+// Same "hidden/removed" icon listing-actions-sheet.tsx's ACTION_ICON.remove
+// already uses for this exact semantic.
+const HIDDEN_ICON: IconName = { ios: 'eye.slash', android: 'visibility_off', web: 'visibility_off' };
+// Same "no listings" icon my-listings.tsx/sell/index.tsx's own EMPTY_ICON
+// constants already use.
+const EMPTY_LISTINGS_ICON: IconName = { ios: 'bag', android: 'shopping_bag', web: 'shopping_bag' };
 
 // DESIGN.md §15.1: touch targets must reach 44×44pt via minimum height or
 // hitSlop, never left bare at the call site. The counts' caption text is
@@ -165,8 +184,18 @@ export default function SellerProfileScreen() {
     return (
       <Screen contentContainerStyle={styles.content}>
         {backRow}
-        <View style={styles.centered}>
-          <ActivityIndicator color={colors.textTertiary} />
+        <View style={styles.identity}>
+          <Skeleton width={56} height={56} radius="full" />
+          <Skeleton height={24} width="50%" radius="xs" />
+          <View style={styles.countsRow}>
+            <Skeleton height={16} width={64} radius="xs" />
+            <Skeleton height={16} width={64} radius="xs" />
+            <Skeleton height={16} width={64} radius="xs" />
+          </View>
+          {/* Matches Button's real sm-size metrics (button.tsx:
+              BUTTON_MIN_HEIGHT.sm = minTouchTarget, borderRadius: radius.md)
+              so the Follow button doesn't jump size when it replaces this. */}
+          <Skeleton height={minTouchTarget} width={96} radius="md" />
         </View>
         {moreActionsSheet}
       </Screen>
@@ -177,14 +206,14 @@ export default function SellerProfileScreen() {
     return (
       <Screen contentContainerStyle={styles.content}>
         {backRow}
-        <View style={styles.centered}>
-          <Text variant="body" color="danger">
-            {mapListingError(profileQuery.error).message}
-          </Text>
-          <Button variant="secondary" size="sm" onPress={() => profileQuery.refetch()}>
-            Try again
-          </Button>
-        </View>
+        <EmptyState
+          variant="error"
+          icon={ERROR_ICON}
+          title="Something went wrong"
+          body={mapListingError(profileQuery.error).message}
+          actionLabel="Try again"
+          onAction={() => profileQuery.refetch()}
+        />
         {moreActionsSheet}
       </Screen>
     );
@@ -194,14 +223,13 @@ export default function SellerProfileScreen() {
     return (
       <Screen contentContainerStyle={styles.content}>
         {backRow}
-        <View style={styles.centered}>
-          <Text variant="body" color="textSecondary" style={styles.centeredText}>
-            This seller isn&apos;t available.
-          </Text>
-          <Button variant="secondary" size="sm" onPress={() => router.back()}>
-            Go back
-          </Button>
-        </View>
+        <EmptyState
+          variant="empty"
+          icon={HIDDEN_ICON}
+          title="This seller isn't available."
+          actionLabel="Go back"
+          onAction={() => router.back()}
+        />
         {moreActionsSheet}
       </Screen>
     );
@@ -287,29 +315,25 @@ export default function SellerProfileScreen() {
   let listEmpty: ReactNode = null;
   if (listingsQuery.isPending) {
     listEmpty = (
-      <View style={styles.centered}>
-        <ActivityIndicator color={colors.textTertiary} />
+      <View style={styles.skeletonGrid}>
+        {Array.from({ length: 6 }, (_, index) => (
+          <SkeletonListingCard key={index} />
+        ))}
       </View>
     );
   } else if (listingsQuery.isError) {
     listEmpty = (
-      <View style={styles.centered}>
-        <Text variant="body" color="danger">
-          {mapListingError(listingsQuery.error).message}
-        </Text>
-        <Button variant="secondary" size="sm" onPress={() => listingsQuery.refetch()}>
-          Try again
-        </Button>
-      </View>
+      <EmptyState
+        variant="error"
+        icon={ERROR_ICON}
+        title="Something went wrong"
+        body={mapListingError(listingsQuery.error).message}
+        actionLabel="Try again"
+        onAction={() => listingsQuery.refetch()}
+      />
     );
   } else {
-    listEmpty = (
-      <View style={styles.centered}>
-        <Text variant="body" color="textSecondary">
-          No active listings yet.
-        </Text>
-      </View>
-    );
+    listEmpty = <EmptyState variant="empty" icon={EMPTY_LISTINGS_ICON} title="No active listings yet." />;
   }
 
   return (
@@ -347,15 +371,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  centered: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: space[3],
-    paddingHorizontal: space[6],
-    paddingVertical: space[10],
-  },
-  centeredText: {
-    textAlign: 'center',
+  skeletonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
   },
   identity: {
     alignItems: 'center',

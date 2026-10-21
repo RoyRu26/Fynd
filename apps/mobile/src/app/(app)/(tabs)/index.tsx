@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FeedCard } from '@/components/feed/feed-card';
-import { Chip, EmptyState, type IconName } from '@/components/ui';
+import { Chip, EmptyState, Skeleton, type IconName } from '@/components/ui';
 import { space } from '@/design/tokens';
 import { AppThemeProvider, useAppTheme } from '@/design/theme-provider';
 import { prefetchFeedCoverImages } from '@/features/feed/api';
@@ -318,11 +318,18 @@ function HomeFeed() {
 
   let body: ReactNode;
   if (feedQuery.isPending) {
-    body = (
-      <View style={styles.centered}>
-        <ActivityIndicator color={colors.textTertiary} />
-      </View>
-    );
+    // Full-bleed, plain shimmering rectangle — deliberately restrained
+    // (DESIGN.md §14.1's "moderate, leaning minimal" chrome budget), not
+    // faked price/title placeholder bars. `flex: 1` (styles.feedSkeleton),
+    // not `height={pageHeight}`: pageHeight starts at 0 until
+    // onContainerLayout's first measurement lands, and this branch can
+    // render before that happens — an explicit height of 0 would paint as
+    // an invisible rectangle for a frame, a real (if brief) regression
+    // against the plain ActivityIndicator this replaced, which filled its
+    // flex:1 parent immediately regardless of measured pixels. `body`
+    // renders as a direct child of the root flex:1 View below, so flex:1
+    // here fills it the same way, with no dependency on measurement timing.
+    body = <Skeleton style={styles.feedSkeleton} />;
   } else if (feedQuery.isError) {
     body = (
       <View style={styles.centered}>
@@ -447,6 +454,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: space[3],
     paddingHorizontal: space[6],
+  },
+  feedSkeleton: {
+    flex: 1,
+    borderRadius: 0,
   },
   scopeToggle: {
     position: 'absolute',

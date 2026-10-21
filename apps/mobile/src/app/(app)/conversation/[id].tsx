@@ -9,7 +9,17 @@ import {
   type ListRenderItemInfo,
 } from 'react-native';
 
-import { Avatar, Button, Icon, IconButton, ListRow, Screen, Text, type IconName } from '@/components/ui';
+import {
+  Avatar,
+  EmptyState,
+  Icon,
+  IconButton,
+  ListRow,
+  Screen,
+  SkeletonRow,
+  Text,
+  type IconName,
+} from '@/components/ui';
 import { Composer } from '@/components/conversation/composer';
 import { MessageBubble } from '@/components/conversation/message-bubble';
 import { ReviewSheet } from '@/components/review/review-sheet';
@@ -48,6 +58,11 @@ const BACK_ICON: IconName = { ios: 'chevron.left', android: 'arrow_back', web: '
 // typescript's types, and 'star_border' exists in expo-symbols' android/
 // symbols.json.
 const REVIEW_ICON: IconName = { ios: 'star', android: 'star_border', web: 'star_border' };
+// Same shape as explore.tsx/inbox/index.tsx's own ERROR_ICON constants.
+const ERROR_ICON: IconName = { ios: 'exclamationmark.triangle', android: 'warning', web: 'warning' };
+// Same "hidden/removed" icon listing-actions-sheet.tsx's ACTION_ICON.remove
+// already uses, and seller/[id].tsx's own null-data case reuses.
+const UNAVAILABLE_ICON: IconName = { ios: 'eye.slash', android: 'visibility_off', web: 'visibility_off' };
 
 function messageKey(message: ConversationMessage): string {
   return message.kind === 'pending' ? message.tempId : message.id;
@@ -107,21 +122,17 @@ export default function ConversationScreen() {
 
   let body: ReactNode;
   if (detailQuery.isPending) {
-    body = (
-      <View style={styles.centered}>
-        <ActivityIndicator color={colors.textTertiary} />
-      </View>
-    );
+    body = <SkeletonRow />;
   } else if (detailQuery.isError) {
     body = (
-      <View style={styles.centered}>
-        <Text variant="body" color="danger">
-          {mapInboxError(detailQuery.error).message}
-        </Text>
-        <Button variant="secondary" size="sm" onPress={() => detailQuery.refetch()}>
-          Try again
-        </Button>
-      </View>
+      <EmptyState
+        variant="error"
+        icon={ERROR_ICON}
+        title="Something went wrong"
+        body={mapInboxError(detailQuery.error).message}
+        actionLabel="Try again"
+        onAction={() => detailQuery.refetch()}
+      />
     );
   } else if (detailQuery.data === null) {
     // Defensive fallback only — see api.ts's own comment: conversation_detail
@@ -129,14 +140,13 @@ export default function ConversationScreen() {
     // conversation"/"not yours", it raises P0002 instead, which surfaces
     // through the isError branch above.
     body = (
-      <View style={styles.centered}>
-        <Text variant="body" color="textSecondary" style={styles.centeredText}>
-          This conversation isn&apos;t available.
-        </Text>
-        <Button variant="secondary" size="sm" onPress={() => router.back()}>
-          Go back
-        </Button>
-      </View>
+      <EmptyState
+        variant="empty"
+        icon={UNAVAILABLE_ICON}
+        title="This conversation isn't available."
+        actionLabel="Go back"
+        onAction={() => router.back()}
+      />
     );
   } else {
     const header = detailQuery.data;
@@ -158,21 +168,26 @@ export default function ConversationScreen() {
 
     let listEmpty: ReactNode = null;
     if (historyQuery.isPending) {
+      // Deliberately generic, NOT chat-bubble-shaped — DESIGN.md §14.7
+      // (message bubble styling) is an open item with no visual spec yet,
+      // so a bubble skeleton here would presume a design that doesn't exist.
       listEmpty = (
-        <View style={styles.centered}>
-          <ActivityIndicator color={colors.textTertiary} />
+        <View style={styles.historySkeleton}>
+          <SkeletonRow />
+          <SkeletonRow />
+          <SkeletonRow />
         </View>
       );
     } else if (historyQuery.isError) {
       listEmpty = (
-        <View style={styles.centered}>
-          <Text variant="body" color="danger">
-            {mapInboxError(historyQuery.error).message}
-          </Text>
-          <Button variant="secondary" size="sm" onPress={() => historyQuery.refetch()}>
-            Try again
-          </Button>
-        </View>
+        <EmptyState
+          variant="error"
+          icon={ERROR_ICON}
+          title="Something went wrong"
+          body={mapInboxError(historyQuery.error).message}
+          actionLabel="Try again"
+          onAction={() => historyQuery.refetch()}
+        />
       );
     } else {
       listEmpty = (
@@ -288,12 +303,12 @@ const styles = StyleSheet.create({
     gap: space[3],
     paddingHorizontal: space[6],
   },
-  centeredText: {
-    textAlign: 'center',
-  },
   body: {
     flex: 1,
     gap: space[4],
+  },
+  historySkeleton: {
+    gap: space[2],
   },
   identity: {
     flexDirection: 'row',

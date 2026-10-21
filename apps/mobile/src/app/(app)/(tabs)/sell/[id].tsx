@@ -10,10 +10,12 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-nat
 import {
   Button,
   Chip,
+  EmptyState,
   Icon,
   IconButton,
   ListingImage,
   Screen,
+  Skeleton,
   Text,
   TextField,
   type IconName,
@@ -94,10 +96,11 @@ const MOVE_LATER_ICON: IconName = { ios: 'chevron.right', android: 'chevron_righ
 // Same chevron used for the category field's disclosure affordance — matches
 // profile/index.tsx's own CHEVRON_ICON and category-picker-sheet.tsx's.
 const CATEGORY_CHEVRON_ICON: IconName = { ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' };
+// Same shape as explore.tsx/inbox/index.tsx's own ERROR_ICON constants.
+const ERROR_ICON: IconName = { ios: 'exclamationmark.triangle', android: 'warning', web: 'warning' };
 
 export default function SellEditor() {
   const router = useRouter();
-  const { colors } = useAppTheme();
   const { session } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
 
@@ -121,17 +124,31 @@ export default function SellEditor() {
   let body: ReactNode;
   if (listingQuery.isPending) {
     body = (
-      <View style={styles.centered}>
-        <ActivityIndicator color={colors.textTertiary} />
+      <View style={styles.body}>
+        <Skeleton height={28} width="60%" radius="xs" />
+        <View style={styles.grid}>
+          {Array.from({ length: 3 }, (_, index) => (
+            <Skeleton key={index} width={CELL_BASIS} aspectRatio={1} radius="sm" />
+          ))}
+        </View>
+        <View style={styles.fields}>
+          <Skeleton height={56} width="100%" radius="md" />
+          <Skeleton height={56} width="100%" radius="md" />
+          <Skeleton height={56} width="100%" radius="md" />
+          <Skeleton height={56} width="100%" radius="md" />
+        </View>
       </View>
     );
   } else if (listingQuery.isError) {
     body = (
-      <View style={styles.centered}>
-        <Text variant="body" color="danger">
-          {mapListingError(listingQuery.error).message}
-        </Text>
-      </View>
+      <EmptyState
+        variant="error"
+        icon={ERROR_ICON}
+        title="Something went wrong"
+        body={mapListingError(listingQuery.error).message}
+        actionLabel="Try again"
+        onAction={() => listingQuery.refetch()}
+      />
     );
   } else if (!isOwner || !listing) {
     body = (
@@ -380,11 +397,20 @@ function PhotoSection({
       </View>
 
       {imagesQuery.isPending ? (
-        <ActivityIndicator />
+        <View style={styles.grid}>
+          {Array.from({ length: 3 }, (_, index) => (
+            <Skeleton key={index} width={CELL_BASIS} aspectRatio={1} radius="sm" />
+          ))}
+        </View>
       ) : imagesQuery.isError ? (
-        <Text variant="caption" color="danger">
-          {mapListingError(imagesQuery.error).message}
-        </Text>
+        <View style={styles.photoError}>
+          <Text variant="caption" color="danger">
+            {mapListingError(imagesQuery.error).message}
+          </Text>
+          <Button variant="secondary" size="sm" onPress={() => imagesQuery.refetch()}>
+            Try again
+          </Button>
+        </View>
       ) : (
         <View style={styles.grid}>
           {cells.map((cell) =>
@@ -1341,6 +1367,10 @@ const styles = StyleSheet.create({
     gap: space[5],
   },
   photoSection: {
+    gap: space[2],
+  },
+  photoError: {
+    alignItems: 'flex-start',
     gap: space[2],
   },
   fields: {

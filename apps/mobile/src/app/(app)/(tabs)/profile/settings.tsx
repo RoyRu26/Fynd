@@ -1,12 +1,24 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
-import { Button, Icon, ListRow, Screen, Sheet, Switch, Text, type IconName } from '@/components/ui';
+import {
+  Button,
+  EmptyState,
+  Icon,
+  ListRow,
+  Screen,
+  Sheet,
+  SkeletonRow,
+  Switch,
+  Text,
+  type IconName,
+} from '@/components/ui';
 import { space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 import { signOut } from '@/features/auth/api';
 import { useAuth } from '@/features/auth/auth-provider';
+import { mapProfileError } from '@/features/profile/errors';
 import { useProfile } from '@/features/profile/queries';
 import { mapDeleteAccountError, mapNotificationPreferenceError } from '@/features/settings/errors';
 import { useDeleteAccountMutation, useUpdateNotificationPreferencesMutation } from '@/features/settings/queries';
@@ -27,6 +39,8 @@ import { supabase } from '@/lib/supabase';
 
 // Same pair profile/index.tsx already uses for its own navigational rows.
 const CHEVRON_ICON: IconName = { ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' };
+// Same shape as explore.tsx/inbox/index.tsx's own ERROR_ICON constants.
+const ERROR_ICON: IconName = { ios: 'exclamationmark.triangle', android: 'warning', web: 'warning' };
 
 type PreferenceField = 'notifyNewMessage' | 'notifyNewReview' | 'notifyNewFollower';
 
@@ -43,18 +57,20 @@ export default function Settings() {
       <Text variant="title">Settings</Text>
 
       {profileQuery.isPending ? (
-        <View style={styles.centered}>
-          <ActivityIndicator color={colors.textTertiary} />
+        <View style={styles.skeletonRows}>
+          <SkeletonRow />
+          <SkeletonRow />
+          <SkeletonRow />
         </View>
       ) : profileQuery.isError || !profileQuery.data ? (
-        <View style={styles.centered}>
-          <Text variant="body" color="danger">
-            Something went wrong loading your settings.
-          </Text>
-          <Button variant="secondary" size="sm" onPress={() => profileQuery.refetch()}>
-            Try again
-          </Button>
-        </View>
+        <EmptyState
+          variant="error"
+          icon={ERROR_ICON}
+          title="Something went wrong"
+          body={profileQuery.error ? mapProfileError(profileQuery.error).message : undefined}
+          actionLabel="Try again"
+          onAction={() => profileQuery.refetch()}
+        />
       ) : (
         <NotificationPreferencesSection userId={userId as string} profile={profileQuery.data} />
       )}
@@ -296,11 +312,8 @@ const styles = StyleSheet.create({
     paddingTop: space[6],
     paddingBottom: space[8],
   },
-  centered: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: space[3],
-    paddingVertical: space[6],
+  skeletonRows: {
+    gap: space[2],
   },
   rows: {
     gap: space[2],

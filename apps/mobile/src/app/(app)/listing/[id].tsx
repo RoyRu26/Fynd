@@ -1,8 +1,19 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { Avatar, Button, Chip, IconButton, Screen, Text, type IconName } from '@/components/ui';
+import {
+  Avatar,
+  Button,
+  Chip,
+  EmptyState,
+  IconButton,
+  Screen,
+  Skeleton,
+  SkeletonRow,
+  Text,
+  type IconName,
+} from '@/components/ui';
 import { ListingGallery } from '@/components/listing/listing-gallery';
 import { MoreActionsSheet } from '@/components/report/more-actions-sheet';
 import { space } from '@/design/tokens';
@@ -57,6 +68,12 @@ const HEART_FILLED_ICON: IconName = { ios: 'heart.fill', android: 'favorite', we
 // sf-symbols-typescript's types, and 'more_vert' exists in expo-symbols'
 // android/symbols.json.
 const MORE_ICON: IconName = { ios: 'ellipsis', android: 'more_vert', web: 'more_vert' };
+// Same shape as explore.tsx/inbox/index.tsx's own ERROR_ICON constants.
+const ERROR_ICON: IconName = { ios: 'exclamationmark.triangle', android: 'warning', web: 'warning' };
+// Same "hidden/removed" icon listing-actions-sheet.tsx's ACTION_ICON.remove
+// already uses, and seller/[id].tsx's/conversation/[id].tsx's own null-data
+// cases reuse.
+const UNAVAILABLE_ICON: IconName = { ios: 'eye.slash', android: 'visibility_off', web: 'visibility_off' };
 
 export default function ListingDetailScreen() {
   const router = useRouter();
@@ -106,32 +123,43 @@ export default function ListingDetailScreen() {
   // waiting for `detailQuery.data`.
   let isOwnListing = false;
   if (detailQuery.isPending) {
+    // DESIGN.md §14.6's real layout order: gallery -> price -> title ->
+    // attribute chips -> seller row.
     body = (
-      <View style={styles.centered}>
-        <ActivityIndicator color={colors.textTertiary} />
+      <View style={styles.body}>
+        <Skeleton width="100%" aspectRatio={1} radius="md" />
+        <View style={styles.section}>
+          <Skeleton height={28} width="40%" radius="xs" />
+          <Skeleton height={24} width="70%" radius="xs" />
+          <View style={styles.chipRow}>
+            <Skeleton height={32} width={80} radius="sm" />
+            <Skeleton height={32} width={80} radius="sm" />
+            <Skeleton height={32} width={80} radius="sm" />
+          </View>
+        </View>
+        <SkeletonRow />
       </View>
     );
   } else if (detailQuery.isError) {
     body = (
-      <View style={styles.centered}>
-        <Text variant="body" color="danger">
-          {mapListingError(detailQuery.error).message}
-        </Text>
-        <Button variant="secondary" size="sm" onPress={() => detailQuery.refetch()}>
-          Try again
-        </Button>
-      </View>
+      <EmptyState
+        variant="error"
+        icon={ERROR_ICON}
+        title="Something went wrong"
+        body={mapListingError(detailQuery.error).message}
+        actionLabel="Try again"
+        onAction={() => detailQuery.refetch()}
+      />
     );
   } else if (detailQuery.data === null) {
     body = (
-      <View style={styles.centered}>
-        <Text variant="body" color="textSecondary" style={styles.centeredText}>
-          This listing isn&apos;t available anymore.
-        </Text>
-        <Button variant="secondary" size="sm" onPress={() => router.back()}>
-          Go back
-        </Button>
-      </View>
+      <EmptyState
+        variant="empty"
+        icon={UNAVAILABLE_ICON}
+        title="This listing isn't available anymore."
+        actionLabel="Go back"
+        onAction={() => router.back()}
+      />
     );
   } else {
     const listing = detailQuery.data;
@@ -274,16 +302,6 @@ const styles = StyleSheet.create({
     gap: space[3],
     paddingTop: space[4],
     borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: space[3],
-    paddingHorizontal: space[6],
-  },
-  centeredText: {
-    textAlign: 'center',
   },
   body: {
     gap: space[6],
