@@ -8,7 +8,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(34);
+select plan(36);
 
 -- ============================================================
 -- FIXTURES
@@ -284,6 +284,31 @@ select is(
   (select avatar_path from public.profiles where id = 'f1000000-0000-0000-0000-00000000000a'),
   'f1000000-0000-0000-0000-00000000000a/mine.jpg',
   'setting avatar_path to a path under my own uid prefix succeeds'
+);
+
+-- ============================================================
+-- 9b. notify_new_message ownership isolation (ROADMAP 6.1a)
+-- ============================================================
+-- Same shape as section 9's avatar_path isolation pair -- one column stands
+-- in for all three notify_* columns added by
+-- 20261021062550_profile_notification_preferences.sql, since all three
+-- share the exact same column-grant mechanism being tested here, not a
+-- per-column rule. Still authenticated as user A from section 9a above.
+
+update public.profiles set notify_new_message = false
+  where id = 'f1000000-0000-0000-0000-00000000000a';
+select is(
+  (select notify_new_message from public.profiles where id = 'f1000000-0000-0000-0000-00000000000a'),
+  false,
+  'a user can set their own notify_new_message -- the column grant landed'
+);
+
+update public.profiles set notify_new_message = false
+  where id = 'f1000000-0000-0000-0000-00000000000b';
+select is(
+  (select notify_new_message from public.profiles where id = 'f1000000-0000-0000-0000-00000000000b'),
+  true,
+  'user A setting user B''s notify_new_message has no effect -- RLS''s USING clause silently matches zero rows'
 );
 
 -- ============================================================

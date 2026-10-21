@@ -1,10 +1,9 @@
 import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
-import { Button, Icon, ListRow, Screen, Text, type IconName } from '@/components/ui';
+import { Icon, ListRow, Screen, Text, type IconName } from '@/components/ui';
 import { space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
-import { signOut } from '@/features/auth/api';
 import { useAuth } from '@/features/auth/auth-provider';
 
 // Verified against the installed packages: 'chevron.right'/'chevron_right'
@@ -43,11 +42,12 @@ export default function ProfileIndex() {
           onPress={() => router.push('/(app)/(tabs)/profile/saved')}
           trailing={<Icon name={CHEVRON_ICON} size="sm" color={colors.textTertiary} />}
         />
+        <ListRow
+          title="Settings"
+          onPress={() => router.push('/(app)/(tabs)/profile/settings')}
+          trailing={<Icon name={CHEVRON_ICON} size="sm" color={colors.textTertiary} />}
+        />
       </View>
-
-      <Button variant="secondary" size="sm" onPress={() => signOut()}>
-        Sign out
-      </Button>
     </Screen>
   );
 }

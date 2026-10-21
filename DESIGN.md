@@ -391,6 +391,7 @@ The smallest useful set. Under `src/components/ui/`, one file each.
 | `ListRow` | Leading slot / title + subtitle / trailing slot. |
 | `Sheet` | Detents, drag handle, scrim, keyboard avoidance. The only bottom-sheet implementation. |
 | `Skeleton` | Shimmer block, plus composed `SkeletonListingCard` / `SkeletonRow`. |
+| `Switch` | Controlled on/off toggle. Thin tokenizing wrapper around RN's native `Switch`: `accent` track when on, `borderStrong` when off, `onAccent` thumb. Touch target and thumb animation are the native control's own. `accessibilityRole="switch"`. |
 | `EmptyState` | Icon + title + body + action. Backs `ErrorState` via a `variant`. |
 | `Screen` | Owns safe-area insets, max width, scroll behavior, keyboard avoidance. |
 | `DarkSurface` | Forces the dark scheme for a subtree (§2). |

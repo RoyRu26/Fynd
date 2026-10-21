@@ -417,6 +417,9 @@ export type Database = {
           created_at: string
           display_name: string | null
           id: string
+          notify_new_follower: boolean
+          notify_new_message: boolean
+          notify_new_review: boolean
           updated_at: string
           username: string | null
         }
@@ -426,6 +429,9 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id: string
+          notify_new_follower?: boolean
+          notify_new_message?: boolean
+          notify_new_review?: boolean
           updated_at?: string
           username?: string | null
         }
@@ -435,6 +441,9 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          notify_new_follower?: boolean
+          notify_new_message?: boolean
+          notify_new_review?: boolean
           updated_at?: string
           username?: string | null
         }

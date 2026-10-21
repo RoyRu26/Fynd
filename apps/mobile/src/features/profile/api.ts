@@ -37,7 +37,13 @@ function logCleanupFailure(context: string, error: unknown): void {
 export async function fetchProfile(userId: string): Promise<ProfileRow> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, username, display_name, bio, avatar_path, created_at, updated_at')
+    .select(
+      // notify_new_message/notify_new_review/notify_new_follower
+      // (20261021062550_profile_notification_preferences.sql) are included
+      // here so the Settings screen's switches (ROADMAP 6.1a) can read this
+      // same cached row rather than issuing a second fetch for them.
+      'id, username, display_name, bio, avatar_path, notify_new_message, notify_new_review, notify_new_follower, created_at, updated_at',
+    )
     .eq('id', userId)
     .single();
   if (error) throw error;
