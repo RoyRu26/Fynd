@@ -6,6 +6,7 @@ export { Icon, type IconName, type IconProps } from '@/components/ui/icon';
 export { IconButton, type IconButtonProps, type IconButtonVariant } from '@/components/ui/icon-button';
 export { ListingImage, type ListingImageProps } from '@/components/ui/listing-image';
 export { ListRow, type ListRowProps } from '@/components/ui/list-row';
+export { Logo, type LogoProps, type LogoTone } from '@/components/ui/logo';
 export { Screen, type ScreenProps } from '@/components/ui/screen';
 export { Sheet, type SheetProps } from '@/components/ui/sheet';
 export { Skeleton, SkeletonListingCard, SkeletonRow, type SkeletonProps } from '@/components/ui/skeleton';

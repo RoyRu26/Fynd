@@ -19,7 +19,7 @@ export default function Index() {
     case 'error':
       return <RetryScreen title="Something went wrong." onRetry={state.retry} />;
     case 'unauthenticated':
-      return <Redirect href="/(auth)/sign-in" />;
+      return <Redirect href="/(auth)/welcome" />;
     case 'onboarding':
       return <Redirect href="/(onboarding)/profile" />;
     case 'app':

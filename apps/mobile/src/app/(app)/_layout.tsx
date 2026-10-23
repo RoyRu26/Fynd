@@ -11,7 +11,7 @@ export default function AppLayout() {
     case 'error':
       return <Redirect href="/" />;
     case 'unauthenticated':
-      return <Redirect href="/(auth)/sign-in" />;
+      return <Redirect href="/(auth)/welcome" />;
     case 'onboarding':
       return <Redirect href="/(onboarding)/profile" />;
     case 'app':

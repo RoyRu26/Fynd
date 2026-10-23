@@ -68,8 +68,7 @@ import { useAppTheme } from '@/design/theme-provider';
  *
  * The heart animation's trigger is routed through a counter + `useEffect`
  * rather than mutating the shared values directly inside the gesture
- * callback — same reason ambient-background.tsx does its own shared-value
- * writes inside a `useEffect`: the `react-hooks/immutability` lint rule
+ * callback: the `react-hooks/immutability` lint rule
  * flags a `SharedValue.value` write made directly inside an arbitrary
  * callback as mutating a hook's return value, but recognizes a `useEffect`
  * body as the sanctioned place for it.

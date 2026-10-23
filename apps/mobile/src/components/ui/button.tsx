@@ -128,6 +128,17 @@ function getVariantStyle({
         borderColor: colors.danger,
         opacity,
       };
+    case 'inverse':
+      // Solid, borderless and unbevelled: the fill is already the highest-
+      // contrast surface available against the page, so it needs no stroke
+      // to separate it, and the bevel's job (lifting accent off the page)
+      // is redundant here. Raised elevation still applies — it is a solid
+      // primary-weight control, not a tonal one.
+      return {
+        backgroundColor: colors.bgInverse,
+        opacity,
+        ...elevation.raised,
+      };
   }
 }
 

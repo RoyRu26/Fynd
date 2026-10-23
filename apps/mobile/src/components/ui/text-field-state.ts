@@ -18,6 +18,26 @@ export function getFieldMessage({
   return null;
 }
 
+export type FieldRowAlignment = 'center' | 'flex-start';
+
+/**
+ * Cross-axis alignment for the field row that holds `leading`, the input and
+ * `trailing`.
+ *
+ * Single-line fields centre, so an accessory optically matches the text
+ * baseline. Multiline fields must NOT centre: the row grows with the content,
+ * and a centred accessory would drift toward the middle of a four-line box,
+ * detached from the first line it belongs to. Pinning to the top keeps it
+ * where the caret starts.
+ *
+ * Extracted rather than inlined because it is the one layout rule that varies
+ * with a caller-supplied prop — the thing most likely to regress silently when
+ * someone later adds an accessory to a multiline field.
+ */
+export function getFieldRowAlignment({ multiline }: { multiline?: boolean }): FieldRowAlignment {
+  return multiline ? 'flex-start' : 'center';
+}
+
 export type FieldBorderWidth = 'thin' | 'thick';
 export type FieldBorderColorKey = 'border' | 'borderFocus' | 'danger';
 

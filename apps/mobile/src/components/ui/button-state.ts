@@ -7,7 +7,7 @@ import type { TextColor, TextVariant } from '@/components/ui/text-variants';
 // instead, which is free to import tokens.ts since it's never imported by a
 // test file.
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'inverse';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export const DISABLED_OPACITY = 0.4;
@@ -51,6 +51,15 @@ export function getButtonForegroundColor(variant: ButtonVariant): TextColor {
       return 'accentText';
     case 'danger':
       return 'danger';
+    // The one variant whose fill is a neutral EXTREME rather than a surface
+    // or an accent: `bgInverse` flips with the scheme (near-black on paper,
+    // paper on near-black), and `textInverse` flips with it in lockstep, so
+    // the pair is contrast-correct in both schemes by construction. Note the
+    // consequence callers must accept: this is "the opposite of the current
+    // background," not "black" — in dark mode it is a cream button. Anything
+    // that must stay literally dark in both schemes is NOT this variant.
+    case 'inverse':
+      return 'textInverse';
   }
 }
 

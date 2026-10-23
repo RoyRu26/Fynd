@@ -7,7 +7,7 @@ import {
   type TextVariant,
 } from '@/components/ui/text-variants';
 
-const MANROPE_VARIANTS: TextVariant[] = ['display', 'title', 'heading', 'wordmark', 'price', 'priceSm'];
+const MANROPE_VARIANTS: TextVariant[] = ['display', 'title', 'heading', 'price', 'priceSm'];
 const SYSTEM_VARIANTS: TextVariant[] = ['body', 'bodyStrong', 'label', 'caption', 'micro'];
 
 describe('Text variant → font face', () => {
@@ -30,15 +30,10 @@ describe('Text variant → font face', () => {
     expect(textVariantFace.heading).toBe('displaySemiBold');
   });
 
-  it('display, title, wordmark, price, and priceSm use the bold weight of the display face', () => {
-    for (const variant of ['display', 'title', 'wordmark', 'price', 'priceSm'] as const) {
+  it('display, title, price, and priceSm use the bold weight of the display face', () => {
+    for (const variant of ['display', 'title', 'price', 'priceSm'] as const) {
       expect(textVariantFace[variant]).toBe('displayBold');
     }
-  });
-
-  it('wordmark is bold like title, but a distinct size so the two never collide', () => {
-    expect(textVariantStyles.wordmark.fontWeight).toBe('700');
-    expect(textVariantStyles.wordmark.fontSize).not.toBe(textVariantStyles.title.fontSize);
   });
 
   it('price and priceSm use tabular numerals', () => {

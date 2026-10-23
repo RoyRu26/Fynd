@@ -29,7 +29,7 @@ Instagram is a **quality and interaction reference, not a visual template.** We 
 
 - **Home** borrows the **Reels immersive interaction model** — full-viewport paging, overlay on scrim, edge action rail.
 - **Search/Explore** borrows the **dense, image-first Explore grid model**.
-- **Fynd's visual identity is its own.** Specifically: our brand family is olive and oat — an earth palette that shares no hue with Instagram's magenta-violet sweep, and whose low chroma lets product photography stay the loudest thing on screen. Differentiation now comes from the palette itself rather than from a gradient's stops. Any change that moves us closer to Instagram's palette or iconography is a regression.
+- **Fynd's visual identity is its own.** Specifically: our brand family is paper and ink — a cream canvas, warm black type, and one loud orange-red that shares no hue with Instagram's magenta-violet sweep. Differentiation comes from the palette itself rather than from a gradient's stops. Note the accent is high-chroma, so what keeps product photography the loudest thing on screen is the strict limit on *where* accent may appear (§3 rule 2), not the accent's own quietness. Any change that moves us closer to Instagram's palette or iconography is a regression.
 
 ---
 
@@ -53,15 +53,17 @@ The status bar is pinned to light content on forced-dark surfaces and follows th
 
 ### Philosophy
 
-Near-neutral, with **one accent**. The neutral ramp carries almost everything; the olive accent appears only on primary actions, active navigation, and selected states. Photography supplies the rest of the color on screen.
+Near-neutral, with **one accent**. The neutral ramp carries almost everything; the ink accent appears only on primary actions, active navigation, and selected states. Photography supplies the rest of the color on screen.
 
 **The neutrals are warm.** This is what makes Fynd premium without being cold, and it is not optional. Neutrals are tinted toward red/yellow, never blue. Pure `#000000` and `#FFFFFF` are banned as surface colors.
 
-**The palette is warm throughout** — an oat canvas and a deep olive accent, reading editorial and curated rather than utilitarian. Olive also carries meaning here: it is the hue of workwear, army surplus and vintage, which is what second-hand actually looks like.
+**Paper and ink.** A paper-cream canvas, warm black ink, and one loud orange-red. The canvas and the type do the quiet work; the orange is the only voice in the room, which is what makes it carry.
 
-**The brand is deliberately outside the red sector.** This is the load-bearing structural decision of the palette. The previous brick-crimson accent sat 1° of hue and 1.87:1 from `danger`, which meant a user could not tell "Save" from "Delete" by color — a safety problem, not an aesthetic one (§8). Red now belongs to `danger` alone, and pink to `favoriteActive` alone. Every signal color is verified against the accent in `palette.test.ts`, including under deuteranopia and protanopia.
+**The brand owns the red-orange sector, and `danger` is magenta.** This is the load-bearing structural decision of the palette, and it is the inverse of the one it replaces. Olive & Oat kept the brand *out* of the red sector so `danger` could own it. Paper & Ink gives that sector to the brand instead, and moves `danger` to magenta so the two never trade places.
 
-**The accent is low-chroma on purpose.** A saturated accent competes with product photography; §1's "the interface recedes" is a constraint on the palette, not just on layout.
+**That choice has a cost, and it is paid in luminance.** A green brand and a red `danger` are opposites — 78° apart, so hue alone separated them. A red-orange brand and a magenta `danger` are *neighbours*: the widest this family reaches is 36–52°. Hue can no longer carry "Save is not Delete" by itself, so the separation is carried by **luminance**, and that is what dictates most of the values below rather than taste. `palette.test.ts` enforces all three axes — hue, luminance, and dichromat simulation — and the simulation floors are unchanged from Olive & Oat.
+
+**The accent is high-chroma, unlike its predecessor.** Olive was deliberately low-chroma so it receded behind photography. Ink does not recede; it is a single loud mark against a quiet canvas. §1's "the interface recedes" is now carried by the *canvas and the restraint of where accent is allowed* (rule 2), not by desaturating the accent itself.
 
 ### Primitive ramps
 
@@ -74,46 +76,53 @@ Warm neutrals:
 | `neutral.35` | `#F8F4EF` | | `neutral.600` | `#655F5A` |
 | `neutral.50` | `#F5F3F1` | | `neutral.700` | `#4A4541` |
 | `neutral.100` | `#EDEAE7` | | `neutral.800` | `#2E2A28` |
-| `neutral.200` | `#E0DCD8` | | `neutral.900` | `#1A1716` |
-| `neutral.300` | `#CAC4BF` | | `neutral.950` | `#0C0A0B` |
+| `neutral.200` | `#E0DCD8` | | `neutral.900` | `#1E1A15` |
+| `neutral.300` | `#CAC4BF` | | `neutral.950` | `#14110D` |
 | `neutral.400` | `#A8A19B` | | | |
 | `neutral.450` | `#8C857E` | | | |
 
 `neutral.450` and `neutral.550` exist because `textTertiary` was `neutral.500` in both schemes and measured **3.56:1** — below the 4.5:1 floor for the normal-sized text it actually carries (`TextField` placeholder, `TextField` helper text, the onboarding availability caption). `neutral.500` now has no consumer and is retained only so the ramp stays a regular scale.
 
-Oat surfaces (light scheme only — the neutral steps above are near-white greys and read cold against a warm canvas, so surfaces get their own family):
+Paper surfaces (light scheme only — the neutral steps above are near-white greys and read cold against a warm canvas, so surfaces get their own family):
 
 | Token | Hex | Role |
 |---|---|---|
-| `oat.50` | `#FCFAF3` | light `bgElevated` |
-| `oat.100` | `#F6F2E8` | **swatch anchor** — light `bg` |
-| `oat.200` | `#EAE4D4` | light `bgSunken` |
+| `paper.50` | `#FAF7F0` | light `bgElevated` |
+| `paper.100` | `#F4EFE4` | **swatch anchor** — light `bg` |
+| `paper.200` | `#E6E0D2` | light `bgSunken` |
 
-Softened from the previous cream anchor (`#FBF1D8`, S 72%) to roughly S 44%: at full cream saturation the canvas tints every thumbnail in a 3-up Search grid and competes with the photography §1 makes the hero.
-
-Olive brand ramp (hue ≈78–83°, S 33–45%):
+Ink brand ramp (hue ≈8–20°):
 
 | Token | Hex | Role |
 |---|---|---|
-| `olive.300` | `#B8CC8A` | — |
-| `olive.400` | `#8FA855` | dark `accentText` |
-| `olive.500` | `#6B8A36` | ambient glow primary |
-| `olive.600` | `#5E7A2E` | dark `accent` |
-| `olive.700` | `#4A5D28` | **swatch anchor** — light `accent`, light `accentText`; dark `accentPressed` |
-| `olive.800` | `#33421A` | light `accentPressed` |
+| `ink.200` | `#FFA385` | dark `accentPressed` |
+| `ink.300` | `#FF7D52` | dark `accent` |
+| `ink.400` | `#F06A45` | dark `accentText`, dark `favoriteActive` |
+| `ink.500` | `#E8481F` | **BRAND SWATCH** — large-type brand ink |
+| `ink.700` | `#8B1604` | light `accent`, light `accentText`, light `favoriteActive` |
+| `ink.800` | `#6B1103` | light `accentPressed` |
 
-White text reads **7.27:1** on `olive.700` and **4.88:1** on `olive.600`, so `onAccent` stays white in both schemes.
+**The brand swatch is not either scheme's `accent` fill, and cannot be.** `ink.500` is the colour the brand *is*, but white on it measures **3.9:1**, as normal text on paper it measures **3.4:1**, and its luminance (0.219) lands *inside* the dark scheme's `danger` window — making it the one orange a dichromat cannot separate from magenta on near-black. So each scheme takes the step that clears its own constraints and the swatch stays the swatch.
 
-Signal ramps. Each is a per-scheme pair for the same reason `accent` is (rule 1) — a value dark enough to read on oat is muddy on near-black:
+The two schemes move in **opposite directions** from it, which is the part most likely to look like a mistake and is not:
+
+- **Light** goes *darker* (`ink.700`, a deep burnt red-orange). The fill has to carry a white label at 4.5:1 **and** sit clearly below `danger`'s luminance window. Measured: white **9.5:1**, **11.5:1** against `bg`.
+- **Dark** goes *brighter* (`ink.300`). On near-black the accent must clear `danger`'s window to stay separable, and the only direction with room is up — a darker orange fails 3:1 against the background instead. Measured: **8.1:1** against `bg`, with an **ink** label at **7.5:1** (see rule 6).
+
+There is no `ink.600`. The ramp is numbered by lightness position and nothing needs a step between the swatch and the light accent; an unused step is a value someone eventually reaches for by accident.
+
+Signal ramps. Each is a per-scheme pair for the same reason `accent` is (rule 1) — a value dark enough to read on paper is muddy on near-black:
 
 | Token | Hex | Role | | Token | Hex | Role |
 |---|---|---|---|---|---|---|
-| `rose.500` | `#FF6FA5` | dark `favoriteActive` | | `crimson.400` | `#E8564B` | dark `danger` |
-| `rose.600` | `#E93A7D` | light `favoriteActive` | | `crimson.700` | `#BF2A22` | light `danger` |
-| `teal.400` | `#63CDBC` | dark `success` | | `amber.400` | `#C87A16` | dark `warning` |
-| `teal.700` | `#0B5F55` | light `success` | | `amber.700` | `#9A5D0E` | light `warning` |
+| `magenta.400` | `#F00094` | dark `danger` | | `teal.400` | `#63CDBC` | dark `success` |
+| `magenta.700` | `#D0116A` | light `danger` | | `teal.700` | `#0B5F55` | light `success` |
+| `amber.400` | `#C7A123` | dark `warning` | | | | |
+| `amber.700` | `#7A6410` | light `warning` | | | | |
 
-Three of these are corrections, not restyles. The old single `danger.500 #D93A3A` was tuned so a *white foreground on it* cleared AA — but `danger`'s real consumers use it as a foreground (error captions), where it measured **4.07:1** light and **4.34:1** dark. `warning.500` measured **3.00:1** as light-scheme text. `success` moved from a yellow-green `#2E9E63` to teal because with an olive brand a green success would reproduce the exact collision this palette exists to remove; the first teal candidate (`#12796B`) was rejected for measuring **1.21:1** from the accent under protanopia.
+**`danger` is pinned, not chosen.** Two constraints squeeze it from both sides: it is a *foreground* token (error captions), so it needs 4.5:1 on its own background; and it is the error *border*, so it needs 3:1 against `borderFocus` (rule 2a). Together those leave a narrow luminance window — roughly **0.117–0.153** on paper, **0.201–0.266** on ink. Both magenta steps sit in their window, and `accent` is placed outside it. That window is also why `danger` is saturated rather than a calmer dusty rose: magenta's blue channel is the only thing left to separate it from an orange accent once hue collapses, and desaturating either step drops accent-vs-danger below **1.6:1** under simulation.
+
+`amber` moved from hue ≈34° to ≈46°. Against an *orange* brand the old amber sat 14–20° away — close enough to read as a dimmer accent. The golder hue restores **31–40°** while staying unmistakably amber, not chartreuse. `teal` is unchanged from Olive & Oat: it was already chosen to sit far from a warm accent and still measures **1.65:1** from `accent` under both simulations.
 
 ### Semantic tokens
 
@@ -121,41 +130,42 @@ Screens read **only** these. Never a primitive directly.
 
 | Semantic | Light | Dark |
 |---|---|---|
-| `bg` | `oat.100` | `neutral.950` |
-| `bgElevated` | `oat.50` | `neutral.900` |
-| `bgSunken` | `oat.200` | `neutral.950` |
-| `bgInverse` | `neutral.900` | `neutral.50` |
-| `text` | `neutral.900` | `neutral.25` |
+| `bg` | `paper.100` | `neutral.950` |
+| `bgElevated` | `paper.50` | `neutral.900` |
+| `bgSunken` | `paper.200` | `neutral.950` |
+| `bgInverse` | `neutral.950` | `paper.100` |
+| `text` | `neutral.950` | `paper.100` |
 | `textSecondary` | `neutral.600` | `neutral.400` |
 | `textTertiary` | `neutral.550` | `neutral.450` |
-| `textInverse` | `neutral.25` | `neutral.900` |
+| `textInverse` | `paper.100` | `neutral.950` |
 | `textOnMedia` | `#FFFFFF` | `#FFFFFF` |
 | `border` | `neutral.200` | `neutral.800` |
 | `borderStrong` | `neutral.300` | `neutral.700` |
 | `borderFocus` | `neutral.950` | `neutral.50` |
-| `accent` | `olive.700` | `olive.600` |
-| `accentPressed` | `olive.800` | `olive.700` |
-| `onAccent` | `#FFFFFF` | `#FFFFFF` |
-| `accentText` | `olive.700` | `olive.400` |
-| `favoriteActive` | `rose.600` | `rose.500` |
-| `danger` / `dangerBg` | `crimson.700` / `#FDF0F0` | `crimson.400` / `#3A1E1E` |
-| `onDanger` | `#FFFFFF` | `neutral.900` |
+| `accent` | `ink.700` | `ink.300` |
+| `accentPressed` | `ink.800` | `ink.200` |
+| `onAccent` | `#FFFFFF` | `neutral.950` |
+| `accentText` | `ink.700` | `ink.400` |
+| `favoriteActive` | `ink.700` | `ink.400` |
+| `danger` / `dangerBg` | `magenta.700` / `#FBEAF2` | `magenta.400` / `#3A1528` |
+| `onDanger` | `#FFFFFF` | `neutral.950` |
 | `success` / `successBg` | `teal.700` / `#E4F1EE` | `teal.400` / `#0F2E29` |
 | `warning` / `warningBg` | `amber.700` / `#FDF6E8` | `amber.400` / `#332714` |
-| `overlayScrim` | `rgba(12,10,11,0.55)` | `rgba(12,10,11,0.55)` |
-| `skeleton` | `neutral.100` | `neutral.800` |
+| `overlayScrim` | `rgba(20,17,13,0.55)` | `rgba(20,17,13,0.55)` |
+| `skeleton` | `paper.200` | `neutral.800` |
 
 ### Rules
 
-1. **`accent` is a per-scheme pair, never one hex.** A value dark enough to pass contrast on oat is muddy on near-black, and vice versa. The same applies to `accentText`, `favoriteActive`, `danger`, `success` and `warning` — every signal token is a pair.
-2. **`accent` is reserved** for: primary buttons, the active tab, selected chips/filters, and links. Nothing else.
-2a. **Focus rings are NOT an accent use.** `borderFocus` is achromatic (`neutral.950` light / `neutral.50` dark), deliberately decoupled from the brand. An accent-colored focus ring would make `TextField`'s focused and focused+error states hard to separate, and the ring must also not read as a brand moment on a control the user is merely typing in. It separates from `danger` on two axes at once — luminance (3.36:1 light / 3.24:1 dark) and chroma (achromatic vs. saturated) — while reading 18.9:1 / 16.1:1 against the field fill. It was deepened from `neutral.800`/`neutral.200` when the `danger` correction moved the error border closer to it. **Do not "restore" this to the accent color.** Focus is a system state, not a brand moment.
+1. **`accent` is a per-scheme pair, never one hex.** A value dark enough to pass contrast on paper is muddy on near-black, and vice versa. The same applies to `accentText`, `favoriteActive`, `danger`, `success` and `warning` — every signal token is a pair.
+2. **`accent` is reserved** for: primary buttons, the active tab, selected chips/filters, links, and — the one deliberate addition to this list — the Home feed card's **price plate and recency tag** (§14.1). Nothing else. Those two are non-interactive accent *fills* rather than accent *text*, always paired with `onAccent`, which is what keeps them legible over arbitrary photography where accent-coloured text would measure ≈1.1:1. This restraint matters more under Paper & Ink than it did under Olive & Oat: the accent is now high-chroma, so the places it is *not* allowed are what keep §1's "the interface recedes" true.
+2a. **Focus rings are NOT an accent use.** `borderFocus` is achromatic (`neutral.950` light / `neutral.50` dark), deliberately decoupled from the brand. An accent-colored focus ring would make `TextField`'s focused and focused+error states hard to separate, and the ring must also not read as a brand moment on a control the user is merely typing in. It separates from `danger` on two axes at once — luminance (3.56:1 light / 3.70:1 dark) and chroma (achromatic vs. saturated) — while reading 18.1:1 / 15.3:1 against the field fill. This rule is also one half of what pins `danger`'s luminance window (see the signal ramps above). **Do not "restore" this to the accent color.** Focus is a system state, not a brand moment.
 3. **`textOnMedia` is white in both schemes** and is only valid over a scrim. Text over user photography without a scrim is a defect — arbitrary images cannot guarantee contrast.
-4. **`favoriteActive` is rose, and never the accent.** It is the one state allowed its own hue, because it is the product's core engagement signal and must not read as "selected." It sits 104° from `accent` and is verified to separate from `danger` on luminance as well as hue — the previous magenta measured 1.02:1 from `danger`, distinguishable by hue alone.
+4. **`favoriteActive` is the brand ramp, and that is a deliberate reversal.** Olive & Oat gave favorite its own hue (rose) specifically so it could not read as "selected." Paper & Ink puts favorite *on* the brand — in the light scheme it is the same value as `accent`. The old rule's protection is therefore gone by choice, and what replaces it is **shape**: the heart's filled/outline change is what communicates the state, never colour (§12.4). What still holds, and is still tested, is separation from `danger` — a filled heart must never read as a destructive control (1.79:1 light / 1.34:1 dark, plus ≥15° of hue).
 5. Never introduce a new color without adding it here first.
-6. **`onDanger` is its own token, decoupled from `onAccent`.** This is no longer hypothetical: on the dark scheme a red light enough to read as text cannot carry a white foreground, so `onDanger` is ink there while `onAccent` stays white. A color surface must never assume another surface's foreground token happens to work for it too.
-7. **`bgElevated` is never pure `#FFFFFF`/`#0C0A0B`** — light `bgElevated` is `oat.50`, dark is `neutral.900`. Enforced by `palette.test.ts`, not by review.
+6. **`onAccent` and `onDanger` are each their own token, and neither is white in both schemes.** `onDanger` has always been ink on dark. Under Paper & Ink `onAccent` joins it: an orange loud enough to be the dark accent carries a white label at only 3.1:1, so the dark label is ink (7.5:1). A color surface must never assume another surface's foreground token happens to work for it too — and must not assume its *own* foreground is the same in both schemes.
+7. **`bgElevated` is never pure `#FFFFFF`/`#000000`** — light `bgElevated` is `paper.50`, dark is `neutral.900`. Enforced by `palette.test.ts`, not by review.
 8. **Contrast floors are tested, not asserted.** `palette.test.ts` holds every pair in this section to its floor, in both schemes, plus deuteranopia/protanopia separation for `accent` against `danger` and `success`. A palette change that breaks a floor fails CI. Do not weaken a threshold to make a color fit — change the color.
+9. **With a warm brand, luminance is the load-bearing axis.** Olive & Oat could separate `accent` from `danger` by hue alone (78°). Paper & Ink cannot (36–52°), so `palette.test.ts` adds a luminance floor between them and treats the dichromat-simulation floors as the primary guard rather than a backstop. If a future change moves `accent` or `danger`, check the *simulated* separation first — the raw hue angle is the least informative number for this brand family.
 
 ---
 
@@ -163,9 +173,9 @@ Screens read **only** these. Never a primitive directly.
 
 **There is currently no signature gradient.** `gradientBrand` was removed in the Olive & Oat migration.
 
-The previous stops were coral → magenta → orchid → violet, justified as "violet-weighted precisely so it does not read as Instagram's." That rationale died with the red palette and was already flagged for rewrite rather than patching; the stops were never migrated and never had a runtime consumer. An obsolete violet token sitting in an olive design system is worse than no token — it invites someone to use it.
+The previous stops were coral → magenta → orchid → violet, justified as "violet-weighted precisely so it does not read as Instagram's." That rationale died with the red palette and was already flagged for rewrite rather than patching; the stops were never migrated and never had a runtime consumer. An obsolete violet token sitting in a palette that no longer contains violet is worse than no token — it invites someone to use it.
 
-Differentiation from Instagram now comes from the palette itself (§1): an olive-and-oat earth family shares no hue with a magenta-violet sweep, and its low chroma keeps photography the loudest thing on screen.
+Differentiation from Instagram now comes from the palette itself (§1): a paper-cream canvas with a single orange-red mark shares no hue with a magenta-violet sweep. Note that Paper & Ink's `danger` *is* magenta — which is exactly why magenta is confined to the error role and never used as a brand surface or gradient stop.
 
 ### Reintroducing one
 
@@ -191,19 +201,18 @@ If a surface feels like it needs a gradient, it almost certainly needs better hi
 
 ---
 
-## 4a. Ambient background
+## 4a. Ambient background — REMOVED
 
-Two soft, low-intensity radial washes used as atmosphere behind content — currently on Sign In, Sign Up, and profile onboarding. Distinct from a signature gradient in construct and in rule: a gradient is a fixed brand mark for a closed allowlist that explicitly excludes screen backgrounds; this is a background and nothing else.
+Two soft radial washes (`ambientGlow.primary` / `.secondary`, driven by `ambientMotion`) sat behind Sign In, Sign Up and profile onboarding. The auth redesign replaced all three of those screens with a solid `bg` and moved the atmosphere into the welcome screen's photo collage instead, leaving `components/ambient-background.tsx` with zero consumers. Per §15 rule 5 the component and both token objects were deleted rather than parked.
 
-**Mechanism**: `react-native` core's own `experimental_backgroundImage` radial-gradient support — no gradient library. Each wash fades to full alpha-0 transparency, not just low opacity, so its own geometric boundary is never visible — only a soft interior falloff. Centers sit substantially off-canvas (via the gradient's own `position`, offset beyond a corner), so the effect reads as light spilling in from outside the frame, never a discrete shape sitting on the screen.
+**If atmosphere is ever wanted again**, three things from the original are worth keeping and one is not:
 
-**Rules**:
-1. Two washes only — `ambientGlow.primary` (olive, `rgba(107,127,58,…)`) and `ambientGlow.secondary` (oat-gold, `rgba(201,168,122,…)`). Keys are palette-agnostic by design, which is exactly why the Olive & Oat migration was a value change here rather than a rename across consumers. The previous values were within 1° of hue of `danger` — the auth screens were washed in the error color. This is deliberately not open-ended; a third color or a third wash needs the same explicit-agreement bar as a gradient allowlist addition.
-2. Extremely low intensity (low-single-digit-to-low-double-digit percent alpha at the core, fading to zero) — quiet atmosphere, never a visible tint competing with content.
-3. `pointerEvents="none"` always — never intercepts a touch.
-4. Motion is slow and continuous (see §10's ambient-motion note) — never the snappy interaction motion used elsewhere.
-5. **Progressive enhancement, not a hard dependency**: the surface's semantic `bg` color is always the base fill underneath the washes. If `experimental_backgroundImage` doesn't render on a given platform/renderer, the washes are simply invisible and the screen still reads correctly on the solid neutral background — no feature-detection or fallback branching is added for this; it falls out of the layering itself.
-6. Reserved for auth-shaped, otherwise-quiet screens today. Extending it elsewhere is a "does this screen genuinely want atmosphere over content" decision, not an automatic reuse.
+- *Keep the mechanism.* `react-native` core's own `experimental_backgroundImage` gradient support, no library. `gradientScrim` and `gradientFade` in `tokens.ts` still use it.
+- *Keep the falloff rule.* Each wash must fade to full alpha-0, not merely low opacity, so its own geometric boundary is never visible — only a soft interior falloff. Centers belong substantially off-canvas so the effect reads as light spilling in from outside the frame, never a discrete shape on the screen.
+- *Keep the layering rule.* The surface's semantic `bg` is always the base fill underneath. If `experimental_backgroundImage` does not render on some platform, the washes are simply invisible and the screen still reads correctly — progressive enhancement that falls out of the layering, with no feature detection.
+- *Do not restore the old alphas.* They were tuned on-device for the low-chroma Olive & Oat wash and were never re-tuned after Paper & Ink moved the primary stop to the brand ink orange (`ink.500`), which is far more assertive at the same alpha. They needed retuning downward and never got it.
+
+A reintroduction is a fresh decision at the same bar as a gradient-allowlist addition (§4), not a revert.
 
 ---
 
@@ -221,7 +230,6 @@ Two soft, low-intensity radial washes used as atmosphere behind content — curr
 | `display` | 32 / 38 | 700 | Manrope |
 | `title` | 24 / 30 | 700 | Manrope |
 | `heading` | 19 / 25 | 600 | Manrope |
-| `wordmark` | 22 / 28 | 700 | Manrope, letter-spacing -0.3 |
 | `price` | 22 / 26 | 700 | Manrope, tabular |
 | `priceSm` | 15 / 19 | 700 | Manrope, tabular |
 | `body` | 16 / 24 | 400 | System |
@@ -233,7 +241,7 @@ Two soft, low-intensity radial washes used as atmosphere behind content — curr
 
 ### Rules
 
-1. The custom face is for `display`, `title`, `heading`, `wordmark`, `price`, `priceSm` **only**. Everything else is system.
+1. The custom face is for `display`, `title`, `heading`, `price`, `priceSm` **only**. Everything else is system.
 2. **Every custom-face variant declares an explicit `lineHeight`** — Manrope does not share system font metrics, and inherited line heights will be wrong.
 3. Price always uses **tabular numerals**, so prices align in the grid and don't jitter when values change.
 4. Fonts load before the splash hides. The existing `AnimatedSplashOverlay` already gates on an `isReady` flag — font loading joins auth resolution as a readiness input.
@@ -289,10 +297,10 @@ Each is a platform-split object (iOS `shadow*`, Android `elevation`). Shadows ar
 
 ### Destructive actions must differ by silhouette, not hue — STILL REQUIRED
 
-This rule was written when `accent` and `danger` were hue-identical (1° apart, 1.87:1) and a user could not tell "Save" from "Delete" by color alone. The Olive & Oat palette removes that specific collision — `accent` now sits **82°** from `danger`, and the pair is verified under deuteranopia and protanopia — but **the rule stands**, for two reasons:
+This rule was written when `accent` and `danger` were hue-identical (1° apart, 1.87:1) and a user could not tell "Save" from "Delete" by color alone. Olive & Oat removed that specific collision by moving the brand to the opposite sector (82°). **Paper & Ink gives part of it back on purpose**, and the rule is correspondingly *more* load-bearing now, not less:
 
 - §12.4 forbids color-only status outright. Color may reinforce a destructive action; it may never be the only thing carrying it.
-- The dark-scheme margin is the thinner one. Olive and red separate mostly by hue there, and hue is exactly what a dichromat loses.
+- `accent` and `danger` are now **neighbours** (36–52°), not opposites. The separation is carried by luminance and verified under deuteranopia/protanopia (1.68–2.05:1) rather than by hue — see §3. That is enough to tell two surfaces apart; it is *not* enough to let colour alone mark one of them destructive.
 
 The required resolution is structural:
 
@@ -342,7 +350,7 @@ easing     ease-out for entrances, ease-in for exits
 | Images | Fade in ~200ms from placeholder. |
 | Press states | Opacity or background shift within `fast`. |
 
-**Ambient/decorative background motion is a separate category from the table above**, not an extension of it. The interactive-feedback tokens (`duration` 100–320ms, `spring`) exist for responses to user action and top out at 320ms; ambient motion (see §4a) runs on 12–20 **second** cycles and is never used for interaction feedback. It uses its own constants (`ambientMotion` in `tokens.ts`) and the same no-spring, no-bounce discipline — smooth ease in/out, never `withSpring`.
+**Ambient/decorative background motion would be a separate category from the table above**, not an extension of it — but there is none in the app today. The `ambientMotion` constants were deleted with the ambient background (§4a), and nothing currently animates on a multi-second cycle. The distinction is recorded because it still binds anything that brings such motion back: the interactive-feedback tokens (`duration` 100–320ms, `spring`) are for responses to user action and top out at 320ms, so decorative motion on 12–20 **second** cycles needs its own constants rather than stretching these, and carries the same no-spring, no-bounce discipline — smooth ease in/out, never `withSpring`.
 
 ---
 
@@ -383,10 +391,11 @@ The smallest useful set. Under `src/components/ui/`, one file each.
 | Primitive | Notes |
 |---|---|
 | `Text` | Variants per §5. Replaces `ThemedText`. `color` prop keyed to semantic tokens. |
-| `Button` | `primary` / `secondary` / `ghost` / `danger` × `sm` / `md` / `lg`. Loading and disabled built in. 44pt enforced. `primary` carries `elevation.raised` and a top/bottom bevel highlight — see §8. |
+| `Button` | `primary` / `secondary` / `ghost` / `danger` / `inverse` × `sm` / `md` / `lg`. Loading and disabled built in. 44pt enforced. `primary` carries `elevation.raised` and a top/bottom bevel highlight — see §8. `inverse` is a solid `bgInverse` fill with a `textInverse` label, borderless and unbevelled (the fill is already the highest-contrast surface against the page, so it needs no stroke to separate it). Note what `inverse` means: "the opposite of the current background," so it is near-black on paper in light and cream on ink in dark. Anything that must stay literally dark in both schemes is **not** this variant. |
 | `IconButton` | Icon-only, `hitSlop` to 44pt. `onMedia` variant carries its own scrim. |
-| `TextField` | Label + input + helper/error as one unit. Owns focus ring, error state, `color`, and `placeholderTextColor`. Opaque `bgElevated` fill with `elevation.raised` — deliberately not translucent, see §8. |
-| `Avatar` | `xs`/`sm`/`md`/`lg`. Initials fallback — `avatar_path` is null for every user today. |
+| `TextField` | Label + input + helper/error as one unit. Owns focus ring, error state, `color`, and `placeholderTextColor`. Opaque `bgElevated` fill with `elevation.raised` — deliberately not translucent, see §8. Optional `leading` / `trailing` slots render **inside** the stroke: the box decoration lives on the field row, not the `TextInput`, which is what makes that possible. That move takes the 16pt padding out of the input's own touch area, so **the row is a `Pressable` that forwards presses to `focus()`** — without it a tap just inside the stroke misses the input and, under `keyboardShouldPersistTaps="handled"`, dismisses the keyboard instead. `leading` is for static adornments only (`@` prefix, currency symbol) since it sits where users tap to focus, and **must be hidden from AT** (`accessible={false}` + `importantForAccessibility="no"`) — an RN `Text` is otherwise its own announced stop. Interactive controls go in `trailing` and must carry their own `accessibilityLabel` (the field's label is folded into the input's) and their own `minWidth`/`minHeight` to reach 44pt, since the row grants only the space an accessory asks for. Single-line rows centre their accessories; multiline rows pin them to the top, where the caret starts. |
+| `Avatar` | `xs`/`sm`/`md`/`lg`/`xl`. Initials fallback. `xl` (84) is the onboarding picker's size and exists as a real step rather than a `style` override, because the picker's empty state is a separate dashed circle of the same diameter — if the two diverged the control would visibly resize the moment a photo was chosen. |
+| `Logo` | The brand lockup. Required `height`, width derived from the source art's 496:234 ratio, so it cannot be stretched; a fixed optical size, deliberately not Dynamic Type-scaling. `tone` names the SURFACE, never the artwork — `auto` follows the scheme; `onLight`/`onDark` are for deliberately inverted surfaces (e.g. `bgInverse`, where `auto` picks the wrong wordmark); `onMedia` is for over photography. Three flat-colour cuts, not one tinted at runtime: `onLight`/`onDark` keep the brand-orange mark and swap only the wordmark, but **`onMedia` is all cream, mark included** — it carries no brand colour and so depends entirely on the scrim beneath it for contrast (rule 2 of §12). |
 | `Chip` | Static badge and interactive filter, one component via a `selectable` prop. Radius `sm`–`md`, never pill. |
 | `ListRow` | Leading slot / title + subtitle / trailing slot. |
 | `Sheet` | Detents, drag handle, scrim, keyboard avoidance. The only bottom-sheet implementation. |
@@ -411,20 +420,35 @@ The visual anchor of the product. Always dark. Full-viewport, vertically paged, 
 | Tier | Elements |
 |---|---|
 | **1 — Dominant** | Photography, full-bleed, full-viewport. |
-| **2 — Legible without reading** | **Price** (the most-scanned datum in second-hand; the one element allowed to be loud) · **Favorite** (large target, right-thumb reachable). |
-| **3 — One glance** | Title, truncated 1–2 lines · **Size** and **condition** chips — the two attributes that decide relevance faster than the title. |
-| **4 — Trust** | Seller avatar + handle. Present on every item — this is what makes it social rather than classifieds — but visually quiet. |
-| **5 — Deliberate** | One primary action. Tapping the photo opens detail. Share and more/report as the smallest, lowest-contrast elements. |
+| **2 — Legible without reading** | **Price** (the most-scanned datum in second-hand; the one element allowed to be loud), set as a solid `accent` **price plate** with an `onAccent` label — opaque, so it never depends on the photo underneath · **Favorite** (large target, right-thumb reachable). |
+| **3 — One glance** | Title, uppercase, truncated 1–2 lines · a **size · condition** specs line — the same two attributes that decide relevance faster than the title, set as one tracked uppercase line rather than two `Chip`s. The card uses no `Chip` at all. |
+| **4 — Trust** | Seller avatar + handle. Present on every item — this is what makes it social rather than classifieds — but visually quiet. The row is tappable and opens the seller's closet (`/(app)/seller/[id]`); it shows `@handle` where one exists, falling back to display name. |
+| **5 — Deliberate** | Tapping the photo opens detail. **One** explicit primary action — **Text seller** — closes the caption block, hidden on the viewer's own listing. More/report stays the smallest, lowest-contrast element. Share remains unbuilt. |
 
-**Layout:** photo fills the page. A single bottom gradient scrim serves **both** the overlay and the bottom bar — design them as one gradient, not two stacked treatments. A right-edge vertical rail carries favorite / share / more.
+**Layout:** photo fills the page. A single bottom gradient scrim serves **both** the overlay and the bottom bar — design them as one gradient, not two stacked treatments. A right-edge vertical rail carries favorite / more (share unbuilt). The rail is **top-aligned beside the seller/title block**, so the favorite button lines up with the seller's avatar, and the price + CTA row sits below spanning the full width. That placement does three jobs: it matches the design, it keeps the rail out of the title's way (the rail claims horizontal space rather than floating over it), and it keeps the rail far enough down the scrim's ramp to have real backing — stacked above the whole caption it would sit in the gradient's transparent top, where the accent-tinted favorited glyph measures ~1.4:1 against a bright photo. Height stays content-driven and the `insets.bottom` clearance for the floating tab bar is unchanged. **No fixed offsets from the bottom edge, ever** — the mock's 100px/250px are not reproducible across devices.
 
-**Chrome budget — moderate, leaning minimal.** Scrim, price, title, **at most two chips**, a quiet seller row, and **at most one** obvious primary action. No large floating cards. No pills.
+**Chrome budget — moderate, leaning minimal.** Scrim, an optional recency tag, a quiet tappable seller row, title, one specs line, a price plate, **exactly one** obvious primary action, and the two-icon rail. No chips on the card. No large floating cards. No pills.
 
-**Never on the feed:** description, shipping, full attribute lists, timestamps.
+**Never on the feed:** description, shipping, full attribute lists, or any rendered timestamp. One **derived binary** recency flag ("Just dropped", `created_at` within `JUST_DROPPED_WINDOW_MS` = 48h) is permitted: it shows no date, no clock time, and no "x days ago" age. A second such flag needs the same explicit bar.
+
+**Type treatment — this card, and nowhere else.** `heading` (title), `micro` (tag, specs line) and `label` (handle) carry local inline `textTransform: 'uppercase'` and `letterSpacing` — title −0.2, tag +2.2, specs +1.8. Recorded here so the values are traceable rather than magic; no new `Text` variant is added (§15.2 — one caller). `Button`'s own label is **not** uppercased: it forwards container `style` but renders its label through its own `Text`, so no text style or font-scale cap reaches it. `maxFontSizeMultiplier` is capped at 1.4 on these nodes — the one place §5 rule 5 permits it.
+
+**On-media text is never dimmed with `opacity`.** The scrim only guarantees legibility for opaque `textOnMedia`, and at `gradientScrim`'s 0.75 bottom alpha even that measures ≈3.45:1 against a maximally bright photo. The mock's 72%-opacity specs line measures ≈2.77:1, failing both floors. De-emphasis comes from size and tracking, not alpha.
+
+**Accessibility invariant — invisible to visual review, so it is written down.** The card is five AT stops: the photo (one composed label carrying tag, title, price, size, condition and seller), favorite, more, the seller row, and Text seller — plus a conditional **sixth** when the CTA errors. Three things must not be "simplified":
+- Every non-interactive group carries `pointerEvents="none"`, the error plate included. A plain `View` is a hit-test target and the gesture detector is a *sibling*, not an ancestor — so without it, taps there stop reaching the photo's recognizers and "tap anywhere to open" dies silently.
+- The hide props (`accessibilityElementsHidden` + `importantForAccessibility="no-hide-descendants"`) are narrower: they go only on the three **decorative** groups (tag, title block, price plate), whose content the photo's composed label already speaks. The error plate is deliberately *not* hidden — a screen-reader user who taps the CTA and gets nothing must be told why. `accessibilityLiveRegion` is Android-only, so `accessibilityRole="alert"` is what carries that on iOS; both go on the `Text`, matching every other error site in the app.
+- The hide props live on the **individual groups**, never on the caption container. On the container they would delete the seller row and the CTA from the accessibility tree, with no visual change to catch it.
+
+**Error surface.** The CTA's failure message sits on a solid `danger` fill with an `onDanger` label — not `danger` on `dangerBg`, which measures 3.89:1 in the dark scheme (below the 4.5:1 this caption-sized text needs) and is asserted nowhere in `palette.test.ts`. `onDanger`-on-`danger` is a tested pair at 4.60:1. Bare `danger` text over photography is worst-case ~1.5:1 and is never acceptable here.
+
+**Touch-target exception.** The seller row reaches 44pt via `hitSlop` at the call site rather than inside a primitive — the one place §12 rule 1's "never left to call sites" is relaxed, because a `minHeight` would add dead vertical space to a tight caption and make the scrim taller. Listing detail's own seller row does the same.
+
+**[OPEN] — favorited-glyph contrast.** The rail's own `overlayScrim` disc plus the gradient at the rail's position give the accent-tinted *favorited* heart **≈2.0–2.8:1** against a maximally bright photo (2.7 with the recency tag present, 2.0 without), short of §12 rule 2's 3:1 for meaningful icons. The unfavorited white glyph and the ellipsis are fine at ≈4.2:1. Not a §12 rule 4 problem — the state is also carried by the filled/outline glyph swap, the `accessibilityState.selected` flag, and the label swap — so this is glyph legibility against the worst-case photo, not state encoding, and the realistic case is far better. Closing it properly means either deepening `gradientScrim`'s early ramp (its only consumer is this card) or giving `IconButton`'s `onMedia` variant a denser disc; both are shared-surface changes deferred rather than made here.
 
 **Performance:** only the visible page and its immediate neighbours keep active media.
 
-**Scope toggle (ROADMAP 3.2).** A "For you" / "Following" pair sits above the feed as screen-level chrome, not card content — it is **not** subject to the chrome budget's "at most two chips" cap above, which bounds what one card overlay shows, not the screen's own top-level navigation. Implemented as two `Chip`s in their existing `selectable`/`selected` mode (§13) — no new SegmentedControl primitive; two carefully-indistinguishable options is exactly what the second-caller rule (§15.2) asks to inline rather than invent a component for. Introduces no new scrim or gradient: each card's `gradientScrim` is already transparent at its top stop, so legibility comes from the Chip's own opaque fill, the same mechanism the card's mid-overlay condition/size chips already rely on.
+**Scope toggle (ROADMAP 3.2).** A "For you" / "Following" pair sits above the feed as screen-level chrome, not card content — it is **not** subject to the chrome budget above, which bounds what one card overlay shows, not the screen's own top-level navigation — note the budget now bars chips from the card entirely, which makes these two the only `Chip`s on the screen. Implemented as two `Chip`s in their existing `selectable`/`selected` mode (§13) — no new SegmentedControl primitive; two carefully-indistinguishable options is exactly what the second-caller rule (§15.2) asks to inline rather than invent a component for. Introduces no new scrim or gradient: each card's `gradientScrim` is already transparent at its top stop, so legibility comes from the Chip's own opaque fill.
 
 ### 14.2 Search / Explore
 
@@ -433,7 +457,7 @@ The inverse of the feed: dense where the feed is singular. Borrows the **Instagr
 - **3-up grid**, gutter `space[1]`.
 - The tile is **not the feed card shrunk**: `priceSm` + truncated title only. No chips at this size.
 - Same photo treatment and radius as everywhere else.
-- Filters use the same `Chip` as the feed's attributes and open in the same `Sheet` as every other sheet in the app. That continuity is what makes filtering feel like the product rather than a form.
+- Filters use the same `Chip` as the feed's scope toggle and listing detail's attributes, and open in the same `Sheet` as every other sheet in the app. That continuity is what makes filtering feel like the product rather than a form.
 
 ### 14.3 Profile
 
@@ -455,17 +479,40 @@ Pure `ListRow` + `Avatar`, with a small listing cover thumbnail in the row's tra
 
 ### 14.6 Listing detail
 
-The feed card unfolded: same elements, same order, more room.
+The feed card unfolded: same elements, more room — but a different emphasis and order. The feed leads with the photo and defers everything else to a caption block (tag → seller → title → specs → price); detail leads with price and title and gives the attributes their own row.
 
 Horizontally paged gallery (same image wrapper) → price → title → attribute chips → seller row → description → pinned bottom action bar.
 
-**Attribute chips (ROADMAP 2.1)** are three, not two: condition, size, and a category breadcrumb (e.g. "Women › Shoes"). Unlike the feed card's "at most two chips," this screen has no numeric cap.
+**Attribute chips (ROADMAP 2.1)** are three: condition, size, and a category breadcrumb (e.g. "Women › Shoes"). This is the screen that uses chips for attributes — the feed card compresses the same condition/size pair into a single specs line (§14.1) — and it has no numeric cap.
 
 **[OPEN] — dark treatment.** The media/gallery area may be dark while the informational portion follows the system theme. Not locked; decide with the real design in hand.
 
 ### 14.7 Conversation thread
 
 **[OPEN] — no visual spec yet.** Shipped as a deliberate functional placeholder: plain left/right-aligned `Text` rows (own messages right, the other party's left), no bubble fill, shape, or shadow invented. Replace the styling once a real design exists; the data contract (message list + composer) is not expected to change.
+
+### 14.8 Auth & onboarding
+
+Five screens: welcome, sign in, create account, check email, set up profile — plus a password-reset request screen. All share one shape: `Logo` + title + supporting line, a field stack, then actions, left-aligned on a solid `bg`. (They previously sat on the ambient washes; see §4a for why those are gone.)
+
+**Welcome is the entry point and the one exception.** It forces the dark scheme for its whole subtree, the same mechanism the Home feed uses, rather than painting `bgInverse` by hand. That is load-bearing: inside a dark subtree every token resolves for a dark surface on its own — `bg`, both button variants, text colors, and `Logo`'s own `auto` tone picking the cream wordmark. Hand-inverting the surface would mean overriding each of those at the call site and would silently go wrong the first time one was missed.
+
+Its top ~62% is a three-column photo collage dissolved into the page by `gradientFade`. Two rules: the collage is **decorative** (`pointerEvents="none"`, and the whole subtree hidden from screen readers — a dozen unlabelled images announced ahead of the sign-in buttons buries the only content that matters), and its tile layout is **fixed, never randomised**, because a wall that reshuffles on re-render reads as a glitch. Photos are bundled assets, not live listings: `feed_listings` is `security invoker` over a private bucket, so a signed-out caller gets no rows and no signed URLs — showing real listings pre-auth would mean opening anonymous read access, which is not a trade worth making for decoration.
+
+**Where this deliberately departs from the handoff mock:**
+
+1. *Buttons.* The mock draws `#E8481F` + white, which measures **3.9:1** and fails AA — the exact reason §3 keeps the brand swatch out of both schemes' `accent`. Welcome uses dark-scheme `primary` (coral fill, ink label) instead. Do not "fix" it back toward the mock.
+2. *Password minimum.* The mock's helper reads "At least 8 characters" while also saying to match the zod rule, which is `MIN_PASSWORD_LENGTH = 6`. The code wins, and the copy is **interpolated from the constant** (`PASSWORD_HELPER_TEXT`) so the two can never drift again.
+
+**The password meter measures length only** — four segments at `MIN_PASSWORD_LENGTH` and every two characters after. It is not entropy and not a security claim: a repeated character fills the bar. That is why the copy beside it states the length requirement outright instead of calling a full bar "strong", and why nothing gates on its value. It is hidden from screen readers as a decorative duplicate of the helper text it visualises.
+
+**Check email's primary action is `inverse`, not `primary`** — the one auth screen where that is true. The accent is already spent on the 72px mail badge directly above it, and §3 rule 2 limits where accent may appear; a second accent-filled element would make the screen's loudest mark compete with itself. This is deliberate, not an oversight to normalise later.
+
+**Password reset is request-only.** The client sets `detectSessionInUrl: false`, so a recovery deep link cannot establish the session a reset needs; the emailed link resolves to the project's Site URL instead. The confirmation screen says so plainly rather than letting the user discover it. It also says "if an account exists" rather than "email sent", because GoTrue answers 200 either way specifically to prevent account enumeration — wording it as a confirmed send would leak what that protects.
+
+**Check email owns the resend cooldown.** 60 seconds, client-side, and a courtesy rather than a limit: the real one is GoTrue's `over_email_send_rate_limit`, which `mapAuthError` translates. The countdown is driven by a **fixed deadline and a clock**, never a decrementing counter — JS timers are throttled while backgrounded, which is precisely what happens when the user leaves for their mail app, and a counter would come back wrong.
+
+**Avatar in onboarding is optional and commits immediately**, independent of the form's Continue button — the same precedent as `profile/edit.tsx` and Sell's photo section, and the reason `onboardingSchema` has no avatar field. The dashed empty circle plus `+` badge is **one** touch target with one accessible name; the badge is chrome on that button, not a second control. Its caption sits INSIDE that target, so the words that read as the control's label are tappable and do not announce twice.
 
 ---
 
@@ -492,8 +539,8 @@ Tracked deliberately. Each must be resolved explicitly, not by improvisation.
 | 2 | **Listing detail dark treatment** | Media area dark + informational portion system-following is the leading idea. Decide with the real design. |
 | 3 | **One further gradient allowlist entry** | Reserved, unassigned. Must be agreed, not claimed. Moot until a gradient exists again (§4). |
 | 6 | ~~**`gradientBrand` palette migration**~~ | **Closed.** Resolved by deletion, not redefinition — see §4. The stale §1/§4 rationale was rewritten rather than patched, as this item required. A gradient gets defined when an allowlisted use needs one. |
-| 7 | ~~**`favoriteActive` vs `danger`**~~ | **Closed.** Now `rose.600`/`rose.500`, a per-scheme pair. 1.02:1 → **1.75:1** from `danger` with 22° of hue, and 104° from `accent`. Enforced by `palette.test.ts`. The on-device read of the new rose is still worth doing, but it is a tuning question, not an open decision. |
-| 8 | **Destructive-button treatment** | Specified in §8, **still not implemented, still blocking.** The Olive & Oat palette removed the hue collision that motivated it (1° → 82°), which lowers the urgency but not the requirement: §12.4 forbids color-only status, and the dark-scheme margin leans on hue, which dichromats lose. |
+| 7 | ~~**`favoriteActive` vs `danger`**~~ | **Closed, on different grounds than before.** Paper & Ink moves favorite onto the brand ramp (`ink.700`/`ink.400`), so it is no longer a separate hue and in the light scheme it equals `accent` — see §3 rule 4. Separation from `danger` is still enforced by `palette.test.ts` (1.79:1 light / 1.34:1 dark, ≥15° hue); separation from `accent` is now carried by the heart's filled/outline shape, not by colour. |
+| 8 | **Destructive-button treatment** | Specified in §8, **implemented (ROADMAP 6.1b) — `Button`'s `danger` variant is outlined/tonal, not solid.** Paper & Ink makes the rule *more* important, not less: `accent` and `danger` are now 36–52° apart rather than 82°, so silhouette carries more of the load. |
 | 4 | **Exact elevation shadow values** | `raised` now has concrete values (§8). `overlay`/`modal` remain unspecified. |
-| 9 | **Ambient glow intensity on oat** | Alphas were carried over from the red-on-cream tuning and are almost certainly wrong for olive-on-oat — a low-chroma green reads as a shadow rather than a glow if too faint. Retune on device (§4a). |
+| 9 | ~~**Ambient glow intensity**~~ | **Closed by removal, not by tuning.** The auth redesign took the ambient washes off the only three screens that used them, so the component and both token objects were deleted (§4a, §15 rule 5) and the untuned alphas went with them. Nothing was retuned and nothing shipped on hardware — if atmosphere returns, §4a records what to keep and explicitly warns against restoring these alphas verbatim. |
 | 5 | ~~**Schema gaps blocking these patterns**~~ | **Closed.** `size`, `favorites`, `categories`, and now `follows` (ROADMAP 3.1) are all shipped — `size`/`favorites` for the feed hierarchy §14.1 / Search filters §14.2's dependencies, `categories` via ROADMAP 2.1's seeded taxonomy table, `follows` backing §14.3's identity header (counts, follow button). |

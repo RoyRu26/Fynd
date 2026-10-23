@@ -46,6 +46,24 @@ describe('mapAuthError — auth errors', () => {
     expect(mapped.message).toMatch(/too many attempts/i);
   });
 
+  it('maps over_email_send_rate_limit to its own message, distinct from the request limit', () => {
+    const mapped = mapAuthError(authError('over_email_send_rate_limit'));
+    expect(mapped.message).toMatch(/too many emails/i);
+    // The point of the separate branch: it must not land on the generic
+    // fallback, which reads as a bug and invites retry hammering.
+    expect(mapped.message).not.toBe('Something went wrong. Please try again.');
+    expect(mapped.message).not.toBe(mapAuthError(authError('over_request_rate_limit')).message);
+  });
+
+  it('maps email_not_confirmed to a field-level email message pointing at the inbox', () => {
+    const mapped = mapAuthError(authError('email_not_confirmed'));
+    expect(mapped.field).toBe('email');
+    expect(mapped.message).toMatch(/confirm/i);
+    // Must not read as a credential failure — that sends the user off to
+    // reset a password that is perfectly fine.
+    expect(mapped.message).not.toMatch(/password/i);
+  });
+
   it('maps an unrecognized auth error code to a generic fallback', () => {
     const mapped = mapAuthError(authError('some_future_code'));
     expect(mapped.message).toBe('Something went wrong. Please try again.');

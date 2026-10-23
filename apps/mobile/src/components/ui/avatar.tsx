@@ -5,7 +5,7 @@ import { getInitials } from '@/components/ui/avatar-state';
 import { Text, type TextVariant } from '@/components/ui/text';
 import { useAppTheme } from '@/design/theme-provider';
 
-export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg';
+export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
 export type AvatarProps = {
   size?: AvatarSize;
@@ -18,12 +18,17 @@ export type AvatarProps = {
 // DESIGN.md doesn't specify exact avatar sizes, and there's exactly one
 // consumer (this file) — per the second-caller rule these stay local rather
 // than being promoted to a shared token.
-const DIAMETER: Record<AvatarSize, number> = { xs: 24, sm: 32, md: 40, lg: 56 };
+// `xl` (84) is the onboarding avatar picker's size. It exists as a real step
+// rather than being faked with a `style` override because the picker's empty
+// state is a separate 84px dashed circle: if the two diverged, the control
+// would visibly resize the instant a photo was chosen.
+const DIAMETER: Record<AvatarSize, number> = { xs: 24, sm: 32, md: 40, lg: 56, xl: 84 };
 const INITIALS_VARIANT: Record<AvatarSize, TextVariant> = {
   xs: 'micro',
   sm: 'caption',
   md: 'label',
   lg: 'heading',
+  xl: 'title',
 };
 
 export function Avatar({ size = 'md', source, name, accessibilityLabel }: AvatarProps) {

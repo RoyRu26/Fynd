@@ -4,9 +4,8 @@ import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { StyleSheet, View } from 'react-native';
 
-import { AmbientBackground } from '@/components/ambient-background';
-import { BrandMark } from '@/components/brand-mark';
-import { Button, Screen, Text, TextField } from '@/components/ui';
+import { PasswordField } from '@/components/auth/password-field';
+import { Button, Logo, Screen, Text, TextField } from '@/components/ui';
 import { space } from '@/design/tokens';
 import { signIn } from '@/features/auth/api';
 import { mapAuthError } from '@/features/auth/errors';
@@ -45,15 +44,10 @@ export default function SignIn() {
 
   return (
     <View style={styles.root}>
-      <AmbientBackground />
-      <Screen
-        scroll
-        keyboardAvoiding
-        style={styles.screen}
-        contentContainerStyle={styles.contentContainer}>
+      <Screen scroll keyboardAvoiding contentContainerStyle={styles.contentContainer}>
         <View style={styles.content}>
           <View style={styles.identity}>
-            <BrandMark />
+            <Logo height={34} />
             <Text variant="title">Welcome back</Text>
             <Text variant="body" color="textSecondary">
               Sign in to continue discovering.
@@ -82,11 +76,10 @@ export default function SignIn() {
               control={control}
               name="password"
               render={({ field }) => (
-                <TextField
+                <PasswordField
                   label="Password"
                   autoCapitalize="none"
                   autoComplete="password"
-                  secureTextEntry
                   value={field.value}
                   onChangeText={field.onChange}
                   onBlur={field.onBlur}
@@ -94,6 +87,17 @@ export default function SignIn() {
                 />
               )}
             />
+
+            {/*
+              Right-aligned under the password it relates to. A `ghost` Button
+              rather than tappable Text so it inherits the 44pt target and the
+              button role for free.
+            */}
+            <View style={styles.forgotRow}>
+              <Button variant="ghost" size="sm" onPress={() => router.push('/(auth)/reset-password')}>
+                Forgot password?
+              </Button>
+            </View>
           </View>
 
           {formError ? (
@@ -124,9 +128,6 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
   },
-  screen: {
-    backgroundColor: 'transparent',
-  },
   contentContainer: {
     flexGrow: 1,
     justifyContent: 'flex-start',
@@ -140,6 +141,9 @@ const styles = StyleSheet.create({
   },
   fields: {
     gap: space[3],
+  },
+  forgotRow: {
+    alignItems: 'flex-end',
   },
   actions: {
     gap: space[3],

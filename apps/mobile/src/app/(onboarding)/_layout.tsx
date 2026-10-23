@@ -11,7 +11,7 @@ export default function OnboardingLayout() {
     case 'error':
       return <Redirect href="/" />;
     case 'unauthenticated':
-      return <Redirect href="/(auth)/sign-in" />;
+      return <Redirect href="/(auth)/welcome" />;
     case 'app':
       return <Redirect href="/(app)/(tabs)" />;
     case 'onboarding':

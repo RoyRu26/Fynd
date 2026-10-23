@@ -1,5 +1,4 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
@@ -23,7 +22,8 @@ import { useAuth } from '@/features/auth/auth-provider';
 import { useUsernameAvailability } from '@/features/profile/availability';
 import { mapProfileError } from '@/features/profile/errors';
 import { normalizeBio } from '@/features/profile/profile';
-import { useAvatarUrl, useProfile, useUpdateAvatar, useUpdateProfile } from '@/features/profile/queries';
+import { useAvatarUrl, useProfile, useUpdateProfile } from '@/features/profile/queries';
+import { useAvatarPicker } from '@/features/profile/use-avatar-picker';
 import { editProfileSchema, type EditProfileInput } from '@/features/profile/schemas';
 
 /**
@@ -119,9 +119,8 @@ function EditProfileForm({
   const { colors } = useAppTheme();
   const [formError, setFormError] = useState<string | null>(null);
 
-  const updateAvatar = useUpdateAvatar(userId);
+  const avatarPicker = useAvatarPicker(userId);
   const avatarUrlQuery = useAvatarUrl(profile.avatar_path);
-  const [avatarPickError, setAvatarPickError] = useState<string | null>(null);
 
   const displayName = profile.display_name ?? '';
 
@@ -143,44 +142,6 @@ function EditProfileForm({
   // Excludes the viewer's own id, so re-saving an unchanged username never
   // shows "taken" — it matches their own row.
   const availability = useUsernameAvailability(username, userId);
-
-  async function handlePickAvatar() {
-    setAvatarPickError(null);
-
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setAvatarPickError(
-        permission.canAskAgain
-          ? 'Fynd needs access to your photos to set a profile picture.'
-          : 'Photo access is turned off for Fynd. Enable it in Settings to set a profile picture.',
-      );
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 1,
-    });
-    if (result.canceled) {
-      return;
-    }
-
-    const asset = result.assets[0];
-    if (!asset) {
-      return;
-    }
-
-    try {
-      await updateAvatar.mutateAsync(asset.uri);
-    } catch (err) {
-      if (__DEV__) {
-        console.error(err);
-      }
-      setAvatarPickError(mapProfileError(err).message);
-    }
-  }
 
   async function onSubmit(input: EditProfileInput) {
     setFormError(null);
@@ -218,26 +179,26 @@ function EditProfileForm({
             <IconButton
               icon={CAMERA_ICON}
               accessibilityLabel="Change profile picture"
-              onPress={handlePickAvatar}
-              disabled={updateAvatar.isPending}
+              onPress={avatarPicker.pick}
+              disabled={avatarPicker.isUploading}
               variant="onMedia"
               size="sm"
             />
           </View>
-          {updateAvatar.isPending ? (
+          {avatarPicker.isUploading ? (
             <View
               style={[StyleSheet.absoluteFill, styles.avatarUploadingOverlay, { backgroundColor: colors.overlayScrim }]}>
               <ActivityIndicator color={colors.textOnMedia} />
             </View>
           ) : null}
         </View>
-        {avatarPickError ? (
+        {avatarPicker.error ? (
           <Text
             variant="caption"
             color="danger"
             accessibilityLiveRegion="polite"
             accessibilityRole="alert">
-            {avatarPickError}
+            {avatarPicker.error}
           </Text>
         ) : null}
       </View>

@@ -35,8 +35,7 @@ export function Skeleton({ width, height, aspectRatio, radius: radiusKey = 'sm',
   const opacity = useSharedValue(1);
 
   // Started here (not in the render body) so a parent re-render never
-  // restarts or reassigns an already-running loop — same discipline
-  // ambient-background.tsx's Glow effect follows. Reduced motion simply
+  // restarts or reassigns an already-running loop. Reduced motion simply
   // never starts the loop, leaving opacity at its static initial value of 1.
   useEffect(() => {
     if (reducedMotion) return;

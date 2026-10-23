@@ -35,6 +35,10 @@ describe('getButtonForegroundColor', () => {
     // solid fill, so its foreground is ink-on-tint like secondary/ghost, not
     // white-on-solid like primary. See button-state.ts's own doc comment.
     expect(getButtonForegroundColor('danger')).toBe('danger');
+    // Scheme-flipping pair: `bgInverse` fill demands `textInverse`, which
+    // inverts alongside it. Any other foreground would be correct in one
+    // scheme and invisible in the other.
+    expect(getButtonForegroundColor('inverse')).toBe('textInverse');
   });
 
   it('never maps danger to onAccent — the coupling this token split exists to prevent', () => {
@@ -56,8 +60,8 @@ describe('getButtonOpacity', () => {
     expect(getButtonOpacity({ pressed: true, variant: 'primary' })).toBe(1);
   });
 
-  it('secondary, ghost, and danger dim on press when not disabled', () => {
-    for (const variant of ['secondary', 'ghost', 'danger'] as const) {
+  it('every non-primary variant dims on press when not disabled', () => {
+    for (const variant of ['secondary', 'ghost', 'danger', 'inverse'] as const) {
       expect(getButtonOpacity({ pressed: true, variant })).toBe(0.7);
       expect(getButtonOpacity({ pressed: false, variant })).toBe(1);
     }
@@ -74,7 +78,7 @@ describe('shouldShowButtonBevel', () => {
   });
 
   it('never shows on non-primary variants, pressed or not', () => {
-    for (const variant of ['secondary', 'ghost', 'danger'] as const) {
+    for (const variant of ['secondary', 'ghost', 'danger', 'inverse'] as const) {
       expect(shouldShowButtonBevel({ variant, pressed: false })).toBe(false);
       expect(shouldShowButtonBevel({ variant, pressed: true })).toBe(false);
     }
