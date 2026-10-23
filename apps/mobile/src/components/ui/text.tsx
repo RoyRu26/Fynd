@@ -19,6 +19,7 @@ export type TextProps = Omit<RNTextProps, 'style'> & {
 };
 
 const FACE_FONT_FAMILY: Record<TextFace, string | undefined> = {
+  displayExpanded: fontFamily.displayExpanded,
   displaySemiBold: fontFamily.displaySemiBold,
   displayBold: fontFamily.displayBold,
   system: undefined,

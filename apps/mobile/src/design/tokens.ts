@@ -92,7 +92,9 @@ export const space = {
   16: 64,
 } as const;
 
-// DESIGN.md §7 — radii. Crisp; no pill shapes.
+// DESIGN.md §7 — radii. Crisp. `full` is for avatars, circular icon
+// buttons, and §7's named pill carve-out (PillButton, ReactionPill) —
+// never for chips, which stay square-cornered.
 export const radius = {
   xs: 4,
   sm: 6,
@@ -173,12 +175,18 @@ export const spring = {
 // (`ink.500`), which is far more assertive at the same alpha. They would have
 // needed retuning downward, so they are not values to restore verbatim.
 
-// DESIGN.md §5 — font-family strings matching the @expo-google-fonts/manrope
-// import binding names (see use-app-fonts.ts). Only the two weights the type
-// scale actually uses are loaded: heading=600, display/title/price=700.
+// DESIGN.md §5 — font-family strings matching the registration keys in
+// use-app-fonts.ts. Only the weights the type scale actually uses are loaded:
+// Manrope heading=600 and title/price=700, plus the bundled Archivo Expanded
+// Black for `display`/`displaySm`.
 export const fontFamily = {
   displaySemiBold: "Manrope_600SemiBold",
   displayBold: "Manrope_700Bold",
+  // Archivo Expanded Black (900, 125% width) — screen titles and section
+  // headers only. A genuinely different face from Manrope, not a heavier
+  // weight of it: the extra width is the point, and it is why this cannot be
+  // expressed as a `fontWeight` on the existing display face.
+  displayExpanded: "ArchivoExpanded_900Black",
   mono: Platform.select({
     ios: "ui-monospace",
     android: "monospace",

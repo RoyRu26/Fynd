@@ -218,8 +218,9 @@ A reintroduction is a fresh decision at the same bar as a gradient-allowlist add
 
 ## 5. Typography
 
-**One custom display face, system body.**
+**Two custom display faces, system body.**
 
+- **Expanded display face: Archivo Expanded Black** (900, 125% width), for screen titles and section headers only — `display` and `displaySm`. Bundled as an OFL static in `assets/fonts/` with its licence, because `@expo-google-fonts/archivo` ships only the normal width and no `archivo-expanded` package exists. Turn-4 screens set these **lowercase at the call site**; the variant does not force `textTransform`, so a proper noun in a title is still spelled correctly.
 - **Display face: Manrope.** Current preferred candidate — chosen as a contemporary geometric sans with warmth and character, avoiding both high-contrast serifs (read luxury) and neutral grotesques (read cold). **[OPEN] — explicitly reviewable once seen rendered in Fynd.** If it reads wrong in context, we change it; nothing else in this document depends on the specific face.
 - **Body face: system.** SF Pro on iOS, Roboto on Android. Perfect Dynamic Type, zero cost, instant render.
 
@@ -227,7 +228,8 @@ A reintroduction is a fresh decision at the same bar as a gradient-allowlist add
 
 | Variant | Size / Line height | Weight | Face |
 |---|---|---|---|
-| `display` | 32 / 38 | 700 | Manrope |
+| `display` | 34 / 38 | 900 | Archivo Expanded, tracking −0.68 |
+| `displaySm` | 20 / 24 | 900 | Archivo Expanded |
 | `title` | 24 / 30 | 700 | Manrope |
 | `heading` | 19 / 25 | 600 | Manrope |
 | `price` | 22 / 26 | 700 | Manrope, tabular |
@@ -241,11 +243,13 @@ A reintroduction is a fresh decision at the same bar as a gradient-allowlist add
 
 ### Rules
 
-1. The custom face is for `display`, `title`, `heading`, `price`, `priceSm` **only**. Everything else is system.
-2. **Every custom-face variant declares an explicit `lineHeight`** — Manrope does not share system font metrics, and inherited line heights will be wrong.
+1. The Manrope face is for `title`, `heading`, `price`, `priceSm` **only**; Archivo Expanded is for `display` and `displaySm` **only**. Everything else is system. Keeping the expanded cut on its own two variants is what stops it leaking into ordinary headings.
+2. **Every custom-face variant declares an explicit `lineHeight`** — neither Manrope nor Archivo Expanded shares system font metrics, so an inherited line height will be wrong. See rule 5 for the floor it has to clear.
 3. Price always uses **tabular numerals**, so prices align in the grid and don't jitter when values change.
-4. Fonts load before the splash hides. The existing `AnimatedSplashOverlay` already gates on an `isReady` flag — font loading joins auth resolution as a readiness input.
-5. Dynamic Type is respected everywhere. `maxFontSizeMultiplier` is permitted **only** on the feed overlay, never on body content.
+4. **`letterSpacing` is points in react-native, not em.** Any tracking taken from a design handoff must be resolved against the variant's own font size before it is written here — an em value passed through renders as near-zero tracking and reads merely "a bit tight", which survives review. `display`'s −0.68 is −0.02em against 34pt, and it does not rescale if the size changes.
+5. **Declared `lineHeight` must clear the face's own line box.** CSS lets a tight line-height overlap and spill visibly; react-native CLIPS ascenders and descenders instead, which §12.3 forbids. Archivo Expanded Black measures 1.088em (hhea 878 / −210 at 1000 upem), so `display` ships 34/**38** rather than the handoff's 34/36 — 34pt needs 36.99. Check this whenever a face or a size changes.
+6. Fonts load before the splash hides. The existing `AnimatedSplashOverlay` already gates on an `isReady` flag — font loading joins auth resolution as a readiness input.
+7. Dynamic Type is respected everywhere. `maxFontSizeMultiplier` is permitted **only** on the feed overlay, never on body content.
 
 ---
 
@@ -277,7 +281,8 @@ Crisp. Corners recede rather than draw attention.
 - Buttons, inputs, chips: `sm`–`md`
 - Cards, sheets, grid tiles: `md`–`lg`
 - Sheet top corners: `xl`
-- `full`: avatars and circular icon buttons **only** — not for pills. Fynd does not use pill-shaped chips or buttons.
+- `full`: avatars, circular icon buttons, and the two components below. **Chips are never pills** — that part of the original rule stands unchanged (§13's `Chip` stays `sm`).
+- **Pill carve-out**, added with the Turn-4 screens: `PillButton` (46pt, full radius) and `ReactionPill` are deliberately pill-shaped. This narrows the former blanket "Fynd does not use pill-shaped chips or buttons"; it does not repeal it. A pill is reachable only through those two named components, so the shape stays a deliberate choice at a known call site rather than something any `borderRadius` can opt into.
 
 ---
 
@@ -402,6 +407,10 @@ The smallest useful set. Under `src/components/ui/`, one file each.
 | `Skeleton` | Shimmer block, plus composed `SkeletonListingCard` / `SkeletonRow`. |
 | `Switch` | Controlled on/off toggle. Thin tokenizing wrapper around RN's native `Switch`: `accent` track when on, `borderStrong` when off, `onAccent` thumb. Touch target and thumb animation are the native control's own. `accessibilityRole="switch"`. |
 | `EmptyState` | Icon + title + body + action. Backs `ErrorState` via a `variant`. |
+| `StoryRing` | Circular image in a ring — the Explore "Drops" row. `size` is the OUTER diameter and the ring grows INWARD, so selecting a ring never resizes it and the row cannot shift as selection moves. Active is both thicker (2.5 vs 1.5) and `accent`, so the state survives a greyscale reading (§12.4). Presentational: no press behaviour of its own, so the caller owns the role, state and accessible name. |
+| `Sticker` | Small rotated uppercase label stuck onto media. Tones `accent` / `inverse` / `paper`, each a contrast-asserted fill + on-colour pair, which is what lets one sit over arbitrary photography without a per-photo check. The hard drop shadow is a real offset View, not a platform shadow — iOS could do it with `shadowRadius: 0` but Android's `elevation` is always blurred, so one backing node renders identically on both. |
+| `ReactionPill` | Save-count pill for a grid tile. **Read-only** — it reports a count, it never toggles; favouriting lives on the listing itself, and a second smaller control that looked tappable but only sometimes was would be worse than none. Opaque `bg` plate rather than a scrim, since it sits on photography. |
+| `PillButton` | 46pt full-radius button, `primary` / `outline` (§7's pill carve-out). Separate from `Button` rather than a variant of it because the difference is SHAPE, not emphasis — folding both into one component would make "which shape am I getting" depend on an unrelated prop. Reuses `Button`'s own `isButtonInteractive` so the loading/disabled rule cannot drift between the two. `outline`'s label stays `text`, not `accentText`: the outline already carries the accent. |
 | `Screen` | Owns safe-area insets, max width, scroll behavior, keyboard avoidance. |
 | `DarkSurface` | Forces the dark scheme for a subtree (§2). |
 
