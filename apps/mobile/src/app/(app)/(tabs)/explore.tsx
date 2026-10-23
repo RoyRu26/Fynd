@@ -4,13 +4,15 @@ import {
   ActivityIndicator,
   FlatList,
   Keyboard,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   View,
   type ListRenderItemInfo,
 } from 'react-native';
 
-import { ListingGridTile } from '@/components/listing/listing-grid-tile';
+import { ListingGridTile, TALL_TILE_ASPECT_RATIO } from '@/components/listing/listing-grid-tile';
 import {
   Button,
   Chip,
@@ -29,8 +31,8 @@ import { useAppTheme } from '@/design/theme-provider';
 import { border, minTouchTarget, radius, space } from '@/design/tokens';
 import { CategoryPickerContent, getCategoryPickerTitle } from '@/features/categories/category-picker-sheet';
 import {
-  findCategorySelection,
-  formatCategoryBreadcrumb,
+  findCategoryMatch,
+  formatCategoryMatchLabel,
   groupCategoriesByParent,
   type Category,
   type CategoryGroup,
@@ -48,6 +50,7 @@ import {
 } from '@/features/listings/size';
 import {
   deriveActiveFilterChips,
+  formatResultCount,
   getExploreEmptyCopy,
   hasActiveFilters,
   parsePriceRangeInput,
@@ -57,6 +60,11 @@ import {
 } from '@/features/search/active-filters';
 import type { SearchFilters, SearchListing } from '@/features/search/api';
 import { useSearch } from '@/features/search/queries';
+import {
+  SEARCH_SORT_LABELS,
+  SEARCH_SORT_ORDER,
+  type SearchSort,
+} from '@/features/search/search';
 import { useRecentSearches } from '@/features/search/use-recent-searches';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 
@@ -99,6 +107,27 @@ const CATEGORY_CHEVRON_ICON: IconName = { ios: 'chevron.right', android: 'chevro
 // sf-symbols-typescript's types, and 'history' exists in expo-symbols'
 // android/symbols.json.
 const RECENT_SEARCH_ICON: IconName = { ios: 'clock', android: 'history', web: 'history' };
+// Verified the same way as every other IconName here: both names exist in
+// sf-symbols-typescript's types and expo-symbols' android/symbols.json.
+const SEARCH_ICON: IconName = { ios: 'magnifyingglass', android: 'search', web: 'search' };
+const SORT_ICON: IconName = { ios: 'chevron.down', android: 'expand_more', web: 'expand_more' };
+const SORT_SELECTED_ICON: IconName = { ios: 'checkmark', android: 'check', web: 'check' };
+
+/**
+ * Bottom clearance so the final grid row is not stranded under the native tab
+ * bar. `NativeTabs` does not expose its height (and `app-tabs.tsx` is fixed
+ * for this task), so these are the platforms' own standard bar heights.
+ *
+ * Per-platform because one number cannot serve both: iOS's UITabBar is 49pt,
+ * while Android's Material `BottomNavigationView` is around 80dp — applying
+ * the iOS value there would under-reserve by half a row. Purely additive
+ * padding on top of `Screen`'s own safe-area inset, so over-reserving costs a
+ * little blank space and under-reserving hides content; it errs high.
+ */
+const NATIVE_TAB_BAR_HEIGHT = Platform.select({ ios: 49, android: 80, default: 56 });
+
+/** Diameter of the filter button's count badge — the same named-constant shape `ListRow` uses for its unread dot. */
+const FILTER_BADGE_SIZE = space[5];
 
 // Same display order the Sell editor's size selector already uses —
 // independent of listingSizesBySystem's own Record key order.
@@ -125,6 +154,7 @@ export default function ExploreScreen() {
   const [queryInput, setQueryInput] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [committedFilters, setCommittedFilters] = useState<ExploreFilters>(EMPTY_FILTERS);
+  const [sort, setSort] = useState<SearchSort>('newest');
   const recent = useRecentSearches();
 
   const debouncedQuery = useDebouncedValue(queryInput, 400);
@@ -175,9 +205,9 @@ export default function ExploreScreen() {
       size: committedFilters.size,
       priceMin: committedFilters.priceMin,
       priceMax: committedFilters.priceMax,
-      sort: 'newest',
+      sort,
     }),
-    [effectiveQuery, committedFilters],
+    [effectiveQuery, committedFilters, sort],
   );
 
   const searchQuery = useSearch(searchFilters);
@@ -192,10 +222,14 @@ export default function ExploreScreen() {
     [categoriesQuery.data],
   );
 
-  const committedCategorySelection = findCategorySelection(categoryGroups, committedFilters.categoryId);
-  const committedCategoryLabel = committedCategorySelection
-    ? formatCategoryBreadcrumb(committedCategorySelection.group, committedCategorySelection.leaf)
-    : null;
+  // `findCategoryMatch`, not `findCategorySelection`: the category tabs
+  // commit a top-level GROUP id, which the leaf-only lookup cannot resolve —
+  // and an unresolved label makes `deriveActiveFilterChips` drop the chip,
+  // leaving a live filter invisible and unremovable.
+  const committedCategoryMatch = findCategoryMatch(categoryGroups, committedFilters.categoryId);
+  const committedCategoryLabel = formatCategoryMatchLabel(committedCategoryMatch);
+  // A leaf chosen in the filter sheet still lights up its parent tab.
+  const activeCategoryGroupId = committedCategoryMatch?.group.id ?? null;
 
   const activeChips = useMemo(
     () => deriveActiveFilterChips(committedFilters, committedCategoryLabel),
@@ -216,7 +250,12 @@ export default function ExploreScreen() {
   // two-phase-close comment). Folding the category view into this Sheet's
   // own body as a plain content swap means there is only ever one Modal
   // mounted for this entire flow.
-  const [pickerView, setPickerView] = useState<'filters' | 'category'>('filters');
+  //
+  // `sort` rides in the same Sheet for the same reason: it is never open at
+  // the same time as the others, and reusing this instance keeps the screen
+  // at exactly one Modal rather than adding a second that could overlap
+  // during a close animation.
+  const [pickerView, setPickerView] = useState<'filters' | 'category' | 'sort'>('filters');
   // The category view's own group->leaf drill-down state -- owned here
   // (not inside `CategoryPickerContent`) only so this screen's single Sheet
   // can read it back for its own `title`, exactly as `CategoryPickerSheet`
@@ -280,6 +319,10 @@ export default function ExploreScreen() {
   // from the category view this steps back to the filters view (still the
   // same Sheet, same Modal, no animation at all); from the filters view it
   // closes the Sheet for real, same as before this refactor.
+  // Invariant: every opener sets `pickerView` itself, so the Sheet always
+  // opens on a known view. It is deliberately NOT reset here — Sheet keeps the
+  // Modal mounted through its ~240ms close animation, so resetting on close
+  // would flash the filters view on the way out.
   function handleFilterSheetClose() {
     if (pickerView === 'category') {
       setCategoryActiveGroupId(null);
@@ -289,8 +332,24 @@ export default function ExploreScreen() {
     setFilterSheetOpen(false);
   }
 
+  function openSortSheet() {
+    setPickerView('sort');
+    setFilterSheetOpen(true);
+  }
+
+  function handleSortSelect(next: SearchSort) {
+    setSort(next);
+    setFilterSheetOpen(false);
+  }
+
   function handleRemoveChip(key: ActiveFilterKey) {
     setCommittedFilters((prev) => removeFilter(prev, key));
+  }
+
+  // Tabs commit immediately (no draft/Apply round trip) — they are a browse
+  // control, not part of the filter sheet's editable draft. `null` is "All".
+  function handleCategoryTabSelect(groupId: string | null) {
+    setCommittedFilters((prev) => ({ ...prev, categoryId: groupId }));
   }
 
   function clearAll() {
@@ -312,7 +371,11 @@ export default function ExploreScreen() {
 
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<SearchListing>) => (
-      <ListingGridTile listing={item} onPress={() => openListing(item.listingId)} />
+      <ListingGridTile
+        listing={item}
+        aspectRatio={TALL_TILE_ASPECT_RATIO}
+        onPress={() => openListing(item.listingId)}
+      />
     ),
     [openListing],
   );
@@ -323,10 +386,22 @@ export default function ExploreScreen() {
     }
   }, [searchQuery]);
 
-  const draftCategorySelection = findCategorySelection(categoryGroups, draftFilters.categoryId);
-  const draftCategoryLabel = draftCategorySelection
-    ? formatCategoryBreadcrumb(draftCategorySelection.group, draftCategorySelection.leaf)
-    : 'Any category';
+  // Matches on groups as well as leaves. The draft is seeded from the
+  // committed filters, which a category TAB may have set to a group id — and
+  // the leaf-only lookup resolves that to nothing, so the sheet would read
+  // "Any category" while a category filter was demonstrably in effect. The
+  // value itself survives Apply either way; it was only ever the label that
+  // lied.
+  const draftCategoryLabel =
+    formatCategoryMatchLabel(findCategoryMatch(categoryGroups, draftFilters.categoryId)) ??
+    'Any category';
+
+  const sheetTitle =
+    pickerView === 'sort'
+      ? 'Sort'
+      : pickerView === 'filters'
+        ? 'Filters'
+        : getCategoryPickerTitle(categoryGroups, categoryActiveGroupId);
 
   // Persistent sibling of whichever FlatList is currently shown (see the
   // header comment) — never itself part of either list's
@@ -334,6 +409,7 @@ export default function ExploreScreen() {
   // recent-searches lists swap.
   const searchBar = (
     <View style={styles.searchBar}>
+      <Text variant="title">Explore</Text>
       <View style={styles.searchRow}>
         <TextField
           containerStyle={styles.searchField}
@@ -345,40 +421,88 @@ export default function ExploreScreen() {
           onBlur={handleSearchBlur}
           onSubmitEditing={() => Keyboard.dismiss()}
           returnKeyType="search"
+          // Both adornments now sit INSIDE the field's stroke rather than
+          // beside it. The glyph is decorative — the field's own
+          // accessibilityLabel already says "Search listings" — so it is
+          // hidden from assistive tech per the `leading` contract.
+          leading={
+            <View accessible={false} importantForAccessibility="no">
+              <Icon name={SEARCH_ICON} size="sm" color={colors.textTertiary} />
+            </View>
+          }
+          trailing={
+            queryInput.length > 0 ? (
+              <IconButton
+                icon={CLEAR_ICON}
+                accessibilityLabel="Clear search"
+                size="sm"
+                onPress={() => {
+                  setQueryInput('');
+                  setImmediateQuery(null);
+                }}
+              />
+            ) : null
+          }
         />
-        {queryInput.length > 0 ? (
-          <IconButton
-            icon={CLEAR_ICON}
-            accessibilityLabel="Clear search"
-            onPress={() => {
-              setQueryInput('');
-              setImmediateQuery(null);
-            }}
-          />
-        ) : null}
-        <IconButton icon={FILTERS_ICON} accessibilityLabel="Filters" onPress={openFilterSheet} />
+        <FilterButton activeCount={activeChips.length} onPress={openFilterSheet} />
       </View>
     </View>
   );
 
-  // Grid-specific — active-filter chips never apply to the recent-searches
-  // list, so this stays the grid FlatList's own header, not the persistent
-  // search bar above.
-  const gridHeader = hasActiveFilters(committedFilters) ? (
-    <View style={styles.chipRow}>
-      {activeChips.map((chip) => (
-        <Chip
-          key={chip.key}
-          label={chip.label}
-          icon={CLEAR_ICON}
-          selectable
-          selected={false}
-          accessibilityLabel={`Remove ${chip.label} filter`}
-          onPress={() => handleRemoveChip(chip.key)}
-        />
-      ))}
+  // Grid-specific — none of this applies to the recent-searches list, so it
+  // stays the grid FlatList's own header rather than joining the persistent
+  // search bar above. It scrolls away with the results, which is the point.
+  const resultCount = formatResultCount(listings.length, searchQuery.hasNextPage);
+  const showResultsRow = !searchQuery.isPending && !searchQuery.isError && resultCount !== null;
+
+  const gridHeader = (
+    <View style={styles.gridHeader}>
+      <CategoryTabs
+        groups={categoryGroups}
+        activeGroupId={activeCategoryGroupId}
+        onSelect={handleCategoryTabSelect}
+      />
+
+      {hasActiveFilters(committedFilters) ? (
+        <View style={styles.chipRow}>
+          {activeChips.map((chip) => (
+            <Chip
+              key={chip.key}
+              label={chip.label}
+              icon={CLEAR_ICON}
+              // `inverse`, not the accent `selected` fill: these represent
+              // filters already in effect and dismissible, not offers to
+              // pick. `selected={false}` keeps the accent fill off while
+              // still making the chip pressable to remove it.
+              tone="inverse"
+              selectable
+              selected={false}
+              accessibilityLabel={`Remove ${chip.label} filter`}
+              onPress={() => handleRemoveChip(chip.key)}
+            />
+          ))}
+        </View>
+      ) : null}
+
+      {showResultsRow ? (
+        <View style={styles.resultsRow}>
+          <Text variant="micro" color="textSecondary" style={styles.resultsCount}>
+            {resultCount}
+          </Text>
+          <Pressable
+            onPress={openSortSheet}
+            accessibilityRole="button"
+            // Names the current value, not just the control — otherwise the
+            // active sort is only available visually.
+            accessibilityLabel={`Sort by ${SEARCH_SORT_LABELS[sort]}. Change sort`}
+            style={({ pressed }) => [styles.sortTrigger, { opacity: pressed ? 0.7 : 1 }]}>
+            <Text variant="label">{SEARCH_SORT_LABELS[sort]}</Text>
+            <Icon name={SORT_ICON} size="sm" color={colors.text} />
+          </Pressable>
+        </View>
+      ) : null}
     </View>
-  ) : null;
+  );
 
   const renderRecentItem = useCallback(
     ({ item }: ListRenderItemInfo<string>) => (
@@ -421,7 +545,9 @@ export default function ExploreScreen() {
     listEmpty = (
       <View style={styles.skeletonGrid}>
         {Array.from({ length: 6 }, (_, index) => (
-          <SkeletonListingCard key={index} />
+          // Same ratio as the real tiles, or every row jumps height the
+          // moment results land.
+          <SkeletonListingCard key={index} aspectRatio={TALL_TILE_ASPECT_RATIO} />
         ))}
       </View>
     );
@@ -473,6 +599,15 @@ export default function ExploreScreen() {
           numColumns={3}
           ListHeaderComponent={gridHeader}
           ListEmptyComponent={listEmpty}
+          contentContainerStyle={styles.gridContent}
+          // Required, not optional polish: the grid is on screen WITH the
+          // keyboard up the moment the user types a character (that leaves
+          // `showRecentSearches`). Without this the enclosing ScrollView
+          // captures the first press to dismiss the keyboard, so the first
+          // tap on a tab, chip, sort trigger or tile is swallowed. Capture
+          // runs root-to-leaf, so setting it on the inner horizontal
+          // ScrollView alone does nothing — it has to be here.
+          keyboardShouldPersistTaps="handled"
           onEndReached={handleEndReached}
           onEndReachedThreshold={1.5}
           ListFooterComponent={
@@ -486,9 +621,38 @@ export default function ExploreScreen() {
       <Sheet
         visible={filterSheetOpen}
         onClose={handleFilterSheetClose}
-        title={pickerView === 'filters' ? 'Filters' : getCategoryPickerTitle(categoryGroups, categoryActiveGroupId)}
-        accessibilityLabel={pickerView === 'filters' ? 'Filters' : 'Choose a category'}>
-        {pickerView === 'filters' ? (
+        title={sheetTitle}
+        // Pinned for the category view rather than following its drill-down
+        // title, matching what `CategoryPickerSheet` announces for the same
+        // content in the Sell flow. The other two views have no separate
+        // wording, and Sheet falls back to `title` on its own.
+        accessibilityLabel={pickerView === 'category' ? 'Choose a category' : sheetTitle}>
+        {pickerView === 'sort' ? (
+          <View style={styles.sortOptions}>
+            {SEARCH_SORT_ORDER.map((option) => (
+              <ListRow
+                key={option}
+                title={SEARCH_SORT_LABELS[option]}
+                // The checkmark alone cannot carry this: `Icon` is decorative
+                // by contract and `ListRow` pins `accessibilityRole="button"`
+                // with no `selected` state to pass, so without the suffix
+                // both rows announce identically and the current sort is
+                // visible only to sighted users (DESIGN.md §12.4).
+                accessibilityLabel={
+                  option === sort
+                    ? `${SEARCH_SORT_LABELS[option]}, selected`
+                    : SEARCH_SORT_LABELS[option]
+                }
+                onPress={() => handleSortSelect(option)}
+                trailing={
+                  option === sort ? (
+                    <Icon name={SORT_SELECTED_ICON} size="sm" color={colors.accent} />
+                  ) : null
+                }
+              />
+            ))}
+          </View>
+        ) : pickerView === 'filters' ? (
           <View style={styles.sheetContent}>
             <View style={styles.categoryField}>
               <Text variant="label" color="textSecondary">
@@ -605,6 +769,127 @@ export default function ExploreScreen() {
 }
 
 /**
+ * The square filter trigger beside the search field, with a count badge.
+ *
+ * Local to this screen — one caller, so DESIGN.md §15 rule 2 keeps it here
+ * rather than in `ui/`. It is not an `IconButton`: that primitive is a
+ * transparent circular icon target, where this is a solid `bgInverse` square
+ * carrying a badge.
+ */
+function FilterButton({ activeCount, onPress }: { activeCount: number; onPress: () => void }) {
+  const { colors } = useAppTheme();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      // The badge is the only visual sign that filters are active, so the
+      // count has to be in the accessible name too — otherwise the state is
+      // available by sight alone (DESIGN.md §12.4).
+      accessibilityLabel={activeCount > 0 ? `Filters, ${activeCount} active` : 'Filters'}
+      style={({ pressed }) => [
+        styles.filterButton,
+        { backgroundColor: colors.bgInverse, opacity: pressed ? 0.7 : 1 },
+      ]}>
+      <Icon name={FILTERS_ICON} size="md" color={colors.textInverse} />
+      {activeCount > 0 ? (
+        <View
+          style={[styles.filterBadge, { backgroundColor: colors.accent, borderColor: colors.bg }]}
+          // Already spoken by the button's own label above; announcing the
+          // bare number again adds a second stop saying "3".
+          accessible={false}
+          importantForAccessibility="no-hide-descendants">
+          <Text variant="micro" color="onAccent">
+            {activeCount}
+          </Text>
+        </View>
+      ) : null}
+    </Pressable>
+  );
+}
+
+/**
+ * Top-level category tabs with an underline for the active one.
+ *
+ * Commits a GROUP id (or null for "All"), which `search_listings` handles
+ * natively — it matches `cat.id = p_category_id OR cat.parent_id =
+ * p_category_id`, so a group id filters that whole group without any
+ * client-side fan-out over its leaves.
+ *
+ * Horizontally scrollable because the taxonomy is server-owned and can grow
+ * past the screen width; the row must never force the labels to shrink or
+ * wrap. Local to this screen for the same §15 rule 2 reason as above.
+ */
+function CategoryTabs({
+  groups,
+  activeGroupId,
+  onSelect,
+}: {
+  groups: CategoryGroup[];
+  activeGroupId: string | null;
+  onSelect: (groupId: string | null) => void;
+}) {
+  const { colors } = useAppTheme();
+
+  // "All" is a real tab, not a special case bolted on at render time — it is
+  // the null selection, and modelling it as a row here keeps the active-state
+  // logic identical for every tab.
+  const tabs: { id: string | null; name: string }[] = [
+    { id: null, name: 'All' },
+    ...groups.map((group) => ({ id: group.id, name: group.name })),
+  ];
+
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.tabsRow}
+      // The grid FlatList stays the screen's only VERTICAL scroller, so
+      // `onEndReached` is unaffected by this horizontal one.
+      keyboardShouldPersistTaps="handled">
+      {tabs.map((tab) => {
+        const selected = tab.id === activeGroupId;
+        return (
+          <Pressable
+            key={tab.id ?? 'all'}
+            onPress={() => onSelect(tab.id)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected }}
+            accessibilityLabel={tab.name}
+            style={({ pressed }) => [styles.tab, { opacity: pressed ? 0.7 : 1 }]}>
+            {/*
+              Inner box sized to the label, inside a Pressable held to the
+              44pt floor. Putting `minWidth` on the Pressable alone would
+              stretch the underline to 44 as well, detaching it from the word
+              it underlines; this keeps the target big and the rule tight.
+            */}
+            <View style={styles.tabInner}>
+              <Text
+                variant="micro"
+                color={selected ? 'text' : 'textSecondary'}
+                style={styles.tabLabel}>
+                {tab.name}
+              </Text>
+              {/*
+                Always rendered, transparent when inactive, so selecting a tab
+                never changes the row's height — and so the underline is a
+                colour change rather than a layout shift.
+              */}
+              <View
+                style={[
+                  styles.tabUnderline,
+                  { backgroundColor: selected ? colors.accent : 'transparent' },
+                ]}
+              />
+            </View>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+/**
  * The pressable "Category" field inside the Filter Sheet, mirroring
  * `sell/[id].tsx`'s own `CategoryField` visually (breadcrumb or placeholder
  * + chevron) — kept local since the sell editor's version is unexported and
@@ -644,21 +929,97 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   searchBar: {
+    gap: space[3],
     marginBottom: space[3],
   },
   searchRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    // `flex-end` so the button stays on the field's bottom edge if a
+    // helper/error line is ever added below the input. This call site passes
+    // neither today, so the two are currently the same height and `center`
+    // would look identical — this is about not breaking later.
+    alignItems: 'flex-end',
     gap: space[2],
   },
   searchField: {
     flex: 1,
   },
+  filterButton: {
+    width: minTouchTarget,
+    height: minTouchTarget,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: -space[1],
+    right: -space[1],
+    // `minWidth`, not a fixed width: a two-digit count widens the pill rather
+    // than clipping, while a single digit stays a circle.
+    minWidth: FILTER_BADGE_SIZE,
+    height: FILTER_BADGE_SIZE,
+    borderRadius: FILTER_BADGE_SIZE / 2,
+    paddingHorizontal: space[1],
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Ringed in the page colour so the badge stays legible where it overlaps
+    // the button's own dark fill.
+    borderWidth: border.thick,
+  },
+  gridHeader: {
+    gap: space[3],
+    marginBottom: space[3],
+  },
+  tabsRow: {
+    flexDirection: 'row',
+    gap: space[5],
+  },
+  tab: {
+    // Both axes — `minHeight` alone left "ALL" about 25pt wide, under
+    // DESIGN.md §12.1's 44x44 floor. The row's `gap` is dead space, not hit
+    // area, so it cannot make up the difference.
+    minHeight: minTouchTarget,
+    minWidth: minTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  tabInner: {
+    gap: space[2],
+  },
+  tabLabel: {
+    textTransform: 'uppercase',
+  },
+  tabUnderline: {
+    height: border.thick,
+    borderRadius: radius.xs,
+  },
+  resultsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  resultsCount: {
+    textTransform: 'uppercase',
+  },
+  sortTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: minTouchTarget,
+    gap: space[1],
+  },
+  sortOptions: {
+    paddingBottom: space[4],
+  },
+  gridContent: {
+    // Clears the native tab bar so the last row is reachable; see
+    // NATIVE_TAB_BAR_HEIGHT.
+    paddingBottom: NATIVE_TAB_BAR_HEIGHT + space[4],
+  },
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: space[2],
-    marginBottom: space[3],
   },
   recentHeader: {
     flexDirection: 'row',

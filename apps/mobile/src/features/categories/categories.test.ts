@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  findCategoryMatch,
   findCategorySelection,
   formatCategoryBreadcrumb,
+  formatCategoryMatchLabel,
   groupCategoriesByParent,
   normalizeCategoryRow,
   type Category,
@@ -128,5 +130,62 @@ describe('findCategorySelection', () => {
 
   it('returns null for a top-level group id, which is never a valid selection', () => {
     expect(findCategorySelection(groups, 'cat-women')).toBeNull();
+  });
+});
+
+describe('findCategoryMatch', () => {
+  const groups = groupCategoriesByParent([WOMEN, MEN, WOMEN_TOPS, WOMEN_SHOES, MEN_TOPS]);
+
+  // The capability findCategorySelection deliberately lacks: a group id is a
+  // valid filter value, because search_listings matches cat.parent_id too.
+  it('resolves a top-level group id to a group match', () => {
+    expect(findCategoryMatch(groups, 'cat-women')).toEqual({ kind: 'group', group: groups[0] });
+  });
+
+  it('resolves a leaf id to a leaf match carrying its group', () => {
+    expect(findCategoryMatch(groups, 'cat-women-shoes')).toEqual({
+      kind: 'leaf',
+      group: groups[0],
+      leaf: WOMEN_SHOES,
+    });
+  });
+
+  it('returns null for a null id', () => {
+    expect(findCategoryMatch(groups, null)).toBeNull();
+  });
+
+  it('returns null for an unknown id rather than throwing', () => {
+    expect(findCategoryMatch(groups, 'unknown-id')).toBeNull();
+  });
+
+  // What makes a leaf selected in the filter sheet light up its parent tab.
+  it('reports the owning group for a leaf, so a tab can derive its active state', () => {
+    const match = findCategoryMatch(groups, 'cat-men-tops');
+    expect(match?.group.id).toBe('cat-men');
+  });
+});
+
+describe('formatCategoryMatchLabel', () => {
+  const groups = groupCategoriesByParent([WOMEN, MEN, WOMEN_TOPS, WOMEN_SHOES, MEN_TOPS]);
+
+  it('labels a whole-group filter with the group name alone', () => {
+    expect(formatCategoryMatchLabel(findCategoryMatch(groups, 'cat-women'))).toBe('Women');
+  });
+
+  it('labels a leaf filter with the full breadcrumb', () => {
+    expect(formatCategoryMatchLabel(findCategoryMatch(groups, 'cat-women-shoes'))).toBe('Women › Shoes');
+  });
+
+  it('returns null when nothing is selected', () => {
+    expect(formatCategoryMatchLabel(null)).toBeNull();
+  });
+
+  // The regression this guards: an unlabelled active filter makes
+  // deriveActiveFilterChips drop the chip, so a live filter becomes
+  // invisible and unremovable.
+  it('never returns null for an id that resolved', () => {
+    for (const id of ['cat-women', 'cat-men', 'cat-women-shoes', 'cat-men-tops']) {
+      expect(formatCategoryMatchLabel(findCategoryMatch(groups, id))).not.toBeNull();
+    }
   });
 });

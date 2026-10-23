@@ -11,8 +11,10 @@ import type { SearchFilters } from '@/features/search/search';
  *
  * Deliberately decoupled from `features/categories/categories.ts`: the
  * category's display label is resolved by the caller (via
- * `findCategorySelection` + `formatCategoryBreadcrumb`) and passed in here
- * already-formatted, so this module never needs the full taxonomy.
+ * `findCategoryMatch` + `formatCategoryMatchLabel`) and passed in here
+ * already-formatted, so this module never needs the full taxonomy — and
+ * never needs to care that a category filter may name a whole group rather
+ * than a leaf.
  */
 
 type ExploreFilterFields = Pick<SearchFilters, 'categoryId' | 'condition' | 'size' | 'priceMin' | 'priceMax'>;
@@ -158,4 +160,31 @@ export function getExploreEmptyCopy(filtersOrQueryActive: boolean): { title: str
     title: 'No active listings on Fynd yet.',
     body: 'Check back soon, or be the first to list something.',
   };
+}
+
+/**
+ * The result-count line above the grid, or `null` when there is nothing to
+ * count (the empty state speaks for itself there).
+ *
+ * The trailing `+` is load-bearing and not decoration. `search_listings`
+ * returns a page of rows and no total, so the only number this screen can
+ * honestly report is how many it has actually loaded — which is a floor, not
+ * a total, whenever another page exists. Printing a bare "24 results" while
+ * more are a scroll away would be a plain lie; "24+ results" is the true
+ * statement the available data supports.
+ *
+ * Getting a real total needs a server-side count (a second RPC, or a count
+ * column on this one) — a schema change, deliberately out of scope here.
+ *
+ * Returns lower-case copy; the caller uppercases it visually via
+ * `textTransform`. Note that is a presentation choice, not an accessibility
+ * one: iOS announces the original string, but Android applies the transform
+ * natively, so TalkBack reads the uppercased text.
+ */
+export function formatResultCount(loadedCount: number, hasMore: boolean): string | null {
+  if (loadedCount === 0) {
+    return null;
+  }
+  const noun = loadedCount === 1 && !hasMore ? 'result' : 'results';
+  return `${loadedCount}${hasMore ? '+' : ''} ${noun}`;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getChipVisualState, type ChipProps } from '@/components/ui/chip-state';
+import { getChipSurface, getChipVisualState, type ChipProps } from '@/components/ui/chip-state';
 
 describe('getChipVisualState', () => {
   it('a static chip is never interactive', () => {
@@ -32,5 +32,42 @@ describe('getChipVisualState', () => {
       onPress: () => {},
     };
     expect(getChipVisualState(selectedDisabled)).toEqual({ interactive: false, emphasis: 'selected' });
+  });
+});
+
+describe('getChipSurface', () => {
+  it('defaults to the quiet neutral surface', () => {
+    expect(getChipSurface({ label: 'Very good' })).toBe('default');
+    expect(getChipSurface({ label: 'Size M', selectable: true, selected: false, onPress: () => {} })).toBe(
+      'default',
+    );
+  });
+
+  it('paints inverse when asked, static or selectable', () => {
+    expect(getChipSurface({ label: 'Good', tone: 'inverse' })).toBe('inverse');
+    expect(
+      getChipSurface({ label: 'Good', tone: 'inverse', selectable: true, selected: false, onPress: () => {} }),
+    ).toBe('inverse');
+  });
+
+  // The combination that must resolve rather than being left to style order:
+  // a selected chip has to LOOK selected, so accent outranks tone.
+  it('selection outranks tone — a selected chip is never painted inverse', () => {
+    expect(
+      getChipSurface({ label: 'Good', tone: 'inverse', selectable: true, selected: true, onPress: () => {} }),
+    ).toBe('selected');
+  });
+
+  it('tone still applies to a disabled unselected chip', () => {
+    expect(
+      getChipSurface({
+        label: 'Good',
+        tone: 'inverse',
+        disabled: true,
+        selectable: true,
+        selected: false,
+        onPress: () => {},
+      }),
+    ).toBe('inverse');
   });
 });

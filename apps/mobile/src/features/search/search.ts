@@ -12,6 +12,27 @@ import type { Database, Enums } from '@/types/database';
 
 export type SearchSort = Enums<'search_sort'>;
 
+/**
+ * Display order for the sort menu. An explicit list, not `Object.keys` over
+ * the labels below, so the menu's order is a decision rather than an artifact
+ * of object literal ordering — and so adding an enum member is a compile
+ * error here (via the exhaustive `SEARCH_SORT_LABELS`) rather than a silently
+ * missing menu row.
+ */
+export const SEARCH_SORT_ORDER: readonly SearchSort[] = ['newest', 'price'];
+
+/**
+ * User-facing name for each sort mode.
+ *
+ * "Price: low to high" states the DIRECTION because the RPC only sorts one
+ * way — `order by l.price_amount asc, l.id asc` — and its cursor is built for
+ * that direction. A bare "Price" would imply a toggle that does not exist.
+ */
+export const SEARCH_SORT_LABELS: Record<SearchSort, string> = {
+  newest: 'Newest',
+  price: 'Price: low to high',
+};
+
 export type SearchFilters = {
   query: string | null;
   categoryId: string | null;

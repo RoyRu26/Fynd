@@ -131,6 +131,65 @@ export function formatCategoryBreadcrumb(group: { name: string }, leaf: { name: 
  * invariants: an unresolved SELECTED id is an ordinary, expected transient
  * state here, not a taxonomy data bug.
  */
+/**
+ * What a stored `category_id` refers to: a whole top-level group, or one leaf
+ * inside one.
+ *
+ * Both are valid filter values. `search_listings` matches
+ * `cat.id = p_category_id OR cat.parent_id = p_category_id`, so passing a
+ * group id filters to that entire group — which is exactly what Explore's
+ * category tabs do, while its filter sheet still passes leaf ids.
+ */
+export type CategoryMatch =
+  | { kind: 'group'; group: CategoryGroup }
+  | { kind: 'leaf'; group: CategoryGroup; leaf: Category };
+
+/**
+ * Resolves a `category_id` to either kind of match, group ids included —
+ * unlike `findCategorySelection` below, which only ever finds leaves.
+ *
+ * Needed because a UI that can filter by group has two jobs the leaf-only
+ * lookup cannot do: label the active-filter chip (a group id would otherwise
+ * resolve to no label, and the chip for a live filter would silently vanish),
+ * and decide which category tab reads as active when the selection came from
+ * the sheet as a leaf — that is `match.group`, so picking "Women › Outerwear"
+ * lights up the Women tab.
+ *
+ * Non-throwing for an unresolved id, for the same reason
+ * `findCategorySelection` is: it is an ordinary transient state while the
+ * categories query is still loading, not a taxonomy bug.
+ */
+export function findCategoryMatch(
+  groups: CategoryGroup[],
+  categoryId: string | null,
+): CategoryMatch | null {
+  if (categoryId === null) {
+    return null;
+  }
+  for (const group of groups) {
+    if (group.id === categoryId) {
+      return { kind: 'group', group };
+    }
+    const leaf = group.subcategories.find((subcategory) => subcategory.id === categoryId);
+    if (leaf) {
+      return { kind: 'leaf', group, leaf };
+    }
+  }
+  return null;
+}
+
+/**
+ * The label for a category filter: the group's own name for a whole-group
+ * filter, the full breadcrumb for a leaf. `null` when nothing is selected or
+ * the id has not resolved yet.
+ */
+export function formatCategoryMatchLabel(match: CategoryMatch | null): string | null {
+  if (match === null) {
+    return null;
+  }
+  return match.kind === 'group' ? match.group.name : formatCategoryBreadcrumb(match.group, match.leaf);
+}
+
 export function findCategorySelection(
   groups: CategoryGroup[],
   categoryId: string | null,

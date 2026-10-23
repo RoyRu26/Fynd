@@ -87,11 +87,18 @@ export function SkeletonRow({ showTrailing = false }: { showTrailing?: boolean }
   );
 }
 
-/** Loading placeholder mirroring ListingGridTile's own tile/image metrics, so a grid of these lines up pixel-for-pixel with real tiles. */
-export function SkeletonListingCard() {
+/**
+ * Loading placeholder mirroring ListingGridTile's own tile/image metrics, so
+ * a grid of these lines up pixel-for-pixel with real tiles.
+ *
+ * `aspectRatio` has to be passed through for that to keep holding: Explore's
+ * tiles are 4:5 while Saved's are square, and a skeleton stuck at one ratio
+ * would make every tile jump height the moment real data arrives.
+ */
+export function SkeletonListingCard({ aspectRatio = 1 }: { aspectRatio?: number } = {}) {
   return (
     <View style={styles.tile}>
-      <Skeleton width="100%" aspectRatio={1} radius="sm" />
+      <Skeleton width="100%" aspectRatio={aspectRatio} radius="sm" />
       <Skeleton height={19} width="50%" radius="xs" />
       <Skeleton height={18} width="70%" radius="xs" />
     </View>
