@@ -31,7 +31,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(154);
+select plan(166);
 
 -- ============================================================
 -- FIXTURES
@@ -1040,6 +1040,34 @@ select is(
   'the other participant''s public profile is joined in, costing no extra query'
 );
 
+-- SCREENS.md Task 6: `seller_id` is what lets the client derive
+-- Buying/Selling itself (viewerId = seller_id is Selling), the same
+-- "client compares its own id" shape `conversation_detail`'s `can_review`
+-- comment already established -- asserted from both sides of the same row.
+select is(
+  (select i.seller_id from public.inbox_conversations(50) i
+    where i.listing_title = 'P2 main'),
+  'f5000000-0000-0000-0000-00000000000d',
+  'the buyer''s own view of seller_id names the actual seller, not themselves'
+);
+
+set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-00000000000d","role":"authenticated"}';
+
+select is(
+  (select i.seller_id from public.inbox_conversations(50) i
+    where i.listing_title = 'P2 main'),
+  'f5000000-0000-0000-0000-00000000000d',
+  'the seller''s own view of seller_id equals their own id -- viewerId = seller_id is Selling'
+);
+
+select isnt(
+  (select i.other_participant_id from public.inbox_conversations(50) i
+    where i.listing_title = 'P2 main'),
+  (select i.seller_id from public.inbox_conversations(50) i
+    where i.listing_title = 'P2 main'),
+  'seller_id is never the OTHER participant from the seller''s own side -- it always names the viewer'
+);
+
 -- The third party is in none of these conversations.
 set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-00000000000c","role":"authenticated"}';
 
@@ -1189,6 +1217,55 @@ select is(
 -- phase handles with a fallback tile. Recorded here so the NULL above is not
 -- confused with that separate, deliberate gap.
 
+-- SCREENS.md Task 6: listing_price_amount/listing_currency, for the thread's
+-- pinned listing strip. Same left-joined-with-listings shape as
+-- listing_title/listing_status/cover_storage_path above, asserted from both
+-- a still-active listing (cv10 / P2 main) and a sold one (cv12 / P2 sold) --
+-- the sold case is what actually exercises DEFINER, the same reason section
+-- 13 exists for listing_status.
+select is(
+  (select d.listing_price_amount from public.conversation_detail((select cv10 from p2_conv)) d),
+  1000::bigint,
+  'conversation_detail returns the listing''s price for the pinned strip'
+);
+
+select is(
+  (select d.listing_currency from public.conversation_detail((select cv10 from p2_conv)) d),
+  'ILS',
+  'and its currency'
+);
+
+select is(
+  (select d.listing_price_amount from public.conversation_detail((select cv12 from p2_conv)) d),
+  3000::bigint,
+  'the price survives for a SOLD listing too -- the buyer still needs it after the sale'
+);
+
+-- SCREENS.md Task 8: seller_id (the header's "Buying from you"/"Selling to
+-- you" caption) and listing_size (the pinned strip's "price . size" line).
+-- Still as E (buyer on cv10 / P2 main) from the block above.
+select is(
+  (select d.seller_id from public.conversation_detail((select cv10 from p2_conv)) d),
+  'f5000000-0000-0000-0000-00000000000d',
+  'conversation_detail returns the conversation''s seller_id to the buyer'
+);
+
+select is(
+  (select d.listing_size from public.conversation_detail((select cv10 from p2_conv)) d),
+  'alpha_m'::public.listing_size,
+  'and the listing''s size'
+);
+
+set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-00000000000d","role":"authenticated"}';
+
+select is(
+  (select d.seller_id from public.conversation_detail((select cv10 from p2_conv)) d),
+  'f5000000-0000-0000-0000-00000000000d',
+  'and the seller''s own view of seller_id equals their own id -- viewerId = seller_id is "selling"'
+);
+
+set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-00000000000e","role":"authenticated"}';
+
 -- ============================================================
 -- 15. conversation_detail -- indistinguishable failure modes
 -- ============================================================
@@ -1233,6 +1310,35 @@ select ok(
     where p.proname = 'conversation_detail'
       and p.pronamespace = 'public'::regnamespace),
   'conversation_detail does not return either read timestamp'
+);
+
+-- The mirror of the two checks above: `seller_id` (SCREENS.md Task 6) IS
+-- a declared OUT parameter of inbox_conversations, so the Buying/Selling
+-- split this migration exists for cannot silently regress.
+select ok(
+  (select p.proargnames @> array['seller_id']
+     from pg_proc p
+    where p.proname = 'inbox_conversations'
+      and p.pronamespace = 'public'::regnamespace),
+  'inbox_conversations returns seller_id'
+);
+
+-- Same mirror, for conversation_detail's own Task 6 addition.
+select ok(
+  (select p.proargnames @> array['listing_price_amount', 'listing_currency']
+     from pg_proc p
+    where p.proname = 'conversation_detail'
+      and p.pronamespace = 'public'::regnamespace),
+  'conversation_detail returns listing_price_amount and listing_currency'
+);
+
+-- And its Task 8 addition.
+select ok(
+  (select p.proargnames @> array['seller_id', 'listing_size']
+     from pg_proc p
+    where p.proname = 'conversation_detail'
+      and p.pronamespace = 'public'::regnamespace),
+  'conversation_detail returns seller_id and listing_size'
 );
 
 set local role authenticated;

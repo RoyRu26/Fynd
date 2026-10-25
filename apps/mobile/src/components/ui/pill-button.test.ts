@@ -17,6 +17,12 @@ describe('getPillButtonForegroundColor', () => {
     expect(getPillButtonForegroundColor('outline')).toBe('text');
     expect(getPillButtonForegroundColor('outline')).not.toBe('accentText');
   });
+
+  // Same pairing as Button's own inverse variant — bgInverse/textInverse
+  // flip together, so this stays contrast-correct in both schemes.
+  it('pairs the solid bgInverse fill with textInverse', () => {
+    expect(getPillButtonForegroundColor('inverse')).toBe('textInverse');
+  });
 });
 
 describe('getPillButtonOpacity', () => {
@@ -34,6 +40,11 @@ describe('getPillButtonOpacity', () => {
   it('outline dims on press', () => {
     expect(getPillButtonOpacity({ pressed: true, variant: 'outline' })).toBe(0.7);
     expect(getPillButtonOpacity({ pressed: false, variant: 'outline' })).toBe(1);
+  });
+
+  it('inverse dims on press, same as outline', () => {
+    expect(getPillButtonOpacity({ pressed: true, variant: 'inverse' })).toBe(0.7);
+    expect(getPillButtonOpacity({ pressed: false, variant: 'inverse' })).toBe(1);
   });
 });
 

@@ -42,7 +42,7 @@
         "expo-image-picker",
         {
           "photosPermission": "Fynd needs access to your photos so you can add pictures to your listings.",
-          "cameraPermission": false,
+          "cameraPermission": "Fynd needs camera access so you can snap photos for your listings.",
           "microphonePermission": false
         }
       ]

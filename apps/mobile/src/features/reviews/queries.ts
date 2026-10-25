@@ -12,14 +12,18 @@ import { inboxKeys } from '@/features/inbox/queries';
 export const SELLER_REVIEWS_PAGE_SIZE = 20;
 
 export const reviewKeys = {
-  summary: (sellerId: string) => ['reviews', sellerId, 'summary'] as const,
-  list: (sellerId: string) => ['reviews', sellerId, 'list'] as const,
+  // `string | undefined` on both — SCREENS.md Task 7's Profile tab reads a
+  // possibly-still-hydrating session id, same reasoning
+  // `follows/queries.ts`'s own `followKeys.counts` widened for.
+  summary: (sellerId: string | undefined) => ['reviews', sellerId, 'summary'] as const,
+  list: (sellerId: string | undefined) => ['reviews', sellerId, 'list'] as const,
 };
 
-export function useSellerReviewSummary(sellerId: string) {
+export function useSellerReviewSummary(sellerId: string | undefined) {
   return useQuery({
     queryKey: reviewKeys.summary(sellerId),
-    queryFn: () => fetchSellerReviewSummary(sellerId),
+    queryFn: () => fetchSellerReviewSummary(sellerId as string),
+    enabled: !!sellerId,
   });
 }
 
@@ -28,14 +32,15 @@ export function useSellerReviewSummary(sellerId: string) {
  * exact shape: offset page params, `getNextPageParam` via the shared
  * offset-deriver.
  */
-export function useSellerReviews(sellerId: string) {
+export function useSellerReviews(sellerId: string | undefined) {
   return useInfiniteQuery({
     queryKey: reviewKeys.list(sellerId),
     queryFn: ({ pageParam }: { pageParam: number }) =>
-      fetchSellerReviewsPage({ sellerId, limit: SELLER_REVIEWS_PAGE_SIZE, offset: pageParam }),
+      fetchSellerReviewsPage({ sellerId: sellerId as string, limit: SELLER_REVIEWS_PAGE_SIZE, offset: pageParam }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, _allPages, lastPageParam) =>
       deriveNextSellerReviewsOffset(lastPageParam, lastPage, SELLER_REVIEWS_PAGE_SIZE),
+    enabled: !!sellerId,
   });
 }
 

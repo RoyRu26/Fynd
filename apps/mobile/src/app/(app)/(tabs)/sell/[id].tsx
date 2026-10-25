@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
 
@@ -102,7 +102,13 @@ const ERROR_ICON: IconName = { ios: 'exclamationmark.triangle', android: 'warnin
 export default function SellEditor() {
   const router = useRouter();
   const { session } = useAuth();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // `autoPick` is only ever set by the Sell tab's hero card (SCREENS.md Task
+  // 5): "Open camera"/"From gallery" create a fresh draft and land here with
+  // it set, so the photo picker opens immediately instead of making the
+  // seller tap "Add photos" themselves right after tapping a button whose
+  // whole point was to skip that extra step. A rack tile or any other entry
+  // point into this screen never sets it.
+  const { id, autoPick } = useLocalSearchParams<{ id: string; autoPick?: 'camera' | 'gallery' }>();
 
   const listingQuery = useListing(id);
   const listing = listingQuery.data;
@@ -179,7 +185,12 @@ export default function SellEditor() {
         {/* Photos first and largest, per DESIGN.md §14.4. Read-only once the
             listing is no longer a draft -- listing_images stays draft-scoped
             at the RLS/RPC layer, so editing is photo-read-only here too. */}
-        <PhotoSection listingId={listing.id} sellerId={listing.seller_id} editable={isDraft} />
+        <PhotoSection
+          listingId={listing.id}
+          sellerId={listing.seller_id}
+          editable={isDraft}
+          autoPick={autoPick}
+        />
         {/* Keyed by listing id: a fresh mount (and fresh RHF defaultValues)
             only when the displayed listing actually changes, never on an
             incidental background refetch of the same one — which would
@@ -217,10 +228,13 @@ function PhotoSection({
   listingId,
   sellerId,
   editable,
+  autoPick,
 }: {
   listingId: string;
   sellerId: string;
   editable: boolean;
+  /** See `SellEditor`'s own doc comment — opens a picker once, automatically, on mount. */
+  autoPick?: 'camera' | 'gallery';
 }) {
   const queryClient = useQueryClient();
   const imagesQuery = useListingImages(listingId);
@@ -259,6 +273,21 @@ function PhotoSection({
     }
   }
 
+  /** Shared tail of both pickers: clamp to the remaining slots, add local cells, kick off each upload. */
+  function enqueuePickedPhotos(uris: string[]) {
+    const slots = remainingPhotoSlots(persisted.length + localPhotos.length);
+    const clamped = clampToRemainingSlots(uris, slots);
+    const newItems: LocalPhotoItem[] = clamped.map((uri) => ({
+      localId: createImageId(),
+      sourceUri: uri,
+      status: 'uploading',
+    }));
+    setLocalPhotos((prev) => addLocalPhotos(prev, newItems));
+    newItems.forEach((item) => {
+      runUpload(item);
+    });
+  }
+
   async function handleAddPhotos() {
     setPickError(null);
 
@@ -287,20 +316,57 @@ function PhotoSection({
       return;
     }
 
-    const uris = clampToRemainingSlots(
-      result.assets.map((asset) => asset.uri),
-      slots,
-    );
-    const newItems: LocalPhotoItem[] = uris.map((uri) => ({
-      localId: createImageId(),
-      sourceUri: uri,
-      status: 'uploading',
-    }));
-    setLocalPhotos((prev) => addLocalPhotos(prev, newItems));
-    newItems.forEach((item) => {
-      runUpload(item);
-    });
+    enqueuePickedPhotos(result.assets.map((asset) => asset.uri));
   }
+
+  /** The hero card's "Open camera" path (SCREENS.md Task 5) — a single capture, not a multi-select. */
+  async function handleAddPhotoFromCamera() {
+    setPickError(null);
+
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      setPickError(
+        permission.canAskAgain
+          ? 'Fynd needs camera access to take listing pictures.'
+          : 'Camera access is turned off for Fynd. Enable it in Settings to take pictures.',
+      );
+      return;
+    }
+
+    if (remainingPhotoSlots(persisted.length + localPhotos.length) <= 0) {
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({ quality: 1 });
+    if (result.canceled) {
+      return;
+    }
+
+    enqueuePickedPhotos(result.assets.map((asset) => asset.uri));
+  }
+
+  // Runs the hero card's requested picker exactly once per screen instance.
+  // Guarded by a ref rather than clearing the `autoPick` route param: this
+  // listing id is only ever reached with `autoPick` set via a fresh
+  // navigation from the hero card (a rack tile or back-navigation here never
+  // sets it), so a fresh mount is already the right-sized guarantee — no
+  // need to round-trip through the router to erase it. Intentionally omits
+  // the picker functions from the dependency array: they close over local
+  // state and are recreated every render, and the ref already makes the
+  // body a no-op after the first run.
+  const autoPickHandled = useRef(false);
+  useEffect(() => {
+    if (!editable || !autoPick || autoPickHandled.current) {
+      return;
+    }
+    autoPickHandled.current = true;
+    if (autoPick === 'camera') {
+      handleAddPhotoFromCamera();
+    } else {
+      handleAddPhotos();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editable, autoPick]);
 
   function handleRetry(item: LocalPhotoItem) {
     setLocalPhotos((prev) => setLocalPhotoStatus(prev, item.localId, 'uploading'));

@@ -566,13 +566,17 @@ export type Database = {
           can_review: boolean
           conversation_id: string
           cover_storage_path: string
+          listing_currency: string
           listing_id: string
+          listing_price_amount: number
+          listing_size: Database["public"]["Enums"]["listing_size"]
           listing_status: Database["public"]["Enums"]["listing_status"]
           listing_title: string
           other_avatar_path: string
           other_display_name: string
           other_participant_id: string
           other_username: string
+          seller_id: string
         }[]
       }
       conversation_messages: {
@@ -638,6 +642,7 @@ export type Database = {
           other_display_name: string
           other_participant_id: string
           other_username: string
+          seller_id: string
           unread_count: number
         }[]
       }

@@ -8,11 +8,12 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   View,
   type ListRenderItemInfo,
 } from 'react-native';
 
-import { ListingGridTile, TALL_TILE_ASPECT_RATIO } from '@/components/listing/listing-grid-tile';
+import { CollageBlock, type CollageItem } from '@/components/listing/collage-grid';
 import {
   Button,
   Chip,
@@ -22,7 +23,8 @@ import {
   ListRow,
   Screen,
   Sheet,
-  SkeletonListingCard,
+  Skeleton,
+  StoryRing,
   Text,
   TextField,
   type IconName,
@@ -50,7 +52,6 @@ import {
 } from '@/features/listings/size';
 import {
   deriveActiveFilterChips,
-  formatResultCount,
   getExploreEmptyCopy,
   hasActiveFilters,
   parsePriceRangeInput,
@@ -59,6 +60,16 @@ import {
   type ActiveFilterKey,
 } from '@/features/search/active-filters';
 import type { SearchFilters, SearchListing } from '@/features/search/api';
+import {
+  chunkIntoBlocks,
+  COLLAGE_BLOCK_SIZE,
+  getCollageBlockHeight,
+  getCollageSlot,
+  getCollageTileRect,
+  isFeatureSlot,
+  COLLAGE_GAP,
+} from '@/features/search/collage';
+import { shuffleWithSeed } from '@/features/search/shuffle';
 import { useSearch } from '@/features/search/queries';
 import {
   SEARCH_SORT_LABELS,
@@ -66,32 +77,45 @@ import {
   type SearchSort,
 } from '@/features/search/search';
 import { useRecentSearches } from '@/features/search/use-recent-searches';
+import { isJustDropped } from '@/features/listings/recency';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 
 /**
- * Explore (ROADMAP 2.3) — DESIGN.md §14.2's dense, image-first 3-up grid,
- * the Instagram Explore structure (not look). Reuses ROADMAP 2.2's search
- * backend (`features/search/`) exactly as built: no new RPC, no new table.
+ * Explore — DESIGN.md §14.2's collage wall. Reuses the existing search backend
+ * (`features/search/`) exactly as built: no new RPC, no new table.
  *
- * The search row (TextField + clear + filters trigger) is a persistent
- * sibling `View` rendered directly under `<Screen>`, ABOVE whichever
- * FlatList is currently shown (ROADMAP 2.4) — not inside either list's own
- * `ListHeaderComponent`. Toggling between the grid and the recent-searches
- * list swaps which FlatList is mounted (they even carry distinct `key`s,
- * since `numColumns` differs and RN doesn't support changing it on an
- * existing instance), and if the TextField lived inside either list's
- * header it would unmount/remount with it, dropping keyboard focus the
- * instant recent searches appear or disappear. Each FlatList is still the
- * screen's only SCROLL container (the search row is a plain non-scrolling
- * View) — `onEndReached` pagination never fires correctly if something else
- * does the actual scrolling, hence `Screen`'s default `scroll={false}`. The
- * active-filter chips stay as the grid FlatList's own (now smaller) header,
- * since they're grid-specific.
+ * The grid is a `FlatList` whose rows are 9-item BLOCKS, not listings. The
+ * handoff's layout spans columns and rows, which no masonry list can express,
+ * so each block renders its tiles at absolute positions inside a box of known
+ * height (`features/search/collage.ts` owns that geometry and is tested).
+ * Keeping it a FlatList is what preserves recycling and `onEndReached`
+ * pagination; a plain ScrollView would have meant hand-rolling both.
  *
- * The empty, no-query/no-filter state is a deliberate full-catalog browse,
- * not a "type something" placeholder — `search_listings` already treats
- * all-null arguments as "every active listing, newest first" (see
- * `getExploreEmptyCopy`'s two distinct branches).
+ * The search pill is a persistent sibling `View` rendered directly under
+ * `<Screen>`, ABOVE whichever FlatList is currently shown — never inside
+ * either list's `ListHeaderComponent`. Toggling between the collage and the
+ * recent-searches list swaps which FlatList is mounted (they carry distinct
+ * `key`s), and if the TextField lived in either header it would unmount with
+ * it, dropping keyboard focus the instant recent searches appear. Each
+ * FlatList is still the screen's only SCROLL container — `onEndReached` never
+ * fires correctly if something else does the actual scrolling, hence
+ * `Screen`'s default `scroll={false}`.
+ *
+ * Two things the handoff asks for that the data cannot support yet, both
+ * deliberately omitted rather than faked:
+ *
+ *   * **Save counts.** There is no `ReactionPill` on the tiles because no
+ *     query exposes a count: `favorites`' RLS is `user_id = auth.uid()`, so a
+ *     client can only ever see its OWN favourites. A real count needs a
+ *     `SECURITY DEFINER` RPC or a denormalised counter column — a schema
+ *     change, out of scope for a UI task.
+ *   * **Vibes.** "Drops" rings and the non-recency stickers use the real
+ *     category taxonomy, because vibes are not a column. The tag says
+ *     something true rather than inventing a parallel taxonomy.
+ *
+ * The empty, no-query/no-filter state is a deliberate full-catalog browse, not
+ * a "type something" placeholder — `search_listings` treats all-null arguments
+ * as "every active listing, newest first" (see `getExploreEmptyCopy`).
  */
 
 const CLEAR_ICON: IconName = { ios: 'xmark', android: 'close', web: 'close' };
@@ -110,17 +134,26 @@ const RECENT_SEARCH_ICON: IconName = { ios: 'clock', android: 'history', web: 'h
 // Verified the same way as every other IconName here: both names exist in
 // sf-symbols-typescript's types and expo-symbols' android/symbols.json.
 const SEARCH_ICON: IconName = { ios: 'magnifyingglass', android: 'search', web: 'search' };
-const SORT_ICON: IconName = { ios: 'chevron.down', android: 'expand_more', web: 'expand_more' };
 const SORT_SELECTED_ICON: IconName = { ios: 'checkmark', android: 'check', web: 'check' };
 
+/** Mirrors `Screen`'s own `padded` horizontal inset (space[5]); see `collageWidth`. */
+const SCREEN_HORIZONTAL_PADDING = space[5];
+
+/** Diameter of a Drops ring, per the handoff. */
+const DROPS_RING_SIZE = 64;
+
+/** The filter disc inside the search pill, per the handoff. */
+const FILTER_BUTTON_SIZE = 36;
+
 /**
- * Bottom clearance so the final grid row is not stranded under the native tab
- * bar. `NativeTabs` does not expose its height (and `app-tabs.tsx` is fixed
- * for this task), so these are the platforms' own standard bar heights.
+ * Bottom clearance so the last collage block is not stranded under the native
+ * tab bar. `NativeTabs` does not expose its height (and `app-tabs.tsx` is
+ * fixed by the handoff's ground rules), so these are the platforms' own
+ * standard bar heights.
  *
  * Per-platform because one number cannot serve both: iOS's UITabBar is 49pt,
  * while Android's Material `BottomNavigationView` is around 80dp — applying
- * the iOS value there would under-reserve by half a row. Purely additive
+ * the iOS value there would under-reserve by half a block. Purely additive
  * padding on top of `Screen`'s own safe-area inset, so over-reserving costs a
  * little blank space and under-reserving hides content; it errs high.
  */
@@ -136,6 +169,11 @@ const SIZE_SYSTEM_ORDER: SizeSystem[] = ['alpha', 'eu_shoe', 'one_size'];
 // never changes at runtime.
 const SIZE_GROUPS = listingSizesBySystem();
 
+/** The three fields a collage tile needs, before any sticker decision. */
+function toCollageBase(listing: SearchListing): CollageItem {
+  return { listingId: listing.listingId, title: listing.title, coverUrl: listing.coverUrl };
+}
+
 /** The filter fields this screen commits/drafts — everything in SearchFilters except query/sort, which the screen manages separately. */
 type ExploreFilters = Pick<SearchFilters, 'categoryId' | 'condition' | 'size' | 'priceMin' | 'priceMax'>;
 
@@ -150,6 +188,7 @@ const EMPTY_FILTERS: ExploreFilters = {
 export default function ExploreScreen() {
   const router = useRouter();
   const { colors } = useAppTheme();
+  const { width: windowWidth } = useWindowDimensions();
 
   const [queryInput, setQueryInput] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
@@ -329,17 +368,25 @@ export default function ExploreScreen() {
       setPickerView('filters');
       return;
     }
+    // Sort is reached FROM the filters view, so dismissing it steps back
+    // there rather than closing the sheet out from under the user.
+    if (pickerView === 'sort') {
+      setPickerView('filters');
+      return;
+    }
     setFilterSheetOpen(false);
   }
 
+  // Swaps the view INSIDE the already-open sheet, the same way the category
+  // picker does — reached from the filters view, so the sheet is never closed
+  // and reopened around it.
   function openSortSheet() {
     setPickerView('sort');
-    setFilterSheetOpen(true);
   }
 
   function handleSortSelect(next: SearchSort) {
     setSort(next);
-    setFilterSheetOpen(false);
+    setPickerView('filters');
   }
 
   function handleRemoveChip(key: ActiveFilterKey) {
@@ -369,15 +416,54 @@ export default function ExploreScreen() {
     [router],
   );
 
-  const renderItem = useCallback(
-    ({ item }: ListRenderItemInfo<SearchListing>) => (
-      <ListingGridTile
-        listing={item}
-        aspectRatio={TALL_TILE_ASPECT_RATIO}
-        onPress={() => openListing(item.listingId)}
-      />
+  // Derived from the window rather than measured with `onLayout`, so the
+  // blocks have their width on the FIRST render — a measured width starts at
+  // 0 and would lay the whole collage out twice, visibly. The subtraction
+  // mirrors `Screen`'s own `padded` horizontal inset; if that ever changes,
+  // this has to follow.
+  const collageWidth = windowWidth - SCREEN_HORIZONTAL_PADDING * 2;
+
+  // Shuffle reorders what is already LOADED, not the catalogue — see
+  // `shuffleWithSeed`. Seed 0 means "untouched", so the default order is the
+  // query's own.
+  const [shuffleSeed, setShuffleSeed] = useState(0);
+  const orderedListings = useMemo(
+    () => shuffleWithSeed(listings, shuffleSeed),
+    [listings, shuffleSeed],
+  );
+
+  const collageItems = useMemo<CollageItem[]>(
+    () =>
+      orderedListings.map((listing, index) => {
+        const slot = index % COLLAGE_BLOCK_SIZE;
+        // "just dropped" reuses the app's single shared recency rule rather
+        // than the handoff's 24h. One definition of "new" across the feed and
+        // Explore matters more than matching the mock's number, and 48h has
+        // its own documented reasoning (see recency.ts).
+        if (isJustDropped(listing.createdAt)) {
+          return { ...toCollageBase(listing), stickerLabel: 'just dropped', stickerTone: 'accent' };
+        }
+        // The handoff's "vibe tag" has no column behind it — vibes are not in
+        // the schema. The listing's own top-level category is the nearest
+        // real data, so the tag says something true instead of inventing a
+        // taxonomy. Wide tiles only, per `isFeatureSlot`.
+        const categoryName = isFeatureSlot(slot)
+          ? findCategoryMatch(categoryGroups, listing.categoryId)?.group.name
+          : undefined;
+        return categoryName
+          ? { ...toCollageBase(listing), stickerLabel: categoryName, stickerTone: 'inverse' }
+          : toCollageBase(listing);
+      }),
+    [orderedListings, categoryGroups],
+  );
+
+  const collageBlocks = useMemo(() => chunkIntoBlocks(collageItems), [collageItems]);
+
+  const renderBlock = useCallback(
+    ({ item }: ListRenderItemInfo<CollageItem[]>) => (
+      <CollageBlock items={item} width={collageWidth} onPressItem={openListing} />
     ),
-    [openListing],
+    [collageWidth, openListing],
   );
 
   const handleEndReached = useCallback(() => {
@@ -409,29 +495,29 @@ export default function ExploreScreen() {
   // recent-searches lists swap.
   const searchBar = (
     <View style={styles.searchBar}>
-      <Text variant="title">Explore</Text>
-      <View style={styles.searchRow}>
-        <TextField
-          containerStyle={styles.searchField}
-          placeholder="Search listings"
-          accessibilityLabel="Search listings"
-          value={queryInput}
-          onChangeText={handleQueryInputChange}
-          onFocus={() => setSearchFocused(true)}
-          onBlur={handleSearchBlur}
-          onSubmitEditing={() => Keyboard.dismiss()}
-          returnKeyType="search"
-          // Both adornments now sit INSIDE the field's stroke rather than
-          // beside it. The glyph is decorative — the field's own
-          // accessibilityLabel already says "Search listings" — so it is
-          // hidden from assistive tech per the `leading` contract.
-          leading={
-            <View accessible={false} importantForAccessibility="no">
-              <Icon name={SEARCH_ICON} size="sm" color={colors.textTertiary} />
-            </View>
-          }
-          trailing={
-            queryInput.length > 0 ? (
+      {/* Lowercase at the call site, not via textTransform — see DESIGN.md §5. */}
+      <Text variant="display">explore</Text>
+      <TextField
+        shape="pill"
+        placeholder="Brands, vibes, sizes…"
+        accessibilityLabel="Search listings"
+        value={queryInput}
+        onChangeText={handleQueryInputChange}
+        onFocus={() => setSearchFocused(true)}
+        onBlur={handleSearchBlur}
+        onSubmitEditing={() => Keyboard.dismiss()}
+        returnKeyType="search"
+        // Both adornments sit INSIDE the pill. The glyph is decorative — the
+        // field's own accessibilityLabel already says "Search listings" — so
+        // it is hidden from assistive tech per the `leading` contract.
+        leading={
+          <View accessible={false} importantForAccessibility="no">
+            <Icon name={SEARCH_ICON} size="sm" color={colors.textTertiary} />
+          </View>
+        }
+        trailing={
+          <View style={styles.searchTrailing}>
+            {queryInput.length > 0 ? (
               <IconButton
                 icon={CLEAR_ICON}
                 accessibilityLabel="Clear search"
@@ -441,23 +527,20 @@ export default function ExploreScreen() {
                   setImmediateQuery(null);
                 }}
               />
-            ) : null
-          }
-        />
-        <FilterButton activeCount={activeChips.length} onPress={openFilterSheet} />
-      </View>
+            ) : null}
+            <FilterButton activeCount={activeChips.length} onPress={openFilterSheet} />
+          </View>
+        }
+      />
     </View>
   );
 
   // Grid-specific — none of this applies to the recent-searches list, so it
   // stays the grid FlatList's own header rather than joining the persistent
   // search bar above. It scrolls away with the results, which is the point.
-  const resultCount = formatResultCount(listings.length, searchQuery.hasNextPage);
-  const showResultsRow = !searchQuery.isPending && !searchQuery.isError && resultCount !== null;
-
   const gridHeader = (
     <View style={styles.gridHeader}>
-      <CategoryTabs
+      <DropsRow
         groups={categoryGroups}
         activeGroupId={activeCategoryGroupId}
         onSelect={handleCategoryTabSelect}
@@ -484,23 +567,20 @@ export default function ExploreScreen() {
         </View>
       ) : null}
 
-      {showResultsRow ? (
-        <View style={styles.resultsRow}>
-          <Text variant="micro" color="textSecondary" style={styles.resultsCount}>
-            {resultCount}
+      <View style={styles.sectionRow}>
+        <Text variant="displaySm">fresh off the rack</Text>
+        <Pressable
+          onPress={() => setShuffleSeed((seed) => seed + 1)}
+          accessibilityRole="button"
+          // Says what it does to what — the control reorders the loaded
+          // results, and "Shuffle" alone does not convey that.
+          accessibilityLabel="Shuffle the results"
+          style={({ pressed }) => [styles.shuffle, { opacity: pressed ? 0.7 : 1 }]}>
+          <Text variant="bodyStrong" color="accentText">
+            Shuffle
           </Text>
-          <Pressable
-            onPress={openSortSheet}
-            accessibilityRole="button"
-            // Names the current value, not just the control — otherwise the
-            // active sort is only available visually.
-            accessibilityLabel={`Sort by ${SEARCH_SORT_LABELS[sort]}. Change sort`}
-            style={({ pressed }) => [styles.sortTrigger, { opacity: pressed ? 0.7 : 1 }]}>
-            <Text variant="label">{SEARCH_SORT_LABELS[sort]}</Text>
-            <Icon name={SORT_ICON} size="sm" color={colors.text} />
-          </Pressable>
-        </View>
-      ) : null}
+        </Pressable>
+      </View>
     </View>
   );
 
@@ -542,13 +622,20 @@ export default function ExploreScreen() {
 
   let listEmpty: ReactNode = null;
   if (searchQuery.isPending) {
+    // Mirrors the collage's own geometry rather than a tile grid, so the
+    // loading state occupies the same shape the results will.
     listEmpty = (
-      <View style={styles.skeletonGrid}>
-        {Array.from({ length: 6 }, (_, index) => (
-          // Same ratio as the real tiles, or every row jumps height the
-          // moment results land.
-          <SkeletonListingCard key={index} aspectRatio={TALL_TILE_ASPECT_RATIO} />
-        ))}
+      <View style={{ height: getCollageBlockHeight(COLLAGE_BLOCK_SIZE), width: collageWidth }}>
+        {Array.from({ length: COLLAGE_BLOCK_SIZE }, (_, slot) => {
+          const rect = getCollageTileRect({ cell: getCollageSlot(slot), containerWidth: collageWidth });
+          return (
+            <View
+              key={slot}
+              style={{ position: 'absolute', left: rect.left, top: rect.top }}>
+              <Skeleton width={rect.width} height={rect.height} radius="lg" />
+            </View>
+          );
+        })}
       </View>
     );
   } else if (searchQuery.isError) {
@@ -593,10 +680,13 @@ export default function ExploreScreen() {
       ) : (
         <FlatList
           key="grid"
-          data={listings}
-          keyExtractor={(item) => item.listingId}
-          renderItem={renderItem}
-          numColumns={3}
+          // One row per 9-item block, not per listing — the collage's column
+          // and row spans cannot be expressed by any masonry list, and this
+          // is what keeps recycling and onEndReached working anyway.
+          data={collageBlocks}
+          keyExtractor={(block) => block[0]?.listingId ?? 'empty'}
+          renderItem={renderBlock}
+          ItemSeparatorComponent={BlockSeparator}
           ListHeaderComponent={gridHeader}
           ListEmptyComponent={listEmpty}
           contentContainerStyle={styles.gridContent}
@@ -604,9 +694,9 @@ export default function ExploreScreen() {
           // keyboard up the moment the user types a character (that leaves
           // `showRecentSearches`). Without this the enclosing ScrollView
           // captures the first press to dismiss the keyboard, so the first
-          // tap on a tab, chip, sort trigger or tile is swallowed. Capture
-          // runs root-to-leaf, so setting it on the inner horizontal
-          // ScrollView alone does nothing — it has to be here.
+          // tap on a ring, chip, Shuffle or tile is swallowed. Capture runs
+          // root-to-leaf, so setting it on the inner horizontal ScrollView
+          // alone does nothing — it has to be here.
           keyboardShouldPersistTaps="handled"
           onEndReached={handleEndReached}
           onEndReachedThreshold={1.5}
@@ -654,6 +744,24 @@ export default function ExploreScreen() {
           </View>
         ) : pickerView === 'filters' ? (
           <View style={styles.sheetContent}>
+            {/*
+              Sort lives in the sheet now. 4a's header has no sort control —
+              it is "fresh off the rack" + Shuffle — but the capability is
+              worth keeping, and the sheet is where the other result controls
+              already are. Unlike the drafted filters below, it commits
+              immediately: there is nothing to validate or cancel.
+            */}
+            <View style={styles.sortField}>
+              <Text variant="label" color="textSecondary">
+                Sort
+              </Text>
+              <CategoryPressableRow
+                label={SEARCH_SORT_LABELS[sort]}
+                selected
+                onPress={openSortSheet}
+              />
+            </View>
+
             <View style={styles.categoryField}>
               <Text variant="label" color="textSecondary">
                 Category
@@ -769,12 +877,12 @@ export default function ExploreScreen() {
 }
 
 /**
- * The square filter trigger beside the search field, with a count badge.
+ * The filter trigger, a solid `bgInverse` circle sitting INSIDE the search
+ * pill's trailing slot.
  *
  * Local to this screen — one caller, so DESIGN.md §15 rule 2 keeps it here
- * rather than in `ui/`. It is not an `IconButton`: that primitive is a
- * transparent circular icon target, where this is a solid `bgInverse` square
- * carrying a badge.
+ * rather than in `ui/`. Not an `IconButton`: that primitive is a transparent
+ * icon target, where this is a filled disc carrying a count badge.
  */
 function FilterButton({ activeCount, onPress }: { activeCount: number; onPress: () => void }) {
   const { colors } = useAppTheme();
@@ -809,18 +917,24 @@ function FilterButton({ activeCount, onPress }: { activeCount: number; onPress: 
 }
 
 /**
- * Top-level category tabs with an underline for the active one.
+ * The "Drops" row — a horizontal rail of category rings that filter the grid.
  *
- * Commits a GROUP id (or null for "All"), which `search_listings` handles
- * natively — it matches `cat.id = p_category_id OR cat.parent_id =
- * p_category_id`, so a group id filters that whole group without any
- * client-side fan-out over its leaves.
+ * Replaces the previous underline tabs: both filter by top-level category, and
+ * two controls for one filter is one too many.
+ *
+ * `active` means SELECTED here, not "always on". The handoff draws every ring
+ * in the active style, but then the row cannot show which one is in effect —
+ * a correctness problem rather than a styling one, so selection wins.
+ *
+ * Rings carry no image: categories have no artwork in the schema, and
+ * `StoryRing` renders a toned circle for a missing `uri`, so the label does
+ * the work. The handoff's "vibe" grouping has no column behind it either; the
+ * real taxonomy is what this filters on.
  *
  * Horizontally scrollable because the taxonomy is server-owned and can grow
- * past the screen width; the row must never force the labels to shrink or
- * wrap. Local to this screen for the same §15 rule 2 reason as above.
+ * past the screen width. Local to this screen per §15 rule 2.
  */
-function CategoryTabs({
+function DropsRow({
   groups,
   activeGroupId,
   onSelect,
@@ -829,64 +943,65 @@ function CategoryTabs({
   activeGroupId: string | null;
   onSelect: (groupId: string | null) => void;
 }) {
-  const { colors } = useAppTheme();
+  if (groups.length === 0) {
+    return null;
+  }
 
-  // "All" is a real tab, not a special case bolted on at render time — it is
-  // the null selection, and modelling it as a row here keeps the active-state
-  // logic identical for every tab.
-  const tabs: { id: string | null; name: string }[] = [
+  // "All" is a real ring, not a special case bolted on at render time — it is
+  // the null selection, so the active-state logic stays identical for every
+  // entry.
+  const rings: { id: string | null; name: string }[] = [
     { id: null, name: 'All' },
     ...groups.map((group) => ({ id: group.id, name: group.name })),
   ];
 
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.tabsRow}
-      // The grid FlatList stays the screen's only VERTICAL scroller, so
-      // `onEndReached` is unaffected by this horizontal one.
-      keyboardShouldPersistTaps="handled">
-      {tabs.map((tab) => {
-        const selected = tab.id === activeGroupId;
-        return (
-          <Pressable
-            key={tab.id ?? 'all'}
-            onPress={() => onSelect(tab.id)}
-            accessibilityRole="tab"
-            accessibilityState={{ selected }}
-            accessibilityLabel={tab.name}
-            style={({ pressed }) => [styles.tab, { opacity: pressed ? 0.7 : 1 }]}>
-            {/*
-              Inner box sized to the label, inside a Pressable held to the
-              44pt floor. Putting `minWidth` on the Pressable alone would
-              stretch the underline to 44 as well, detaching it from the word
-              it underlines; this keeps the target big and the rule tight.
-            */}
-            <View style={styles.tabInner}>
+    <View style={styles.drops}>
+      <Text variant="micro" color="textSecondary" style={styles.dropsLabel}>
+        Drops
+      </Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.dropsRow}
+        // The grid FlatList stays the screen's only VERTICAL scroller, so
+        // `onEndReached` is unaffected by this horizontal one.
+        keyboardShouldPersistTaps="handled">
+        {rings.map((ring) => {
+          const selected = ring.id === activeGroupId;
+          return (
+            <Pressable
+              key={ring.id ?? 'all'}
+              onPress={() => onSelect(ring.id)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected }}
+              accessibilityLabel={ring.name}
+              style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}>
+              {/*
+                StoryRing is presentational and takes no label here — the
+                Pressable above owns the name and the selected state, so the
+                ring does not announce a second time.
+              */}
+              <StoryRing size={DROPS_RING_SIZE} active={selected} />
               <Text
                 variant="micro"
                 color={selected ? 'text' : 'textSecondary'}
-                style={styles.tabLabel}>
-                {tab.name}
+                numberOfLines={1}
+                importantForAccessibility="no"
+                style={styles.dropsRingLabel}>
+                {ring.name}
               </Text>
-              {/*
-                Always rendered, transparent when inactive, so selecting a tab
-                never changes the row's height — and so the underline is a
-                colour change rather than a layout shift.
-              */}
-              <View
-                style={[
-                  styles.tabUnderline,
-                  { backgroundColor: selected ? colors.accent : 'transparent' },
-                ]}
-              />
-            </View>
-          </Pressable>
-        );
-      })}
-    </ScrollView>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
   );
+}
+
+/** Separator between collage blocks — one gap, so blocks read as one continuous wall. */
+function BlockSeparator() {
+  return <View style={styles.blockSeparator} />;
 }
 
 /**
@@ -929,25 +1044,18 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   searchBar: {
-    gap: space[3],
-    marginBottom: space[3],
+    gap: space[4],
+    marginBottom: space[4],
   },
-  searchRow: {
+  searchTrailing: {
     flexDirection: 'row',
-    // `flex-end` so the button stays on the field's bottom edge if a
-    // helper/error line is ever added below the input. This call site passes
-    // neither today, so the two are currently the same height and `center`
-    // would look identical — this is about not breaking later.
-    alignItems: 'flex-end',
-    gap: space[2],
-  },
-  searchField: {
-    flex: 1,
+    alignItems: 'center',
+    gap: space[1],
   },
   filterButton: {
-    width: minTouchTarget,
-    height: minTouchTarget,
-    borderRadius: radius.md,
+    width: FILTER_BUTTON_SIZE,
+    height: FILTER_BUTTON_SIZE,
+    borderRadius: FILTER_BUTTON_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -971,42 +1079,35 @@ const styles = StyleSheet.create({
     gap: space[3],
     marginBottom: space[3],
   },
-  tabsRow: {
-    flexDirection: 'row',
-    gap: space[5],
-  },
-  tab: {
-    // Both axes — `minHeight` alone left "ALL" about 25pt wide, under
-    // DESIGN.md §12.1's 44x44 floor. The row's `gap` is dead space, not hit
-    // area, so it cannot make up the difference.
-    minHeight: minTouchTarget,
-    minWidth: minTouchTarget,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-  },
-  tabInner: {
+  drops: {
     gap: space[2],
   },
-  tabLabel: {
+  dropsLabel: {
     textTransform: 'uppercase',
   },
-  tabUnderline: {
-    height: border.thick,
-    borderRadius: radius.xs,
+  dropsRow: {
+    flexDirection: 'row',
+    gap: space[3],
   },
-  resultsRow: {
+  dropsRingLabel: {
+    marginTop: space[1],
+    textAlign: 'center',
+    // Caps the caption to the ring, so a long category name cannot widen the
+    // rail's rhythm.
+    width: DROPS_RING_SIZE,
+  },
+  sectionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: space[3],
   },
-  resultsCount: {
-    textTransform: 'uppercase',
-  },
-  sortTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  shuffle: {
     minHeight: minTouchTarget,
-    gap: space[1],
+    justifyContent: 'center',
+  },
+  blockSeparator: {
+    height: COLLAGE_GAP,
   },
   sortOptions: {
     paddingBottom: space[4],
@@ -1027,16 +1128,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: space[1],
   },
-  skeletonGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
   footerSpinner: {
     paddingVertical: space[5],
   },
   sheetContent: {
     gap: space[4],
     paddingBottom: space[4],
+  },
+  sortField: {
+    gap: space[1],
   },
   categoryField: {
     gap: space[1],

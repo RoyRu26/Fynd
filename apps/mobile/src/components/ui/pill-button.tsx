@@ -10,6 +10,37 @@ import { Text } from '@/components/ui/text';
 import { isButtonInteractive } from '@/components/ui/button-state';
 import { border, radius, space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
+import type { SemanticColors } from '@/design/theme';
+
+/**
+ * The fill per variant, as a plain `switch` rather than the nested ternary
+ * this used to be — one case per variant, same clarity
+ * `getPillButtonForegroundColor` already has. Lives here, not in
+ * pill-button-state.ts, because it needs resolved theme colors and a border
+ * token: that file is deliberately import-free (see its own header) so it
+ * stays testable without React Native.
+ */
+function getPillButtonFillStyle({
+  variant,
+  pressed,
+  colors,
+}: {
+  variant: PillButtonVariant;
+  pressed: boolean;
+  colors: SemanticColors;
+}): ViewStyle {
+  switch (variant) {
+    case 'primary':
+      return { backgroundColor: pressed ? colors.accentPressed : colors.accent };
+    case 'inverse':
+      // Solid and borderless, same reasoning as Button's own inverse
+      // variant: the fill is already the highest-contrast surface
+      // available, so it needs no stroke to separate it from the page.
+      return { backgroundColor: colors.bgInverse };
+    case 'outline':
+      return { backgroundColor: 'transparent', borderWidth: border.thin, borderColor: colors.borderStrong };
+  }
+}
 
 export type { PillButtonVariant };
 
@@ -56,13 +87,7 @@ export function PillButton({
       accessibilityState={{ disabled: !interactive, busy: loading }}
       style={({ pressed }) => [
         styles.base,
-        variant === 'primary'
-          ? { backgroundColor: pressed ? colors.accentPressed : colors.accent }
-          : {
-              backgroundColor: 'transparent',
-              borderWidth: border.thin,
-              borderColor: colors.borderStrong,
-            },
+        getPillButtonFillStyle({ variant, pressed, colors }),
         { opacity: getPillButtonOpacity({ disabled, pressed, variant }) },
         style,
       ]}>

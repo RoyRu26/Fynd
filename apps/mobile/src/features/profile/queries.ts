@@ -1,6 +1,14 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { createAvatarUrls, fetchProfile, removeAvatarObject, updateProfile, type ProfileRow } from '@/features/profile/api';
+import {
+  createAvatarUrls,
+  fetchMyCloset,
+  fetchProfile,
+  removeAvatarObject,
+  updateProfile,
+  type ProfileRow,
+} from '@/features/profile/api';
+import { deriveNextClosetOffset } from '@/features/profile/closet';
 import { uploadAvatar } from '@/features/profile/avatar-upload';
 import { sellerProfileKeys } from '@/features/seller-profile/queries';
 
@@ -9,6 +17,7 @@ export const profileKeys = {
   detail: (userId: string | undefined) => [...profileKeys.all, userId] as const,
   avatarUrl: (storagePath: string | null | undefined) =>
     [...profileKeys.all, 'avatar-url', storagePath] as const,
+  closet: (userId: string | undefined) => [...profileKeys.all, 'closet', userId] as const,
 };
 
 export function useProfile(userId: string | undefined) {
@@ -16,6 +25,26 @@ export function useProfile(userId: string | undefined) {
     queryKey: profileKeys.detail(userId),
     queryFn: () => fetchProfile(userId as string),
     enabled: !!userId,
+  });
+}
+
+/**
+ * The Profile tab's own closet grid (SCREENS.md Task 7) — paginated,
+ * active/reserved/sold only. Matches `useSellerListings`'s own page-size
+ * reasoning: comfortably more than one screenful before paying for another
+ * round trip's worth of signed cover URLs.
+ */
+const CLOSET_PAGE_SIZE = 24;
+
+export function useMyCloset(sellerId: string | undefined) {
+  return useInfiniteQuery({
+    queryKey: profileKeys.closet(sellerId),
+    queryFn: ({ pageParam }: { pageParam: number }) =>
+      fetchMyCloset({ sellerId: sellerId as string, limit: CLOSET_PAGE_SIZE, offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, _pages, lastOffset) =>
+      deriveNextClosetOffset(lastOffset, lastPage, CLOSET_PAGE_SIZE),
+    enabled: !!sellerId,
   });
 }
 

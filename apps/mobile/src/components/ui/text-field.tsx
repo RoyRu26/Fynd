@@ -10,7 +10,12 @@ import {
 } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { getFieldBorderStyle, getFieldMessage, getFieldRowAlignment } from '@/components/ui/text-field-state';
+import {
+  getFieldBorderStyle,
+  getFieldMessage,
+  getFieldRowAlignment,
+  type FieldShape,
+} from '@/components/ui/text-field-state';
 import { border, elevation, radius, space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 
@@ -20,6 +25,8 @@ export type TextFieldProps = Omit<TextInputProps, 'style' | 'placeholderTextColo
   error?: string;
   disabled?: boolean;
   containerStyle?: StyleProp<ViewStyle>;
+  /** Outline treatment; see `FieldShape`. Defaults to the app's standard `box`. */
+  shape?: FieldShape;
   /**
    * Rendered inside the field's stroke, before the input — a `@` prefix, a
    * currency symbol, a search glyph.
@@ -57,7 +64,20 @@ export type TextFieldProps = Omit<TextInputProps, 'style' | 'placeholderTextColo
 // onChangeText={field.onChange} onBlur={field.onBlur} error={fieldState.error?.message} />} />
 // with zero coupling.
 export const TextField = forwardRef<TextInput, TextFieldProps>(function TextField(
-  { label, helperText, error, disabled, containerStyle, leading, trailing, onFocus, onBlur, editable, ...inputProps },
+  {
+    label,
+    helperText,
+    error,
+    disabled,
+    containerStyle,
+    shape = 'box',
+    leading,
+    trailing,
+    onFocus,
+    onBlur,
+    editable,
+    ...inputProps
+  },
   ref,
 ) {
   const { colors } = useAppTheme();
@@ -80,7 +100,7 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
   );
 
   const message = getFieldMessage({ error, helperText });
-  const fieldBorder = getFieldBorderStyle({ focused, hasError: Boolean(error) });
+  const fieldBorder = getFieldBorderStyle({ focused, hasError: Boolean(error), shape });
   const borderWidth = fieldBorder.width === 'thick' ? border.thick : border.thin;
   const rowAlignment = getFieldRowAlignment({ multiline: inputProps.multiline });
 
@@ -128,7 +148,9 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
             backgroundColor: colors.bgElevated,
             borderWidth,
             borderColor: colors[fieldBorder.colorKey],
-            borderRadius: radius.md,
+            // `radius.full` clamps to half the rendered height, so a pill's
+            // ends stay true semicircles however tall the row grows.
+            borderRadius: shape === 'pill' ? radius.full : radius.md,
             opacity: disabled ? 0.4 : 1,
           },
         ]}>

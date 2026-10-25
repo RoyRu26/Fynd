@@ -21,6 +21,7 @@ function conversation(id: string, unreadCount = 2): InboxConversation {
     lastMessageSenderId: 'other-1',
     unreadCount,
     isUnread: unreadCount > 0,
+    sellerId: 'seller-1',
   };
 }
 

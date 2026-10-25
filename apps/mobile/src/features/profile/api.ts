@@ -1,4 +1,12 @@
+import {
+  associateClosetCoverUrls,
+  normalizeClosetListingRow,
+  type ClosetListingRow,
+  type ClosetPage,
+} from '@/features/profile/closet';
 import { AVATAR_CONTENT_TYPE, AVATARS_BUCKET } from '@/features/profile/avatar-paths';
+import { LISTING_IMAGES_BUCKET } from '@/features/listings/paths';
+import { createSignedStorageUrls } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 import type { Tables } from '@/types/database';
 
@@ -51,30 +59,78 @@ export async function fetchProfile(userId: string): Promise<ProfileRow> {
 }
 
 /**
- * The bucket is private, so rendering an avatar needs a signed URL.
- * Structurally identical to `createListingImageUrls` — one batched call,
- * no N+1 — but against the `avatars` bucket. Callers dedupe/filter empty
- * paths themselves, same contract as `createListingImageUrls`.
+ * The bucket is private, so rendering an avatar needs a signed URL. A thin
+ * wrapper over the shared `createSignedStorageUrls` — see that function's
+ * own header for why this isn't inlined (it used to be, identically, in
+ * both this file and `features/listings/api.ts`, and the duplication is
+ * what led to a require cycle between the two features).
  */
 export async function createAvatarUrls(
   storagePaths: string[],
   expiresInSeconds = 60 * 60,
 ): Promise<Record<string, string>> {
-  if (storagePaths.length === 0) {
-    return {};
-  }
-  const { data, error } = await supabase.storage
-    .from(AVATARS_BUCKET)
-    .createSignedUrls(storagePaths, expiresInSeconds);
+  return createSignedStorageUrls(AVATARS_BUCKET, storagePaths, expiresInSeconds);
+}
+
+/**
+ * One page of the viewer's own "closet" (SCREENS.md Task 7) — active,
+ * reserved, and sold listings, newest first. Deliberately NOT the same
+ * `status = 'active'`-only query `seller-profile/api.ts`'s
+ * `fetchSellerListingsPage` uses: that one is the PUBLIC, buyer-facing
+ * profile grid and excludes a seller's own sold/reserved inventory on
+ * purpose (see its own header comment); this one is the Profile tab, never
+ * shown to anyone but the owner, where a sold item is exactly what the
+ * handoff's own stamp treatment exists to show. Drafts and removed listings
+ * are excluded either way — a draft has no guaranteed photo, and removed is
+ * the seller's own "took it down."
+ *
+ * Same embedded-select + single batched signed-URL shape as
+ * `fetchSellerListingsPage`: one round trip for the page's rows (with each
+ * listing's lowest-`position` cover riding along), one more for every cover
+ * URL in it — never N+1. No price/currency in the select at all: the
+ * handoff is explicit that this grid carries no price tags.
+ */
+export async function fetchMyCloset(params: {
+  sellerId: string;
+  limit: number;
+  offset: number;
+}): Promise<ClosetPage> {
+  const { sellerId, limit, offset } = params;
+
+  const { data, error, count } = await supabase
+    .from('listings')
+    .select(
+      `
+      id,
+      title,
+      status,
+      category_id,
+      listing_images (
+        storage_path,
+        position
+      )
+    `,
+      { count: 'exact' },
+    )
+    .eq('seller_id', sellerId)
+    .in('status', ['active', 'reserved', 'sold'])
+    .order('created_at', { ascending: false })
+    .order('position', { referencedTable: 'listing_images', ascending: true })
+    .limit(1, { referencedTable: 'listing_images' })
+    .range(offset, offset + limit - 1);
   if (error) throw error;
 
-  const urls: Record<string, string> = {};
-  for (const entry of data) {
-    if (entry.signedUrl && entry.path) {
-      urls[entry.path] = entry.signedUrl;
-    }
+  const normalized = (data as ClosetListingRow[]).map(normalizeClosetListingRow);
+  if (normalized.length === 0) {
+    return { listings: [], totalCount: count ?? 0 };
   }
-  return urls;
+
+  const urlsByPath = await createSignedStorageUrls(
+    LISTING_IMAGES_BUCKET,
+    normalized.map((listing) => listing.coverStoragePath),
+  );
+  const listings = associateClosetCoverUrls(normalized, urlsByPath);
+  return { listings, totalCount: count ?? listings.length };
 }
 
 // ============================================================

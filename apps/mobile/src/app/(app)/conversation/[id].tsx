@@ -1,42 +1,57 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Pressable,
   StyleSheet,
   View,
   type ListRenderItemInfo,
 } from 'react-native';
 
 import {
-  Avatar,
   EmptyState,
   Icon,
   IconButton,
   ListRow,
   Screen,
   SkeletonRow,
+  StoryRing,
   Text,
   type IconName,
 } from '@/components/ui';
 import { Composer } from '@/components/conversation/composer';
+import { DaySeparator } from '@/components/conversation/day-separator';
 import { MessageBubble } from '@/components/conversation/message-bubble';
+import { MoreActionsSheet } from '@/components/report/more-actions-sheet';
+import { PinnedListingStrip } from '@/components/conversation/pinned-listing-strip';
 import { ReviewSheet } from '@/components/review/review-sheet';
-import { minTouchTarget, space } from '@/design/tokens';
+import { space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 import { useAuth } from '@/features/auth/auth-provider';
+import { buildChatListItems, type ChatListItem } from '@/features/conversation/conversation';
 import { mapInboxError } from '@/features/inbox/errors';
-import { resolveOtherPartyName } from '@/features/inbox/inbox';
+import { formatConversationRoleCaption, getInboxRole, resolveOtherPartyName } from '@/features/inbox/inbox';
 import { useConversationDetail, useMarkConversationRead } from '@/features/inbox/queries';
+import { useSellerReviewSummary } from '@/features/reviews/queries';
 import { useMessageHistory, useSendMessage, useConversationRealtime } from '@/features/conversation/queries';
-import type { ConversationMessage, PendingMessage } from '@/features/conversation/optimistic';
+import type { PendingMessage } from '@/features/conversation/optimistic';
 
 /**
- * Conversation thread — ROADMAP 1.3. DESIGN.md has no visual spec for this
- * screen yet (see the new §14.7 note): the message list below is a
- * deliberate, minimal PLACEHOLDER built only from `MessageBubble` (plain
- * text rows) and existing primitives, pending a real design pass.
+ * Conversation thread — ROADMAP 1.3, styled per SCREENS.md Task 8 / the 5a
+ * handoff, replacing Task 6's 2d-spec styling entirely: a `StoryRing`
+ * avatar + role/rating caption + overflow menu in the header, a restyled
+ * `PinnedListingStrip`, day separators and grouped message timestamps
+ * (`buildChatListItems`), restyled `MessageBubble`s, and a `Composer` with
+ * quick replies on a brand-new thread. All existing data/loading/empty/
+ * error logic, the `ReviewSheet`, and pagination are unchanged — restyle
+ * only, per the handoff's own ground rule.
+ *
+ * "Needs backend" items are skipped with a TODO, per the handoff's own
+ * instruction: inline offer cards, a heart long-press reaction, and image
+ * messages. None has a column, table or RPC anywhere in the schema
+ * (`messages` carries only `body`/`client_nonce`/timestamps/ids — see
+ * `20260929090000_chat_conversations_and_messages.sql`), so building any of
+ * them now would mean inventing data, not restyling against real data.
  *
  * Lives at the root, outside (tabs), same reasoning as listing/[id],
  * seller/[id], and follows/[id]: a screen entered from more than one tab's
@@ -63,9 +78,17 @@ const ERROR_ICON: IconName = { ios: 'exclamationmark.triangle', android: 'warnin
 // Same "hidden/removed" icon listing-actions-sheet.tsx's ACTION_ICON.remove
 // already uses, and seller/[id].tsx's own null-data case reuses.
 const UNAVAILABLE_ICON: IconName = { ios: 'eye.slash', android: 'visibility_off', web: 'visibility_off' };
+// Same pair seller/[id].tsx's own MORE_ICON uses for the identical overflow menu.
+const MORE_ICON: IconName = { ios: 'ellipsis', android: 'more_vert', web: 'more_vert' };
 
-function messageKey(message: ConversationMessage): string {
-  return message.kind === 'pending' ? message.tempId : message.id;
+const HEADER_AVATAR_SIZE = 42;
+const CHAT_LIST_GAP = 10;
+
+function chatListItemKey(item: ChatListItem): string {
+  if (item.kind === 'separator') {
+    return item.id;
+  }
+  return item.message.kind === 'pending' ? item.message.tempId : item.message.id;
 }
 
 export default function ConversationScreen() {
@@ -82,6 +105,12 @@ export default function ConversationScreen() {
   // review" row below. Lives here, not as query-driven visibility, because
   // nothing about dismissing it should ever re-trigger from a refetch.
   const [reviewSheetOpen, setReviewSheetOpen] = useState(false);
+  // SCREENS.md Task 8's overflow menu (Report / Block), independent of
+  // detailQuery's own loading state -- its target is the OTHER participant
+  // id, which only exists once the header has loaded, so this is only ever
+  // opened from a button that is itself gated on that same data (see body
+  // below) rather than from something reachable earlier.
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
 
   const historyQuery = useMessageHistory(id);
   const { sendMessage, retryMessage, isSending } = useSendMessage(id);
@@ -109,16 +138,22 @@ export default function ConversationScreen() {
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
+  const messages = useMemo(() => historyQuery.data?.pages.flat() ?? [], [historyQuery.data]);
+  const chatListItems = useMemo(() => buildChatListItems(messages), [messages]);
+
+  const reviewSummaryQuery = useSellerReviewSummary(detailQuery.data?.otherParticipantId);
+
   const backRow = (
     <View style={styles.header}>
       <IconButton icon={BACK_ICON} accessibilityLabel="Back" onPress={() => router.back()} />
     </View>
   );
 
-  // Mounted only once `header`/`name` are known (the sheet needs both as
-  // props) -- fine, since it can only ever be opened from the "Leave a
-  // review" row in that same branch below, never before.
+  // Mounted only once `header`/`name` are known (both sheets need header
+  // data as props) -- fine, since neither can be opened before that same
+  // branch below renders the buttons that open them.
   let reviewSheet: ReactNode = null;
+  let moreActionsSheet: ReactNode = null;
 
   let body: ReactNode;
   if (detailQuery.isPending) {
@@ -151,26 +186,16 @@ export default function ConversationScreen() {
   } else {
     const header = detailQuery.data;
     const name = resolveOtherPartyName(header);
-    const hasListingTitle = Boolean(header.listingTitle);
-
-    const titleBlock = (
-      <View>
-        <Text variant="bodyStrong">{name}</Text>
-        {header.listingTitle ? (
-          <Text variant="caption" color="textSecondary">
-            {header.listingTitle}
-          </Text>
-        ) : null}
-      </View>
-    );
-
-    const messages = historyQuery.data?.pages.flat() ?? [];
+    const reviewSummary = reviewSummaryQuery.data ?? null;
+    const captionParts = [
+      viewerId ? formatConversationRoleCaption(getInboxRole(header, viewerId)) : null,
+      reviewSummary && reviewSummary.reviewCount > 0
+        ? `★ ${reviewSummary.averageRating.toFixed(1)}`
+        : null,
+    ].filter((part): part is string => part !== null);
 
     let listEmpty: ReactNode = null;
     if (historyQuery.isPending) {
-      // Deliberately generic, NOT chat-bubble-shaped — DESIGN.md §14.7
-      // (message bubble styling) is an open item with no visual spec yet,
-      // so a bubble skeleton here would presume a design that doesn't exist.
       listEmpty = (
         <View style={styles.historySkeleton}>
           <SkeletonRow />
@@ -199,31 +224,51 @@ export default function ConversationScreen() {
       );
     }
 
-    const renderItem = ({ item }: ListRenderItemInfo<ConversationMessage>) => (
-      <MessageBubble
-        message={item}
-        isOwn={item.senderId === viewerId}
-        otherPartyName={name}
-        onRetry={(pending: PendingMessage) => retryMessage(pending)}
-      />
-    );
+    const renderItem = ({ item }: ListRenderItemInfo<ChatListItem>) => {
+      if (item.kind === 'separator') {
+        return <DaySeparator label={item.label} />;
+      }
+      return (
+        <MessageBubble
+          message={item.message}
+          isOwn={item.message.senderId === viewerId}
+          otherPartyName={name}
+          showTime={item.showTime}
+          onRetry={(pending: PendingMessage) => retryMessage(pending)}
+        />
+      );
+    };
 
     body = (
       <View style={styles.body}>
         <View style={styles.identity}>
-          <Avatar size="md" source={header.otherAvatarUrl ?? undefined} name={name} />
-          {hasListingTitle ? (
-            <Pressable
-              onPress={openListing}
-              accessibilityRole="link"
-              accessibilityLabel={`Open listing: ${header.listingTitle}`}
-              style={styles.titlePressable}>
-              {titleBlock}
-            </Pressable>
-          ) : (
-            titleBlock
-          )}
+          <StoryRing size={HEADER_AVATAR_SIZE} uri={header.otherAvatarUrl ?? undefined} active />
+          <View style={styles.identityText}>
+            <Text variant="bodyStrong">{name}</Text>
+            {captionParts.length > 0 ? (
+              <Text variant="caption" color="textSecondary">
+                {captionParts.join(' · ')}
+              </Text>
+            ) : null}
+          </View>
+          <IconButton
+            icon={MORE_ICON}
+            accessibilityLabel="More actions"
+            onPress={() => setMoreMenuOpen(true)}
+          />
         </View>
+
+        {header.listingTitle ? (
+          <PinnedListingStrip
+            title={header.listingTitle}
+            priceAmount={header.listingPriceAmount}
+            currencyCode={header.listingCurrency}
+            size={header.listingSize}
+            status={header.listingStatus}
+            coverUrl={header.coverUrl}
+            onPress={openListing}
+          />
+        ) : null}
 
         {/* ROADMAP 5.4 -- rendered only when conversation_detail's own
             `canReview` says this sale is reviewable by the viewer right
@@ -243,8 +288,8 @@ export default function ConversationScreen() {
         <FlatList
           style={styles.list}
           inverted
-          data={messages}
-          keyExtractor={messageKey}
+          data={chatListItems}
+          keyExtractor={chatListItemKey}
           renderItem={renderItem}
           ListEmptyComponent={listEmpty}
           onEndReached={handleEndReached}
@@ -259,7 +304,7 @@ export default function ConversationScreen() {
           }
         />
 
-        <Composer onSend={sendMessage} isSending={isSending} />
+        <Composer onSend={sendMessage} isSending={isSending} messageCount={messages.length} />
       </View>
     );
 
@@ -273,6 +318,16 @@ export default function ConversationScreen() {
         revieweeName={name}
       />
     );
+
+    moreActionsSheet = (
+      <MoreActionsSheet
+        visible={moreMenuOpen}
+        onClose={() => setMoreMenuOpen(false)}
+        target={{ reportedUserId: header.otherParticipantId }}
+        targetKind="user"
+        blockTargetUserId={header.otherParticipantId}
+      />
+    );
   }
 
   return (
@@ -283,6 +338,7 @@ export default function ConversationScreen() {
       {backRow}
       {body}
       {reviewSheet}
+      {moreActionsSheet}
     </Screen>
   );
 }
@@ -315,19 +371,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: space[3],
   },
-  titlePressable: {
-    flexShrink: 1,
-    // DESIGN.md §12.1: never left to the call site. The two stacked Text
-    // lines alone fall well short of 44pt tall, so the touch target is
-    // floored here rather than relying on the surrounding row's height.
-    minHeight: minTouchTarget,
-    justifyContent: 'center',
+  identityText: {
+    flex: 1,
   },
   list: {
     flex: 1,
   },
   listContent: {
-    gap: space[3],
+    // 10px, the handoff's own "gap between bubbles" — not space[3] (12), the
+    // nearest token, because it's visibly denser and worth getting exactly
+    // right for a value this prominent (every bubble, the whole screen).
+    gap: CHAT_LIST_GAP,
     paddingVertical: space[2],
   },
   footerSpinner: {

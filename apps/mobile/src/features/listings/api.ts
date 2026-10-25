@@ -1,11 +1,13 @@
 import { LISTING_IMAGES_BUCKET, LISTING_IMAGE_CONTENT_TYPE } from '@/features/listings/paths';
 import { createAvatarUrls } from '@/features/profile/api';
+import { groupLowestPositionCoverByListingId, type ListingImageCoverRow } from '@/features/listings/rack';
 import type { DraftListingInput, PublishableListingInput } from '@/features/listings/schemas';
 import {
   associateSoldBuyerAvatarUrls,
   normalizeSoldBuyerRow,
   type SoldBuyerCandidate,
 } from '@/features/listings/sold-buyer';
+import { createSignedStorageUrls } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 import type { Tables } from '@/types/database';
 
@@ -87,27 +89,59 @@ export async function fetchListingImages(listingId: string): Promise<ListingImag
 /**
  * The bucket is private, so rendering a photo needs a signed URL. Owner-
  * generated: the Storage SELECT policy only grants the caller their own uid
- * prefix.
+ * prefix. A thin wrapper over the shared `createSignedStorageUrls` — see
+ * that function's own header for why this isn't inlined (it used to be,
+ * and a second inlined copy in `features/profile/api.ts` is what caused a
+ * require cycle between these two features).
  */
 export async function createListingImageUrls(
   storagePaths: string[],
   expiresInSeconds = 60 * 60,
 ): Promise<Record<string, string>> {
-  if (storagePaths.length === 0) {
+  return createSignedStorageUrls(LISTING_IMAGES_BUCKET, storagePaths, expiresInSeconds);
+}
+
+/**
+ * Cover photo URL per listing id, for the Sell tab's "your rack" strip
+ * (SCREENS.md Task 5) — one round trip for `listing_images` rows across every
+ * listing in `listingIds`, ordered by `position` so
+ * `groupLowestPositionCoverByListingId` can take the first row per id as that
+ * listing's cover, plus one batched signed-URL call.
+ *
+ * Not the `listings -> listing_images` embedded-select `seller-profile/api.ts`
+ * uses: that query filters to `status = 'active'`, where `publish_listing`'s
+ * own photo requirement guarantees at least one image per row. The rack shows
+ * every status, drafts included, and a draft can legitimately have zero
+ * photos — so a listing simply has no entry in the returned map rather than
+ * the strict "throw if missing" the seller-profile grid relies on.
+ *
+ * Direct `listing_images` access, not `listings`, is what RLS allows here too:
+ * the table's SELECT policy "follows listing visibility", so a seller reading
+ * their own non-active listings' images is already covered by the same rule
+ * that lets them read the listings themselves.
+ */
+export async function fetchListingCovers(listingIds: string[]): Promise<Record<string, string>> {
+  if (listingIds.length === 0) {
     return {};
   }
-  const { data, error } = await supabase.storage
-    .from(LISTING_IMAGES_BUCKET)
-    .createSignedUrls(storagePaths, expiresInSeconds);
+  const { data, error } = await supabase
+    .from('listing_images')
+    .select('listing_id, storage_path, position')
+    .in('listing_id', listingIds)
+    .order('position', { ascending: true });
   if (error) throw error;
 
-  const urls: Record<string, string> = {};
-  for (const entry of data) {
-    if (entry.signedUrl && entry.path) {
-      urls[entry.path] = entry.signedUrl;
+  const storagePathByListingId = groupLowestPositionCoverByListingId(data as ListingImageCoverRow[]);
+  const urlsByPath = await createListingImageUrls(Object.values(storagePathByListingId));
+
+  const coverUrlByListingId: Record<string, string> = {};
+  for (const [listingId, storagePath] of Object.entries(storagePathByListingId)) {
+    const url = urlsByPath[storagePath];
+    if (url) {
+      coverUrlByListingId[listingId] = url;
     }
   }
-  return urls;
+  return coverUrlByListingId;
 }
 
 // ============================================================

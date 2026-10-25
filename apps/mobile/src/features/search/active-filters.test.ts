@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   deriveActiveFilterChips,
-  formatResultCount,
   getExploreEmptyCopy,
   hasActiveFilters,
   parsePriceRangeInput,
@@ -169,33 +168,5 @@ describe('getExploreEmptyCopy', () => {
     const copy = getExploreEmptyCopy(false);
     expect(copy.title).toBe('No active listings on Fynd yet.');
     expect(copy.body.length).toBeGreaterThan(0);
-  });
-});
-
-describe('formatResultCount', () => {
-  it('shows nothing when there are no results', () => {
-    expect(formatResultCount(0, false)).toBeNull();
-    expect(formatResultCount(0, true)).toBeNull();
-  });
-
-  it('reports an exact count when every page is loaded', () => {
-    expect(formatResultCount(24, false)).toBe('24 results');
-    expect(formatResultCount(312, false)).toBe('312 results');
-  });
-
-  // The honesty rule: with another page outstanding the loaded count is a
-  // floor, not a total, so it must not be printed as if it were one.
-  it('marks the count as a floor while more pages exist', () => {
-    expect(formatResultCount(24, true)).toBe('24+ results');
-  });
-
-  it('singularises only a complete count of one', () => {
-    expect(formatResultCount(1, false)).toBe('1 result');
-    // "1+ result" would read as though one is the total.
-    expect(formatResultCount(1, true)).toBe('1+ results');
-  });
-
-  it('returns lower-case copy, leaving the uppercase styling to the caller', () => {
-    expect(formatResultCount(12, false)).toBe(formatResultCount(12, false)?.toLowerCase());
   });
 });

@@ -1,14 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  associateConversationHeaderAvatarUrl,
+  associateConversationHeaderUrls,
   associateInboxAvatarUrls,
   associateInboxCoverUrls,
   deriveNextInboxCursor,
+  filterInboxConversations,
+  formatConversationRoleCaption,
+  formatInboxTimestamp,
   formatLastMessagePreview,
+  getInboxEmptyCopy,
+  getInboxRole,
   normalizeConversationHeader,
   normalizeInboxRow,
   resolveOtherPartyName,
+  selectRecentPartners,
   type ConversationDetailRpcRow,
   type InboxConversation,
   type InboxConversationRpcRow,
@@ -32,6 +38,7 @@ function rpcRow(overrides: Partial<InboxConversationRpcRow> = {}): InboxConversa
     last_message_body: 'Is this still available?',
     last_message_sender_id: 'other-1',
     unread_count: 2,
+    seller_id: 'seller-1',
     ...overrides,
   };
 }
@@ -53,6 +60,7 @@ describe('normalizeInboxRow', () => {
       lastMessageSenderId: 'other-1',
       unreadCount: 2,
       isUnread: true,
+      sellerId: 'seller-1',
     });
   });
 
@@ -123,6 +131,10 @@ function conversationDetailRpcRow(
     other_display_name: 'Roy',
     other_avatar_path: 'other-1/avatar.jpg',
     can_review: false,
+    listing_price_amount: 2400,
+    listing_currency: 'ILS',
+    listing_size: 'alpha_m',
+    seller_id: 'seller-1',
     ...overrides,
   };
 }
@@ -140,6 +152,10 @@ describe('normalizeConversationHeader', () => {
       otherDisplayName: 'Roy',
       otherAvatarPath: 'other-1/avatar.jpg',
       canReview: false,
+      listingPriceAmount: 2400,
+      listingCurrency: 'ILS',
+      listingSize: 'alpha_m',
+      sellerId: 'seller-1',
     });
   });
 
@@ -173,6 +189,33 @@ describe('normalizeConversationHeader', () => {
     expect(normalizeConversationHeader(row).coverStoragePath).toBeNull();
   });
 
+  // SCREENS.md Task 6: listing_price_amount/listing_currency go through the
+  // identical left-joined-with-listings nullability as listing_title/
+  // listing_status/cover_storage_path just above — a hard-deleted listing
+  // leaves all of them null together.
+  it('passes genuinely null listing_price_amount/listing_currency through as null', () => {
+    const row = conversationDetailRpcRow({
+      listing_price_amount: null as unknown as number,
+      listing_currency: null as unknown as string,
+    });
+    const normalizedHeader = normalizeConversationHeader(row);
+    expect(normalizedHeader.listingPriceAmount).toBeNull();
+    expect(normalizedHeader.listingCurrency).toBeNull();
+  });
+
+  // Same left-joined-with-listings nullability as the price/currency pair.
+  it('passes a genuinely null listing_size through as null', () => {
+    const row = conversationDetailRpcRow({ listing_size: null as unknown as 'alpha_m' });
+    expect(normalizeConversationHeader(row).listingSize).toBeNull();
+  });
+
+  // seller_id is never null by construction -- a plain NOT NULL column
+  // already on `conversations` itself, not part of the left-joined group.
+  it('passes seller_id through as-is', () => {
+    const row = conversationDetailRpcRow({ seller_id: 'a-different-seller' });
+    expect(normalizeConversationHeader(row).sellerId).toBe('a-different-seller');
+  });
+
   // Same nullability lie as feed/pagination.ts's seller_* fields, here for
   // the other participant's profile.
   it('passes genuinely null other_username/other_display_name/other_avatar_path through as null', () => {
@@ -204,6 +247,7 @@ function normalized(overrides: Partial<NormalizedInboxRow> = {}): NormalizedInbo
     lastMessageSenderId: 'other-1',
     unreadCount: 2,
     isUnread: true,
+    sellerId: 'seller-1',
     ...overrides,
   };
 }
@@ -284,7 +328,7 @@ describe('associateInboxAvatarUrls', () => {
   });
 });
 
-describe('associateConversationHeaderAvatarUrl', () => {
+describe('associateConversationHeaderUrls', () => {
   function header(overrides: Partial<NormalizedConversationHeader> = {}): NormalizedConversationHeader {
     return {
       conversationId: 'conversation-1',
@@ -297,27 +341,59 @@ describe('associateConversationHeaderAvatarUrl', () => {
       otherDisplayName: 'Roy',
       otherAvatarPath: 'other-1/avatar.jpg',
       canReview: false,
+      listingPriceAmount: 2400,
+      listingCurrency: 'ILS',
+      listingSize: 'alpha_m',
+      sellerId: 'seller-1',
       ...overrides,
     };
   }
 
-  it('resolves otherAvatarUrl when the path has a matching signed url', () => {
-    const result = associateConversationHeaderAvatarUrl(header(), {
-      'other-1/avatar.jpg': 'https://signed/avatar.jpg',
+  it('resolves otherAvatarUrl and coverUrl when both paths have a matching signed url', () => {
+    const result = associateConversationHeaderUrls(
+      header(),
+      { 'other-1/avatar.jpg': 'https://signed/avatar.jpg' },
+      { 'seller-1/listing-1/cover.jpg': 'https://signed/cover.jpg' },
+    );
+    expect(result).toEqual({
+      ...header(),
+      otherAvatarUrl: 'https://signed/avatar.jpg',
+      coverUrl: 'https://signed/cover.jpg',
     });
-    expect(result).toEqual({ ...header(), otherAvatarUrl: 'https://signed/avatar.jpg' });
   });
 
   it('does not throw when otherAvatarPath is null — resolves otherAvatarUrl to null', () => {
     const h = header({ otherAvatarPath: null });
-    expect(() => associateConversationHeaderAvatarUrl(h, {})).not.toThrow();
-    expect(associateConversationHeaderAvatarUrl(h, {}).otherAvatarUrl).toBeNull();
+    expect(() => associateConversationHeaderUrls(h, {}, {})).not.toThrow();
+    expect(associateConversationHeaderUrls(h, {}, {}).otherAvatarUrl).toBeNull();
   });
 
-  it('does not throw when the path fails to resolve a signed url — resolves otherAvatarUrl to null', () => {
+  it('does not throw when the avatar path fails to resolve a signed url — resolves otherAvatarUrl to null', () => {
     const h = header({ otherAvatarPath: 'other-1/avatar.jpg' });
-    expect(() => associateConversationHeaderAvatarUrl(h, {})).not.toThrow();
-    expect(associateConversationHeaderAvatarUrl(h, {}).otherAvatarUrl).toBeNull();
+    expect(() => associateConversationHeaderUrls(h, {}, {})).not.toThrow();
+    expect(associateConversationHeaderUrls(h, {}, {}).otherAvatarUrl).toBeNull();
+  });
+
+  it('does not throw when coverStoragePath is null — resolves coverUrl to null', () => {
+    const h = header({ coverStoragePath: null });
+    expect(() => associateConversationHeaderUrls(h, {}, {})).not.toThrow();
+    expect(associateConversationHeaderUrls(h, {}, {}).coverUrl).toBeNull();
+  });
+
+  it('does not throw when the cover path fails to resolve a signed url — resolves coverUrl to null', () => {
+    const h = header({ coverStoragePath: 'seller-1/listing-1/cover.jpg' });
+    expect(() => associateConversationHeaderUrls(h, {}, {})).not.toThrow();
+    expect(associateConversationHeaderUrls(h, {}, {}).coverUrl).toBeNull();
+  });
+
+  it('resolves each url independently — an avatar failure does not blank out a resolved cover', () => {
+    const result = associateConversationHeaderUrls(
+      header(),
+      {},
+      { 'seller-1/listing-1/cover.jpg': 'https://signed/cover.jpg' },
+    );
+    expect(result.otherAvatarUrl).toBeNull();
+    expect(result.coverUrl).toBe('https://signed/cover.jpg');
   });
 });
 
@@ -379,5 +455,149 @@ describe('deriveNextInboxCursor', () => {
 
   it('still derives a cursor at the exact boundary (page length equals page size)', () => {
     expect(deriveNextInboxCursor(page, 3)).not.toBeNull();
+  });
+});
+
+describe('getInboxRole', () => {
+  it('is selling when the viewer is the seller', () => {
+    expect(getInboxRole({ sellerId: 'viewer-1' }, 'viewer-1')).toBe('selling');
+  });
+
+  it('is buying when the viewer is not the seller', () => {
+    expect(getInboxRole({ sellerId: 'seller-1' }, 'viewer-1')).toBe('buying');
+  });
+});
+
+describe('formatConversationRoleCaption', () => {
+  it('describes the OTHER participant as buying when the viewer is selling', () => {
+    expect(formatConversationRoleCaption('selling')).toBe('Buying from you');
+  });
+
+  it('describes the OTHER participant as selling when the viewer is buying', () => {
+    expect(formatConversationRoleCaption('buying')).toBe('Selling to you');
+  });
+});
+
+describe('filterInboxConversations', () => {
+  const rows = [
+    conversation({ conversationId: 'selling-1', sellerId: 'viewer-1' }),
+    conversation({ conversationId: 'buying-1', sellerId: 'other-1' }),
+    conversation({ conversationId: 'buying-2', sellerId: 'other-2' }),
+  ];
+
+  it("'all' returns every conversation unfiltered", () => {
+    expect(filterInboxConversations(rows, 'all', 'viewer-1')).toEqual(rows);
+  });
+
+  it("'selling' keeps only conversations where the viewer is the seller", () => {
+    const result = filterInboxConversations(rows, 'selling', 'viewer-1');
+    expect(result.map((r) => r.conversationId)).toEqual(['selling-1']);
+  });
+
+  it("'buying' keeps only conversations where the viewer is not the seller", () => {
+    const result = filterInboxConversations(rows, 'buying', 'viewer-1');
+    expect(result.map((r) => r.conversationId)).toEqual(['buying-1', 'buying-2']);
+  });
+});
+
+describe('getInboxEmptyCopy', () => {
+  it('uses the genuinely-empty copy when the inbox has nothing at all, regardless of filter', () => {
+    expect(getInboxEmptyCopy('buying', 0).title).toBe('No messages yet.');
+    expect(getInboxEmptyCopy('all', 0).title).toBe('No messages yet.');
+  });
+
+  it('uses filter-specific copy when the inbox has conversations but none match', () => {
+    expect(getInboxEmptyCopy('buying', 5).title).not.toBe('No messages yet.');
+    expect(getInboxEmptyCopy('selling', 5).title).not.toBe('No messages yet.');
+    expect(getInboxEmptyCopy('buying', 5).title).not.toBe(getInboxEmptyCopy('selling', 5).title);
+  });
+});
+
+describe('selectRecentPartners', () => {
+  it('dedupes by otherParticipantId, keeping the first (most recent) occurrence', () => {
+    const rows = [
+      conversation({ conversationId: 'c2', otherParticipantId: 'p1', lastMessageAt: '2026-01-02T00:00:00Z' }),
+      conversation({ conversationId: 'c1', otherParticipantId: 'p1', lastMessageAt: '2026-01-01T00:00:00Z' }),
+    ];
+    const result = selectRecentPartners(rows, 10);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ otherParticipantId: 'p1', conversationId: 'c2' });
+  });
+
+  it('caps at the given limit, in input order', () => {
+    const rows = [
+      conversation({ otherParticipantId: 'p1' }),
+      conversation({ otherParticipantId: 'p2' }),
+      conversation({ otherParticipantId: 'p3' }),
+    ];
+    expect(selectRecentPartners(rows, 2).map((p) => p.otherParticipantId)).toEqual(['p1', 'p2']);
+  });
+
+  it('OR-accumulates hasUnread across a partner\'s other conversations, even past the limit', () => {
+    const rows = [
+      conversation({ otherParticipantId: 'p1', isUnread: false }),
+      conversation({ otherParticipantId: 'p2', isUnread: false }),
+      conversation({ otherParticipantId: 'p3', isUnread: false }),
+      // A later, unread conversation with p1 -- already captured, so it must
+      // still flip hasUnread even though the limit below is 1.
+      conversation({ otherParticipantId: 'p1', isUnread: true }),
+    ];
+    const result = selectRecentPartners(rows, 1);
+    expect(result).toHaveLength(1);
+    expect(result[0].hasUnread).toBe(true);
+  });
+
+  it('never flips hasUnread true for a read conversation', () => {
+    const rows = [conversation({ otherParticipantId: 'p1', isUnread: false })];
+    expect(selectRecentPartners(rows, 10)[0].hasUnread).toBe(false);
+  });
+
+  it('resolves name the same way resolveOtherPartyName does', () => {
+    const rows = [conversation({ otherParticipantId: 'p1', otherDisplayName: null, otherUsername: 'roy123' })];
+    expect(selectRecentPartners(rows, 10)[0].name).toBe('roy123');
+  });
+
+  it('returns an empty array for no conversations', () => {
+    expect(selectRecentPartners([], 10)).toEqual([]);
+  });
+});
+
+describe('formatInboxTimestamp', () => {
+  // A Tuesday, for the within-week/outside-week boundary below.
+  const now = new Date('2026-01-13T15:00:00').getTime();
+
+  it('shows a clock time for a message from earlier today', () => {
+    expect(formatInboxTimestamp('2026-01-13T09:05:00', now)).toBe('09:05');
+  });
+
+  it('shows a clock time for a message from a few minutes ago, zero-padded', () => {
+    expect(formatInboxTimestamp('2026-01-13T14:59:00', now)).toBe('14:59');
+  });
+
+  it('shows "Yesterday" for a message from the previous calendar day, even if nearly 24h ago', () => {
+    // 11:58pm the day before "now" -- barely over an hour elapsed, but a
+    // different calendar day, so this must say Yesterday, not a clock time.
+    expect(formatInboxTimestamp('2026-01-12T23:58:00', now)).toBe('Yesterday');
+  });
+
+  it('shows "Yesterday" even for a message from just after midnight yesterday', () => {
+    expect(formatInboxTimestamp('2026-01-12T00:05:00', now)).toBe('Yesterday');
+  });
+
+  it('shows a weekday name within the last week (but not yesterday or today)', () => {
+    // 2026-01-13 is a Tuesday; 2026-01-11 is the Sunday three days earlier.
+    expect(formatInboxTimestamp('2026-01-11T10:00:00', now)).toBe('Sun');
+  });
+
+  it('shows a month/day date for anything a week or older', () => {
+    expect(formatInboxTimestamp('2026-01-01T10:00:00', now)).toBe('Jan 1');
+  });
+
+  it('clamps a clock-skewed future timestamp to a clock time instead of a negative day count', () => {
+    expect(formatInboxTimestamp('2026-01-14T10:00:00', now)).toBe('10:00');
+  });
+
+  it('returns an empty string for an unparseable timestamp rather than "NaN:NaN" or throwing', () => {
+    expect(formatInboxTimestamp('not-a-date', now)).toBe('');
   });
 });

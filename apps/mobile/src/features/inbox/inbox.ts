@@ -42,6 +42,15 @@ export type InboxConversation = {
   lastMessageSenderId: string | null;
   unreadCount: number;
   isUnread: boolean;
+  /**
+   * The conversation's seller id (SCREENS.md Task 6's Buying/Selling
+   * filter) — compare against the viewer's own id (`getInboxRole`) rather
+   * than trusting a precomputed role flag. Always one of the two
+   * participants; never null, the same NOT NULL guarantee
+   * `inbox_conversations`'s own migration documents for `conversation_id`
+   * et al.
+   */
+  sellerId: string;
 };
 
 export type NormalizedInboxRow = Omit<InboxConversation, 'coverUrl' | 'otherAvatarUrl'>;
@@ -102,6 +111,7 @@ export function normalizeInboxRow(row: InboxConversationRpcRow): NormalizedInbox
     lastMessageSenderId: row.last_message_sender_id,
     unreadCount,
     isUnread: unreadCount > 0,
+    sellerId: row.seller_id,
   };
 }
 
@@ -203,15 +213,35 @@ export type ConversationHeader = {
   listingTitle: string | null;
   listingStatus: Database['public']['Enums']['listing_status'] | null;
   coverStoragePath: string | null;
+  coverUrl: string | null;
   otherParticipantId: string;
   otherUsername: string | null;
   otherDisplayName: string | null;
   otherAvatarPath: string | null;
   otherAvatarUrl: string | null;
   canReview: boolean;
+  /**
+   * SCREENS.md Task 6's pinned listing strip. Nullable for the same reason
+   * `listingTitle`/`listingStatus`/`coverStoragePath` are: all four come
+   * from the same `left join public.listings l`
+   * (20261025091545_conversation_detail_listing_price.sql), so a
+   * hard-deleted listing leaves all four null together.
+   */
+  listingPriceAmount: number | null;
+  listingCurrency: string | null;
+  /** SCREENS.md Task 8's pinned strip "price . size" line — same left-join nullability as the price/currency pair above. */
+  listingSize: Database['public']['Enums']['listing_size'] | null;
+  /**
+   * SCREENS.md Task 8's header caption ("Buying from you" / "Selling to
+   * you") — compare the viewer's own id against this, never a precomputed
+   * role flag, same "the client already knows its own id and can compare"
+   * shape `inbox_conversations`'s own `seller_id` already established.
+   * Never null: a plain NOT NULL column already on `conversations` itself.
+   */
+  sellerId: string;
 };
 
-export type NormalizedConversationHeader = Omit<ConversationHeader, 'otherAvatarUrl'>;
+export type NormalizedConversationHeader = Omit<ConversationHeader, 'otherAvatarUrl' | 'coverUrl'>;
 
 export function normalizeConversationHeader(row: ConversationDetailRpcRow): NormalizedConversationHeader {
   return {
@@ -225,20 +255,30 @@ export function normalizeConversationHeader(row: ConversationDetailRpcRow): Norm
     otherDisplayName: row.other_display_name,
     otherAvatarPath: row.other_avatar_path,
     canReview: row.can_review,
+    listingPriceAmount: row.listing_price_amount,
+    listingCurrency: row.listing_currency,
+    listingSize: row.listing_size,
+    sellerId: row.seller_id,
   };
 }
 
 /**
- * Attaches the resolved avatar URL for the thread header's single avatar
- * path. Same null-tolerant contract as `associateInboxAvatarUrls`.
+ * Attaches the thread header's two resolved signed URLs — the other
+ * participant's avatar and the listing's cover (the pinned strip's
+ * thumbnail) — in one step, since `fetchConversationDetail` always resolves
+ * both together. Same null-tolerant contract as `associateInboxAvatarUrls`/
+ * `associateInboxCoverUrls`: neither path resolving is a genuine resting
+ * state (a profile with no avatar, a hard-deleted listing), never an error.
  */
-export function associateConversationHeaderAvatarUrl(
+export function associateConversationHeaderUrls(
   header: NormalizedConversationHeader,
-  urlsByPath: Record<string, string>,
+  avatarUrlsByPath: Record<string, string>,
+  coverUrlsByPath: Record<string, string>,
 ): ConversationHeader {
   return {
     ...header,
-    otherAvatarUrl: header.otherAvatarPath ? urlsByPath[header.otherAvatarPath] ?? null : null,
+    otherAvatarUrl: header.otherAvatarPath ? avatarUrlsByPath[header.otherAvatarPath] ?? null : null,
+    coverUrl: header.coverStoragePath ? coverUrlsByPath[header.coverStoragePath] ?? null : null,
   };
 }
 
@@ -260,4 +300,198 @@ export function deriveNextInboxCursor(
   }
   const last = page[page.length - 1];
   return { lastMessageAt: last.lastMessageAt, id: last.conversationId };
+}
+
+// ============================================================
+// Buying / Selling (SCREENS.md Task 6)
+// ============================================================
+// "Offers" is deliberately not a fourth filter here: there is no offers
+// table or RPC at all yet (see sell/index.tsx's own "buzz" omission for the
+// identical gap), so a count badge for it would have no real data behind
+// it. Hidden rather than faked, same rule the task states for a section
+// with no data.
+
+export type InboxRole = 'buying' | 'selling';
+export type InboxRoleFilter = 'all' | InboxRole;
+
+/** `viewerId` compared against `sellerId` is the whole rule — see the `seller_id` field's own doc comment on why that beats a precomputed flag. */
+export function getInboxRole(conversation: { sellerId: string }, viewerId: string): InboxRole {
+  return conversation.sellerId === viewerId ? 'selling' : 'buying';
+}
+
+/**
+ * SCREENS.md Task 8's chat header caption ("Buying from you" / "Selling to
+ * you") — describes the OTHER participant's role, from the viewer's own
+ * point of view. Takes the viewer's OWN role (from `getInboxRole`) rather
+ * than recomputing anything: if the viewer is selling, the other
+ * participant is the one buying FROM them; if the viewer is buying, the
+ * other participant is the one selling TO them — the two are always
+ * opposite sides of the same conversation.
+ */
+export function formatConversationRoleCaption(viewerRole: InboxRole): string {
+  return viewerRole === 'selling' ? 'Buying from you' : 'Selling to you';
+}
+
+export function filterInboxConversations<T extends { sellerId: string }>(
+  conversations: T[],
+  filter: InboxRoleFilter,
+  viewerId: string,
+): T[] {
+  if (filter === 'all') {
+    return conversations;
+  }
+  return conversations.filter((conversation) => getInboxRole(conversation, viewerId) === filter);
+}
+
+/**
+ * Copy for the filtered-to-nothing state, mirroring
+ * `features/listings/status.ts`'s `getMyListingsEmptyCopy` shape: the
+ * message differs depending on whether the inbox is genuinely empty versus
+ * just empty for the selected filter.
+ */
+export function getInboxEmptyCopy(filter: InboxRoleFilter, totalCount: number): { title: string; body?: string } {
+  if (totalCount === 0) {
+    return {
+      title: 'No messages yet.',
+      body: "When you contact a seller, or someone messages you about a listing, it'll show up here.",
+    };
+  }
+  switch (filter) {
+    case 'buying':
+      return { title: 'No conversations about things you’re buying.' };
+    case 'selling':
+      return { title: 'No conversations about things you’re selling.' };
+    case 'all':
+      // Unreachable in practice: 'all' never filters anything out, so a
+      // nonzero totalCount always means a nonzero visible count too.
+      return { title: 'Nothing here yet.' };
+  }
+}
+
+// ============================================================
+// Stories row (SCREENS.md Task 6)
+// ============================================================
+
+export type InboxPartner = {
+  otherParticipantId: string;
+  name: string;
+  avatarUrl: string | null;
+  /** True when ANY conversation with this partner is unread — not just the one that first surfaced them. */
+  hasUnread: boolean;
+  /** The partner's most recently active conversation — where tapping their ring opens. */
+  conversationId: string;
+  lastMessageAt: string;
+};
+
+/**
+ * The seller's recent conversation partners, deduplicated and capped to
+ * `limit` — the Stories row (StoryRing per partner, `active` = has unread).
+ *
+ * `conversations` is assumed already ordered newest-first (matching
+ * `inbox_conversations`'s own ordering), so the first row seen for a given
+ * partner is their most recent conversation, and that is the one a tap opens
+ * even if the partner has more than one thread. The `limit` caps DISTINCT
+ * partners, not rows scanned: a partner already captured keeps absorbing
+ * `hasUnread` from their other conversations even after the cap is reached,
+ * so an unread thread further down the list is never silently dropped from
+ * the ring's own active state.
+ */
+export function selectRecentPartners(conversations: InboxConversation[], limit: number): InboxPartner[] {
+  const order: string[] = [];
+  const byId = new Map<string, InboxPartner>();
+
+  for (const conversation of conversations) {
+    const id = conversation.otherParticipantId;
+    const existing = byId.get(id);
+    if (existing) {
+      if (conversation.isUnread) {
+        existing.hasUnread = true;
+      }
+      continue;
+    }
+    if (order.length >= limit) {
+      continue;
+    }
+    order.push(id);
+    byId.set(id, {
+      otherParticipantId: id,
+      name: resolveOtherPartyName(conversation),
+      avatarUrl: conversation.otherAvatarUrl,
+      hasUnread: conversation.isUnread,
+      conversationId: conversation.conversationId,
+      lastMessageAt: conversation.lastMessageAt,
+    });
+  }
+
+  return order.map((id) => {
+    const partner = byId.get(id);
+    if (!partner) {
+      throw new Error(`selectRecentPartners: missing partner for id ${id}`);
+    }
+    return partner;
+  });
+}
+
+// ============================================================
+// Row timestamp
+// ============================================================
+// Hand-rolled, deliberately not Intl.DateTimeFormat — same reasoning as
+// features/listings/price.ts's formatMoney: Hermes delegates Intl to Apple
+// Foundation on iOS and android.icu on Android, while tests run on Node's
+// full ICU, so a test can only ever assert one of three real
+// implementations. A hand-rolled formatter is identical everywhere.
+
+const INBOX_WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+const INBOX_MONTH_LABELS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+] as const;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function startOfLocalDay(ms: number): number {
+  const date = new Date(ms);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+/**
+ * A row's calendar-aware timestamp: a clock time today, "Yesterday", a
+ * weekday name within the last week, otherwise a short date — matching the
+ * handoff's own 14:11 / Yesterday / Sun / Mon progression.
+ *
+ * Compares LOCAL CALENDAR DAYS, not a 24h-elapsed window: a message from
+ * 11:58pm yesterday must read "Yesterday" even though under two minutes have
+ * elapsed, and a message from this morning must show its clock time even
+ * after 20+ hours have passed. `formatReviewAge`'s elapsed-ms approach is
+ * wrong for this reason and is not reused here.
+ *
+ * `now` is an explicit, defaulted parameter, same convention as
+ * `isJustDropped`/`formatReviewAge`, so this stays a pure function of its
+ * inputs for testing. A malformed `lastMessageAt` returns `''` rather than
+ * rendering "NaN:NaN" or throwing — the row simply shows no time, same
+ * "garbage never badges" philosophy `isJustDropped` documents.
+ */
+export function formatInboxTimestamp(lastMessageAt: string, now: number = Date.now()): string {
+  const date = new Date(lastMessageAt);
+  const timestamp = date.getTime();
+  if (Number.isNaN(timestamp)) {
+    return '';
+  }
+
+  // Clamped at 0: a clock-skewed future timestamp renders as "today" rather
+  // than a nonsensical negative day count, the same clamping reasoning
+  // isJustDropped documents for its own now-vs-createdAt subtraction.
+  const dayIndex = Math.max(0, Math.floor((startOfLocalDay(now) - startOfLocalDay(timestamp)) / DAY_MS));
+
+  if (dayIndex === 0) {
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${hours}:${minutes}`;
+  }
+  if (dayIndex === 1) {
+    return 'Yesterday';
+  }
+  if (dayIndex < 7) {
+    return INBOX_WEEKDAY_LABELS[date.getDay()];
+  }
+  return `${INBOX_MONTH_LABELS[date.getMonth()]} ${date.getDate()}`;
 }

@@ -7,6 +7,7 @@ import {
   deleteDraft,
   fetchListing,
   fetchListingConversationBuyers,
+  fetchListingCovers,
   fetchListingImages,
   fetchMyListings,
   markListingActive,
@@ -30,6 +31,7 @@ export const listingKeys = {
   mine: (sellerId: string | undefined) => [...listingKeys.all, 'mine', sellerId] as const,
   detail: (listingId: string | undefined) => [...listingKeys.all, 'detail', listingId] as const,
   images: (listingId: string | undefined) => [...listingKeys.all, 'images', listingId] as const,
+  covers: (listingIds: string[]) => [...listingKeys.all, 'covers', listingIds] as const,
   conversationBuyers: (listingId: string | undefined) =>
     [...listingKeys.all, 'conversationBuyers', listingId] as const,
 };
@@ -75,6 +77,21 @@ export function useListingImageUrls(storagePaths: string[]) {
     enabled: storagePaths.length > 0,
     // Signed URLs are minted for 1 hour (see createListingImageUrls); staying
     // well under that avoids ever rendering with one that expired mid-session.
+    staleTime: 45 * 60 * 1000,
+  });
+}
+
+/**
+ * Cover photo URLs for the Sell tab's "your rack" strip (SCREENS.md Task 5),
+ * keyed by listing id. Mirrors `useListingImageUrls`'s own staleTime
+ * reasoning: signed URLs are minted for 1 hour, so 45 minutes keeps every
+ * render well clear of one expiring mid-session.
+ */
+export function useListingCovers(listingIds: string[]) {
+  return useQuery({
+    queryKey: listingKeys.covers(listingIds),
+    queryFn: () => fetchListingCovers(listingIds),
+    enabled: listingIds.length > 0,
     staleTime: 45 * 60 * 1000,
   });
 }
