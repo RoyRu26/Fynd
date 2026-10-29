@@ -81,6 +81,59 @@ export type Database = {
         }
         Relationships: []
       }
+      brand_aliases: {
+        Row: {
+          alias: string
+          alias_key: string
+          brand_id: string
+          created_at: string
+        }
+        Insert: {
+          alias: string
+          alias_key: string
+          brand_id: string
+          created_at?: string
+        }
+        Update: {
+          alias?: string
+          alias_key?: string
+          brand_id?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_aliases_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      brands: {
+        Row: {
+          created_at: string
+          id: string
+          key: string
+          name: string
+          retired_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          key: string
+          name: string
+          retired_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          key?: string
+          name?: string
+          retired_at?: string | null
+        }
+        Relationships: []
+      }
       categories: {
         Row: {
           created_at: string
@@ -225,6 +278,205 @@ export type Database = {
         }
         Relationships: []
       }
+      listing_ai_analyses: {
+        Row: {
+          analysis_input_hash: string
+          created_at: string
+          failure_reason: string | null
+          id: string
+          image_paths: string[]
+          input_tokens: number | null
+          latency_ms: number | null
+          listing_id: string
+          metadata_schema_version: string
+          model: string
+          output_tokens: number | null
+          prompt_version: number
+          status: string
+          suggestion: Json | null
+          user_id: string
+          validation_issues: string[]
+        }
+        Insert: {
+          analysis_input_hash: string
+          created_at?: string
+          failure_reason?: string | null
+          id?: string
+          image_paths: string[]
+          input_tokens?: number | null
+          latency_ms?: number | null
+          listing_id: string
+          metadata_schema_version: string
+          model: string
+          output_tokens?: number | null
+          prompt_version: number
+          status: string
+          suggestion?: Json | null
+          user_id: string
+          validation_issues?: string[]
+        }
+        Update: {
+          analysis_input_hash?: string
+          created_at?: string
+          failure_reason?: string | null
+          id?: string
+          image_paths?: string[]
+          input_tokens?: number | null
+          latency_ms?: number | null
+          listing_id?: string
+          metadata_schema_version?: string
+          model?: string
+          output_tokens?: number | null
+          prompt_version?: number
+          status?: string
+          suggestion?: Json | null
+          user_id?: string
+          validation_issues?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "listing_ai_analyses_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      listing_attribute_kind_categories: {
+        Row: {
+          category_id: string
+          created_at: string
+          kind: string
+        }
+        Insert: {
+          category_id: string
+          created_at?: string
+          kind: string
+        }
+        Update: {
+          category_id?: string
+          created_at?: string
+          kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "listing_attribute_kind_categories_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "listing_attribute_kind_categories_kind_fkey"
+            columns: ["kind"]
+            isOneToOne: false
+            referencedRelation: "listing_attribute_kinds"
+            referencedColumns: ["kind"]
+          },
+        ]
+      }
+      listing_attribute_kinds: {
+        Row: {
+          created_at: string
+          kind: string
+          label: string
+          max_values: number
+          position: number
+        }
+        Insert: {
+          created_at?: string
+          kind: string
+          label: string
+          max_values: number
+          position?: number
+        }
+        Update: {
+          created_at?: string
+          kind?: string
+          label?: string
+          max_values?: number
+          position?: number
+        }
+        Relationships: []
+      }
+      listing_attribute_terms: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          label: string
+          position: number
+          retired_at: string | null
+          slug: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          label: string
+          position?: number
+          retired_at?: string | null
+          slug: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          label?: string
+          position?: number
+          retired_at?: string | null
+          slug?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "listing_attribute_terms_kind_fkey"
+            columns: ["kind"]
+            isOneToOne: false
+            referencedRelation: "listing_attribute_kinds"
+            referencedColumns: ["kind"]
+          },
+        ]
+      }
+      listing_attribute_values: {
+        Row: {
+          created_at: string
+          kind: string
+          listing_id: string
+          position: number
+          term_id: string
+        }
+        Insert: {
+          created_at?: string
+          kind: string
+          listing_id: string
+          position: number
+          term_id: string
+        }
+        Update: {
+          created_at?: string
+          kind?: string
+          listing_id?: string
+          position?: number
+          term_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "listing_attribute_values_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "listings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "listing_attribute_values_term_fkey"
+            columns: ["term_id", "kind"]
+            isOneToOne: false
+            referencedRelation: "listing_attribute_terms"
+            referencedColumns: ["id", "kind"]
+          },
+        ]
+      }
       listing_events: {
         Row: {
           created_at: string
@@ -295,14 +547,53 @@ export type Database = {
           },
         ]
       }
+      listing_item_type_categories: {
+        Row: {
+          category_id: string
+          created_at: string
+          term_id: string
+          term_kind: string
+        }
+        Insert: {
+          category_id: string
+          created_at?: string
+          term_id: string
+          term_kind?: string
+        }
+        Update: {
+          category_id?: string
+          created_at?: string
+          term_id?: string
+          term_kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "listing_item_type_categories_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "listing_item_type_categories_term_fkey"
+            columns: ["term_id", "term_kind"]
+            isOneToOne: false
+            referencedRelation: "listing_attribute_terms"
+            referencedColumns: ["id", "kind"]
+          },
+        ]
+      }
       listings: {
         Row: {
+          brand_id: string | null
+          brand_text: string | null
           category_id: string | null
           condition: Database["public"]["Enums"]["listing_condition"] | null
           created_at: string
           currency: string
           description: string
           id: string
+          keywords: string[]
           price_amount: number | null
           search_tsv: unknown
           seller_id: string
@@ -313,12 +604,15 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          brand_id?: string | null
+          brand_text?: string | null
           category_id?: string | null
           condition?: Database["public"]["Enums"]["listing_condition"] | null
           created_at?: string
           currency?: string
           description?: string
           id?: string
+          keywords?: string[]
           price_amount?: number | null
           search_tsv?: unknown
           seller_id: string
@@ -329,12 +623,15 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          brand_id?: string | null
+          brand_text?: string | null
           category_id?: string | null
           condition?: Database["public"]["Enums"]["listing_condition"] | null
           created_at?: string
           currency?: string
           description?: string
           id?: string
+          keywords?: string[]
           price_amount?: number | null
           search_tsv?: unknown
           seller_id?: string
@@ -345,6 +642,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "listings_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "listings_category_id_fkey"
             columns: ["category_id"]
@@ -648,6 +952,10 @@ export type Database = {
       }
       inbox_unread_count: { Args: never; Returns: number }
       is_blocked_with: { Args: { p_other_user_id: string }; Returns: boolean }
+      listing_attribute_value_applies: {
+        Args: { p_category_id: string; p_kind: string; p_term_id: string }
+        Returns: boolean
+      }
       listing_conversation_buyers: {
         Args: { p_listing_id: string }
         Returns: {
@@ -659,6 +967,10 @@ export type Database = {
           last_message_body: string
         }[]
       }
+      listing_keywords_valid: {
+        Args: { p_keywords: string[] }
+        Returns: boolean
+      }
       mark_conversation_read: {
         Args: { p_conversation_id: string; p_up_to?: string }
         Returns: undefined
@@ -666,12 +978,15 @@ export type Database = {
       mark_listing_active: {
         Args: { p_listing_id: string }
         Returns: {
+          brand_id: string | null
+          brand_text: string | null
           category_id: string | null
           condition: Database["public"]["Enums"]["listing_condition"] | null
           created_at: string
           currency: string
           description: string
           id: string
+          keywords: string[]
           price_amount: number | null
           search_tsv: unknown
           seller_id: string
@@ -691,12 +1006,15 @@ export type Database = {
       mark_listing_reserved: {
         Args: { p_listing_id: string }
         Returns: {
+          brand_id: string | null
+          brand_text: string | null
           category_id: string | null
           condition: Database["public"]["Enums"]["listing_condition"] | null
           created_at: string
           currency: string
           description: string
           id: string
+          keywords: string[]
           price_amount: number | null
           search_tsv: unknown
           seller_id: string
@@ -716,12 +1034,15 @@ export type Database = {
       mark_listing_sold: {
         Args: { p_buyer_id?: string; p_listing_id: string }
         Returns: {
+          brand_id: string | null
+          brand_text: string | null
           category_id: string | null
           condition: Database["public"]["Enums"]["listing_condition"] | null
           created_at: string
           currency: string
           description: string
           id: string
+          keywords: string[]
           price_amount: number | null
           search_tsv: unknown
           seller_id: string
@@ -738,15 +1059,19 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      normalize_brand_key: { Args: { p_text: string }; Returns: string }
       publish_listing: {
         Args: { p_listing_id: string }
         Returns: {
+          brand_id: string | null
+          brand_text: string | null
           category_id: string | null
           condition: Database["public"]["Enums"]["listing_condition"] | null
           created_at: string
           currency: string
           description: string
           id: string
+          keywords: string[]
           price_amount: number | null
           search_tsv: unknown
           seller_id: string
@@ -767,8 +1092,27 @@ export type Database = {
         Args: { p_listing_id: string }
         Returns: {
           allowed: boolean
+          limited_by: string
           remaining: number
         }[]
+      }
+      record_listing_ai_analysis: {
+        Args: {
+          p_analysis_input_hash: string
+          p_failure_reason: string
+          p_image_paths: string[]
+          p_input_tokens: number
+          p_latency_ms: number
+          p_listing_id: string
+          p_metadata_schema_version: string
+          p_model: string
+          p_output_tokens: number
+          p_prompt_version: number
+          p_status: string
+          p_suggestion: Json
+          p_validation_issues: string[]
+        }
+        Returns: string
       }
       record_listing_impression: {
         Args: {
@@ -781,12 +1125,15 @@ export type Database = {
       remove_listing: {
         Args: { p_listing_id: string }
         Returns: {
+          brand_id: string | null
+          brand_text: string | null
           category_id: string | null
           condition: Database["public"]["Enums"]["listing_condition"] | null
           created_at: string
           currency: string
           description: string
           id: string
+          keywords: string[]
           price_amount: number | null
           search_tsv: unknown
           seller_id: string
@@ -804,6 +1151,14 @@ export type Database = {
         }
       }
       request_account_deletion: { Args: never; Returns: undefined }
+      search_brands: {
+        Args: { p_limit?: number; p_query: string }
+        Returns: {
+          id: string
+          matched_alias: string
+          name: string
+        }[]
+      }
       search_listings: {
         Args: {
           p_category_id?: string
@@ -835,6 +1190,19 @@ export type Database = {
         Returns: {
           average_rating: number
           review_count: number
+        }[]
+      }
+      set_listing_attributes: {
+        Args: {
+          p_brand_id?: string
+          p_brand_text?: string
+          p_keywords: string[]
+          p_listing_id: string
+          p_term_ids: string[]
+        }
+        Returns: {
+          resolved_brand_id: string
+          resolved_brand_text: string
         }[]
       }
       set_listing_image_order: {
@@ -870,12 +1238,15 @@ export type Database = {
           p_title: string
         }
         Returns: {
+          brand_id: string | null
+          brand_text: string | null
           category_id: string | null
           condition: Database["public"]["Enums"]["listing_condition"] | null
           created_at: string
           currency: string
           description: string
           id: string
+          keywords: string[]
           price_amount: number | null
           search_tsv: unknown
           seller_id: string

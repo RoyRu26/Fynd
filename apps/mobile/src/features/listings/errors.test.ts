@@ -34,6 +34,10 @@ describe('mapListingError', () => {
     expect(mapListingError(postgrest('23505')).message).toMatch(/already been added/i);
   });
 
+  it('maps 22023 (attribute input validation)', () => {
+    expect(mapListingError(postgrest('22023')).message).toMatch(/details aren't allowed/i);
+  });
+
   it('maps 23514 (CHECK constraint)', () => {
     expect(mapListingError(postgrest('23514')).message).toMatch(/isn't allowed/i);
   });

@@ -23,9 +23,12 @@ import { useIsBlockedEitherWay } from '@/features/blocks/queries';
 import { formatCategoryBreadcrumb } from '@/features/categories/categories';
 import { mapInboxError } from '@/features/inbox/errors';
 import { useStartConversation } from '@/features/inbox/queries';
+import { brandSelectionLabel } from '@/features/brands/brands';
+import { attributeBadgeTerms } from '@/features/listings/attributes';
 import { CONDITION_LABELS } from '@/features/listings/condition';
 import { mapListingError } from '@/features/listings/errors';
 import { formatMoney } from '@/features/listings/price';
+import { useAttributeVocabulary, useListingAttributes } from '@/features/listings/queries';
 import { formatSizeLabel } from '@/features/listings/size';
 import { useListingDetail, useToggleFavoriteFromDetail } from '@/features/listing-detail/queries';
 
@@ -129,6 +132,16 @@ export default function ListingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const detailQuery = useListingDetail(id);
+  // Structured details (item type, colors, …) as extra read-only badges. A
+  // separate fetch on purpose: the detail query is unchanged, and if this one
+  // fails or is slow the page simply shows no extra badges.
+  const attributeVocabQuery = useAttributeVocabulary();
+  const listingAttributesQuery = useListingAttributes(id);
+  const attributeTerms =
+    attributeVocabQuery.data && listingAttributesQuery.data
+      ? attributeBadgeTerms(attributeVocabQuery.data, listingAttributesQuery.data.values)
+      : [];
+  const brandLabel = listingAttributesQuery.data ? brandSelectionLabel(listingAttributesQuery.data.brand) : null;
   const { toggleFavorite, isPending: favoritePending } = useToggleFavoriteFromDetail(id);
   const startConversation = useStartConversation();
   // ROADMAP 5.2 -- proactive UX on top of the server-side RLS/RPC
@@ -272,6 +285,10 @@ export default function ListingDetailScreen() {
                 { name: listing.categoryName },
               )}
             />
+            {brandLabel ? <OutlineBadge label={brandLabel} /> : null}
+            {attributeTerms.map((term) => (
+              <OutlineBadge key={term.id} label={term.label} />
+            ))}
           </View>
 
           {/* Same RTL fix as the title above — see styles.descriptionText. */}

@@ -1,3 +1,13 @@
+import {
+  brandSelectionFromListing,
+  brandSelectionToArgs,
+  type BrandSelection,
+} from '@/features/brands/brands';
+import {
+  normalizeVocabulary,
+  type AttributeValueRow,
+  type AttributeVocabulary,
+} from '@/features/listings/attributes';
 import { LISTING_IMAGES_BUCKET, LISTING_IMAGE_CONTENT_TYPE } from '@/features/listings/paths';
 import { createAvatarUrls } from '@/features/profile/api';
 import { groupLowestPositionCoverByListingId, type ListingImageCoverRow } from '@/features/listings/rack';
@@ -348,6 +358,83 @@ export async function updateListingDetails(
   });
   if (error) throw error;
   return data;
+}
+
+// ============================================================
+// Structured attributes (AI listing metadata plan, Phases 1a + 1b)
+// ============================================================
+// The four vocabulary tables are authenticated-SELECT only, with no client
+// writes. Values are written only through `set_listing_attributes` (no
+// INSERT/UPDATE/DELETE grant on listing_attribute_values, no column grant on
+// listings.keywords, brand_id or brand_text), which works for draft, active
+// and reserved listings.
+
+export async function fetchAttributeVocabulary(): Promise<AttributeVocabulary> {
+  const [kinds, terms, kindCategories, itemTypeCategories] = await Promise.all([
+    supabase.from('listing_attribute_kinds').select('kind, label, max_values, position'),
+    supabase.from('listing_attribute_terms').select('id, kind, slug, label, position, retired_at'),
+    supabase.from('listing_attribute_kind_categories').select('kind, category_id'),
+    supabase.from('listing_item_type_categories').select('term_id, category_id'),
+  ]);
+  if (kinds.error) throw kinds.error;
+  if (terms.error) throw terms.error;
+  if (kindCategories.error) throw kindCategories.error;
+  if (itemTypeCategories.error) throw itemTypeCategories.error;
+
+  return normalizeVocabulary({
+    kinds: kinds.data,
+    terms: terms.data,
+    kindCategories: kindCategories.data,
+    itemTypeCategories: itemTypeCategories.data,
+  });
+}
+
+export type ListingAttributes = {
+  values: AttributeValueRow[];
+  keywords: string[];
+  brand: BrandSelection;
+};
+
+export async function fetchListingAttributes(listingId: string): Promise<ListingAttributes> {
+  const [values, listing] = await Promise.all([
+    supabase.from('listing_attribute_values').select('term_id, kind, position').eq('listing_id', listingId),
+    // The brand name comes from an embedded read of the catalog row, so a
+    // known brand never needs a second round trip to be displayed.
+    supabase
+      .from('listings')
+      .select('keywords, brand_id, brand_text, brand:brands!listings_brand_id_fkey(id, name)')
+      .eq('id', listingId)
+      .single(),
+  ]);
+  if (values.error) throw values.error;
+  if (listing.error) throw listing.error;
+  return {
+    values: values.data,
+    keywords: listing.data.keywords,
+    brand: brandSelectionFromListing(listing.data),
+  };
+}
+
+/**
+ * Replaces the whole set — values, keywords and brand. Order within a kind
+ * becomes `position` (first color = primary). Free-text brand that exactly
+ * matches a catalog alias is stored as that brand by the server, so callers
+ * re-read the listing afterwards instead of assuming what was stored.
+ */
+export async function setListingAttributes(
+  listingId: string,
+  input: { termIds: string[]; keywords: string[]; brand: BrandSelection },
+): Promise<void> {
+  const { brandId, brandText } = brandSelectionToArgs(input.brand);
+  const { error } = await supabase.rpc('set_listing_attributes', {
+    p_listing_id: listingId,
+    p_term_ids: input.termIds,
+    p_keywords: input.keywords,
+    // Omitted rather than null: the generated args type marks them optional.
+    ...(brandId !== null ? { p_brand_id: brandId } : {}),
+    ...(brandText !== null ? { p_brand_text: brandText } : {}),
+  });
+  if (error) throw error;
 }
 
 // ============================================================

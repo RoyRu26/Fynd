@@ -217,6 +217,108 @@ const LISTING_TEMPLATES = [
   ['michal', 'Olive Utility Jacket', 130, 'very_good', 'alpha_l', 'womenOuterwear', 'olive'],
 ];
 
+// Structured attributes per seed listing (AI listing metadata plan, Phase
+// 1a), keyed like `listingKey` (`${userKey}:${title}`). Slugs are resolved
+// against listing_attribute_terms at startup — an unknown slug fails the run
+// before anything is written — and every value must fit the listing's
+// category (the database's own validate trigger re-checks this on insert).
+// `fit` only on clothing leaves; shoes, bags and accessories have none.
+// Keywords follow listing_keywords_valid(): no geresh/apostrophes.
+//
+// Shape: { type, colors, material, style, pattern, fit, kw }; null = unset.
+const LISTING_ATTRIBUTES = {
+  "maya:מעיל ג'ינס קלאסי": { type: 'jacket', colors: ['blue'], material: 'denim', style: 'vintage', pattern: 'solid', fit: 'regular', kw: ['denim jacket', 'classic'] },
+  'maya:Floral Summer Dress': { type: 'dress', colors: ['pink', 'white'], material: 'cotton', style: 'boho', pattern: 'floral', fit: 'relaxed', kw: ['summer', 'midi'] },
+  "maya:תיק עור חום וינטג'": { type: 'bag', colors: ['brown'], material: 'leather', style: 'vintage', pattern: 'solid', fit: null, kw: ['crossbody'] },
+  'maya:סוודר צמר אפור': { type: 'sweater', colors: ['grey'], material: 'wool', style: 'minimal', pattern: 'solid', fit: 'relaxed', kw: ['knit', 'סריג'] },
+  'maya:White Linen Blouse': { type: 'blouse', colors: ['white'], material: 'linen', style: 'minimal', pattern: 'solid', fit: 'regular', kw: ['summer'] },
+
+  'noam:White Leather Sneakers': { type: 'sneakers', colors: ['white'], material: 'leather', style: 'minimal', pattern: 'solid', fit: null, kw: ['low top'] },
+  'noam:נעלי ריצה שחורות': { type: 'sneakers', colors: ['black'], material: 'synthetic', style: 'sportswear', pattern: 'solid', fit: null, kw: ['running', 'ריצה'] },
+  'noam:Navy Track Jacket': { type: 'jacket', colors: ['navy'], material: 'synthetic', style: 'sportswear', pattern: 'striped', fit: 'regular', kw: ['track top', 'zip up'] },
+  'noam:מכנסי טרנינג אפורים': { type: 'joggers', colors: ['grey'], material: 'cotton', style: 'sportswear', pattern: 'solid', fit: 'relaxed', kw: ['טרנינג', 'sweatpants'] },
+
+  'tamar:Vintage Leather Jacket': { type: 'jacket', colors: ['black'], material: 'leather', style: 'vintage', pattern: 'solid', fit: 'regular', kw: ['biker', 'moto'] },
+  'tamar:שמלת קוקטייל שחורה': { type: 'dress', colors: ['black'], material: 'synthetic', style: 'formal', pattern: 'solid', fit: 'slim', kw: ['cocktail', 'ערב'] },
+  'tamar:Tan Ankle Boots': { type: 'boots', colors: ['brown'], material: 'leather', style: 'vintage', pattern: 'solid', fit: null, kw: ['ankle boots'] },
+  "tamar:צעיף משי וינטג'": { type: 'scarf', colors: ['pink'], material: 'silk', style: 'vintage', pattern: 'floral', fit: null, kw: ['silk scarf'] },
+  'tamar:Olive Cargo Pants': { type: 'trousers', colors: ['khaki'], material: 'cotton', style: 'workwear', pattern: 'solid', fit: 'relaxed', kw: ['cargo', 'utility'] },
+
+  'eitan:Charcoal Wool Coat': { type: 'coat', colors: ['grey'], material: 'wool', style: 'minimal', pattern: 'solid', fit: 'regular', kw: ['overcoat'] },
+  'eitan:חולצת פולו כחולה': { type: 'polo', colors: ['navy'], material: 'cotton', style: 'preppy', pattern: 'solid', fit: 'regular', kw: ['פולו'] },
+  'eitan:Black Chelsea Boots': { type: 'boots', colors: ['black'], material: 'leather', style: 'minimal', pattern: 'solid', fit: null, kw: ['chelsea'] },
+
+  'shira:Floral Maxi Dress': { type: 'dress', colors: ['pink', 'green'], material: 'cotton', style: 'boho', pattern: 'floral', fit: 'relaxed', kw: ['maxi', 'summer'] },
+  'shira:מעיל גשם': { type: 'jacket', colors: ['navy'], material: 'synthetic', style: 'minimal', pattern: 'solid', fit: 'regular', kw: ['raincoat', 'גשם'] },
+  'shira:Striped Cotton Top': { type: 't_shirt', colors: ['white', 'navy'], material: 'cotton', style: 'preppy', pattern: 'striped', fit: 'regular', kw: ['breton'] },
+  'shira:נעלי בלרינה שחורות': { type: 'flats', colors: ['black'], material: 'leather', style: 'minimal', pattern: 'solid', fit: null, kw: ['ballet flats', 'בלרינה'] },
+  'shira:Beige Tote Bag': { type: 'bag', colors: ['beige'], material: 'cotton', style: 'minimal', pattern: 'solid', fit: null, kw: ['tote'] },
+  'shira:מכנסי ג׳ינס כחולים': { type: 'jeans', colors: ['blue'], material: 'denim', style: null, pattern: 'solid', fit: 'regular', kw: ['jeans'] },
+
+  'yossi:Grey Hoodie': { type: 'hoodie', colors: ['grey'], material: 'cotton', style: 'streetwear', pattern: 'solid', fit: 'regular', kw: ['pullover'] },
+  'yossi:נעלי סקייט שחורות': { type: 'sneakers', colors: ['black'], material: null, style: 'streetwear', pattern: 'solid', fit: null, kw: ['skate', 'סקייט'] },
+  'yossi:Denim Jacket': { type: 'jacket', colors: ['blue'], material: 'denim', style: 'vintage', pattern: 'solid', fit: 'regular', kw: ['trucker'] },
+  'yossi:כפכפי עור חומים': { type: 'sandals', colors: ['brown'], material: 'leather', style: null, pattern: 'solid', fit: null, kw: ['slides', 'כפכפים'] },
+
+  'noa:Linen Summer Shirt': { type: 'shirt', colors: ['cream'], material: 'linen', style: 'minimal', pattern: 'solid', fit: 'relaxed', kw: ['summer'] },
+  'noa:שמלת בוהו ארוכה': { type: 'dress', colors: ['green'], material: 'cotton', style: 'boho', pattern: 'solid', fit: 'relaxed', kw: ['maxi', 'בוהו'] },
+  'noa:Woven Straw Bag': { type: 'bag', colors: ['beige'], material: null, style: 'boho', pattern: null, fit: null, kw: ['straw', 'beach'] },
+  'noa:סנדלי עור שטוחים': { type: 'sandals', colors: ['brown'], material: 'leather', style: 'boho', pattern: 'solid', fit: null, kw: ['flat sandals'] },
+
+  'daniel:Black Cargo Pants': { type: 'trousers', colors: ['black'], material: 'cotton', style: 'streetwear', pattern: 'solid', fit: 'relaxed', kw: ['cargo'] },
+  'daniel:נעלי קנבס לבנות': { type: 'sneakers', colors: ['white'], material: 'cotton', style: 'minimal', pattern: 'solid', fit: null, kw: ['canvas', 'קנבס'] },
+  'daniel:Oversized Hoodie': { type: 'hoodie', colors: ['grey'], material: 'cotton', style: 'streetwear', pattern: 'solid', fit: 'oversized', kw: ['pullover'] },
+  'daniel:מעיל בומבר שחור': { type: 'jacket', colors: ['black'], material: 'synthetic', style: 'streetwear', pattern: 'solid', fit: 'regular', kw: ['bomber', 'בומבר'] },
+  'daniel:Navy Beanie': { type: 'hat', colors: ['navy'], material: 'wool', style: 'streetwear', pattern: 'solid', fit: null, kw: ['beanie'] },
+
+  'michal:חצאית טוויד': { type: 'skirt', colors: ['beige', 'brown'], material: 'wool', style: 'preppy', pattern: 'checked', fit: 'regular', kw: ['tweed', 'טוויד'] },
+  'michal:Cream Silk Blouse': { type: 'blouse', colors: ['cream'], material: 'silk', style: 'formal', pattern: 'solid', fit: 'regular', kw: ['office'] },
+  'michal:נעלי עקב שחורות': { type: 'heels', colors: ['black'], material: 'leather', style: 'formal', pattern: 'solid', fit: null, kw: ['pumps', 'עקבים'] },
+  'michal:Olive Utility Jacket': { type: 'jacket', colors: ['khaki'], material: 'cotton', style: 'workwear', pattern: 'solid', fit: 'relaxed', kw: ['utility', 'field jacket'] },
+};
+
+// Brands for some seed listings (AI listing metadata plan, Phase 1b), keyed
+// like LISTING_ATTRIBUTES. `brand` is a catalog key (brands.key) and fails the
+// run before anything is written if it doesn't exist; `text` is a custom
+// brand_text for a brand that isn't in the catalog. Exactly one per entry.
+// Listings not listed here stay brand-less on purpose, like real listings.
+const LISTING_BRANDS = {
+  'noam:White Leather Sneakers': { brand: 'adidas' },
+  'noam:נעלי ריצה שחורות': { brand: 'nike' },
+  'noam:Navy Track Jacket': { brand: 'fila' },
+  'noam:מכנסי טרנינג אפורים': { brand: 'champion' },
+  'tamar:Vintage Leather Jacket': { text: 'Vintage Biker Co' },
+  'tamar:Tan Ankle Boots': { brand: 'dr martens' },
+  'tamar:Olive Cargo Pants': { brand: 'zara' },
+  'eitan:Charcoal Wool Coat': { brand: 'cos' },
+  'eitan:חולצת פולו כחולה': { brand: 'lacoste' },
+  'eitan:Black Chelsea Boots': { brand: 'clarks' },
+  'shira:Floral Maxi Dress': { brand: 'mango' },
+  'shira:מכנסי ג׳ינס כחולים': { brand: 'levis' },
+  "maya:תיק עור חום וינטג'": { text: 'Local Leather Workshop' },
+  'yossi:Grey Hoodie': { brand: 'carhartt wip' },
+  'yossi:Denim Jacket': { brand: 'carhartt' },
+  'noa:Woven Straw Bag': { text: 'Handmade in Jaffa' },
+  'daniel:Oversized Hoodie': { brand: 'stussy' },
+  'daniel:נעלי קנבס לבנות': { brand: 'converse' },
+  'daniel:Black Cargo Pants': { brand: 'dickies' },
+  'michal:Cream Silk Blouse': { brand: 'massimo dutti' },
+  'michal:נעלי עקב שחורות': { brand: 'steve madden' },
+};
+
+/** [{ kind, slug }] in the order they're stored: per-kind position = array order. */
+function attributeSlugs(spec) {
+  const one = (kind, slug) => (slug ? [{ kind, slug }] : []);
+  return [
+    ...one('item_type', spec.type),
+    ...spec.colors.map((slug) => ({ kind: 'color', slug })),
+    ...one('style', spec.style),
+    ...one('material', spec.material),
+    ...one('pattern', spec.pattern),
+    ...one('fit', spec.fit),
+  ];
+}
+
 // Fixed anchor, not `Date.now()` — every run must compute the exact same
 // timestamps, or a re-run would drift createdAt on every listing and this
 // would no longer be idempotent in any meaningful sense.
@@ -280,6 +382,40 @@ async function main() {
         `Expected ${categoryIds.length} category fixture ids to exist, found ${foundCategories.length}. ` +
           'Has the categories migration been applied to this database?',
       );
+    }
+
+    // ---- startup sanity check: every attribute slug must resolve to an
+    // active term, and every listing template must have an attribute entry
+    // (and vice versa). Fails before any write. ----
+    const { rows: termRows } = await db.query(
+      'select id, kind, slug from public.listing_attribute_terms where retired_at is null',
+    );
+    const termIdBySlug = new Map(termRows.map((row) => [`${row.kind}:${row.slug}`, row.id]));
+    const templateKeys = new Set(LISTING_TEMPLATES.map(([userKey, title]) => `${userKey}:${title}`));
+    for (const key of templateKeys) {
+      if (!LISTING_ATTRIBUTES[key]) throw new Error(`No LISTING_ATTRIBUTES entry for seed listing "${key}"`);
+    }
+    for (const [key, spec] of Object.entries(LISTING_ATTRIBUTES)) {
+      if (!templateKeys.has(key)) throw new Error(`LISTING_ATTRIBUTES entry "${key}" matches no seed listing`);
+      for (const { kind, slug } of attributeSlugs(spec)) {
+        if (!termIdBySlug.has(`${kind}:${slug}`)) {
+          throw new Error(`Unknown or retired ${kind} slug "${slug}" for seed listing "${key}"`);
+        }
+      }
+    }
+
+    // ---- startup sanity check for brands: every catalog key must exist and
+    // every entry must match a seed listing. Fails before any write. ----
+    const { rows: brandRows } = await db.query('select id, key from public.brands');
+    const brandIdByKey = new Map(brandRows.map((row) => [row.key, row.id]));
+    for (const [key, spec] of Object.entries(LISTING_BRANDS)) {
+      if (!templateKeys.has(key)) throw new Error(`LISTING_BRANDS entry "${key}" matches no seed listing`);
+      if (Boolean(spec.brand) === Boolean(spec.text)) {
+        throw new Error(`LISTING_BRANDS entry "${key}" must have exactly one of brand / text`);
+      }
+      if (spec.brand && !brandIdByKey.has(spec.brand)) {
+        throw new Error(`Unknown brand key "${spec.brand}" for seed listing "${key}"`);
+      }
     }
 
     // Snapshot counts BEFORE, to report alongside AFTER at the end — the
@@ -354,6 +490,31 @@ async function main() {
     }
     console.log(`Favorites ready: ${favoriteCount}`);
 
+    // ---- brands ----
+    let brandedCount = 0;
+    for (const listing of [...listingsByUser.values()].flat()) {
+      const spec = LISTING_BRANDS[listing.key];
+      if (!spec) continue;
+      if (await ensureListingBrand(db, listing.id, spec.brand ? brandIdByKey.get(spec.brand) : null, spec.text ?? null)) {
+        brandedCount += 1;
+      }
+    }
+    console.log(
+      `Brands: ${brandedCount} of ${Object.keys(LISTING_BRANDS).length} seed listings filled (the rest already had a brand, left untouched)`,
+    );
+
+    // ---- structured attributes + keywords ----
+    let attributedCount = 0;
+    let preservedCount = 0;
+    for (const listing of [...listingsByUser.values()].flat()) {
+      const written = await ensureListingAttributes(db, listing.id, LISTING_ATTRIBUTES[listing.key], termIdBySlug);
+      if (written) attributedCount += 1;
+      else preservedCount += 1;
+    }
+    console.log(
+      `Attributes: ${attributedCount} listings filled, ${preservedCount} already had attributes (left untouched)`,
+    );
+
     const after = await snapshotCounts(db);
 
     console.log('\n--- Summary ---');
@@ -372,7 +533,16 @@ async function main() {
 }
 
 async function snapshotCounts(db) {
-  const tables = ['auth.users', 'public.profiles', 'public.listings', 'public.listing_images', 'public.favorites'];
+  const tables = [
+    'auth.users',
+    'public.profiles',
+    'public.listings',
+    'public.listing_images',
+    'public.favorites',
+    'public.listing_attribute_values',
+    'public.brands',
+    'public.brand_aliases',
+  ];
   const counts = {};
   for (const table of tables) {
     const { rows } = await db.query(`select count(*)::int as n from ${table}`);
@@ -472,6 +642,69 @@ async function ensureListingImage(admin, db, { sellerId, listingId, position, co
      on conflict (id) do nothing`,
     [seedId(imageKey), listingId, storagePath, position],
   );
+}
+
+/**
+ * Strictly additive: fills a seed listing's attributes and keywords only if it
+ * has NONE yet. A listing that already has any value or keyword (from an
+ * earlier run, or edited by hand in the app) is left exactly as it is — this
+ * never deletes, replaces or merges into existing attribute data. One
+ * transaction per listing, so a failure can't leave half a set behind.
+ * Returns whether it wrote anything.
+ */
+async function ensureListingAttributes(db, listingId, spec, termIdBySlug) {
+  await db.query('begin');
+  try {
+    const { rows } = await db.query(
+      `select
+         exists (select 1 from public.listing_attribute_values where listing_id = $1) as has_values,
+         cardinality(keywords) > 0 as has_keywords
+       from public.listings where id = $1
+       for update`,
+      [listingId],
+    );
+    if (rows.length === 0) throw new Error(`Seed listing ${listingId} not found`);
+    if (rows[0].has_values || rows[0].has_keywords) {
+      await db.query('commit');
+      return false;
+    }
+
+    const positionByKind = new Map();
+    for (const { kind, slug } of attributeSlugs(spec)) {
+      const position = positionByKind.get(kind) ?? 0;
+      positionByKind.set(kind, position + 1);
+      await db.query(
+        `insert into public.listing_attribute_values (listing_id, term_id, kind, "position")
+         values ($1, $2, $3, $4)
+         on conflict (listing_id, term_id) do nothing`,
+        [listingId, termIdBySlug.get(`${kind}:${slug}`), kind, position],
+      );
+    }
+    await db.query(`update public.listings set keywords = $2 where id = $1 and keywords = '{}'`, [
+      listingId,
+      spec.kw,
+    ]);
+    await db.query('commit');
+    return true;
+  } catch (error) {
+    await db.query('rollback');
+    throw new Error(`Failed to seed attributes for listing ${listingId}: ${error.message}`);
+  }
+}
+
+/**
+ * Strictly additive: sets a seed listing's brand only if it has NEITHER a
+ * brand_id nor a brand_text yet. A brand set by an earlier run, or by hand in
+ * the app, is never changed or cleared. Returns whether it wrote anything.
+ */
+async function ensureListingBrand(db, listingId, brandId, brandText) {
+  const { rowCount } = await db.query(
+    `update public.listings
+        set brand_id = $2, brand_text = $3
+      where id = $1 and brand_id is null and brand_text is null`,
+    [listingId, brandId, brandText],
+  );
+  return rowCount === 1;
 }
 
 main().catch((error) => {

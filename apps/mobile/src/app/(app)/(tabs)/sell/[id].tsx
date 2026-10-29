@@ -5,7 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import {
   Button,
@@ -32,14 +32,12 @@ import {
   type CategoryGroup,
 } from '@/features/categories/categories';
 import { useCategories } from '@/features/categories/queries';
-import {
-  applySuggestionToForm,
-  clearSuggestedField,
-  type SuggestedFieldName,
-} from '@/features/listings/ai-suggestion-apply';
+import { AiOfferRow } from '@/features/listings/ai-offer-row';
+import { offersForField, type AiField, type AiOffer } from '@/features/listings/ai-policy';
 import type { ListingImageRow, ListingRow } from '@/features/listings/api';
 import { mapListingError } from '@/features/listings/errors';
 import { uploadAndAttachListingImage } from '@/features/listings/images';
+import { ListingDetailsFields } from '@/features/listings/listing-details-fields';
 import { createImageId, MAX_LISTING_PHOTOS } from '@/features/listings/paths';
 import {
   addLocalPhotos,
@@ -63,7 +61,6 @@ import {
   useListingImages,
   useRemoveListingImage,
   useReorderListingImages,
-  useSuggestListingFromPhotos,
   useUpdateDraft,
   useUpdateListingDetails,
   usePublishListing,
@@ -85,6 +82,8 @@ import {
   SIZE_SYSTEM_LABELS,
   type SizeSystem,
 } from '@/features/listings/size';
+import { useAiAnalysis } from '@/features/listings/use-ai-analysis';
+import { useAttributeEditor } from '@/features/listings/use-attribute-editor';
 
 // Verified against the installed packages: every name below exists in
 // sf-symbols-typescript's types and in expo-symbols' android/symbols.json.
@@ -112,6 +111,9 @@ export default function SellEditor() {
 
   const listingQuery = useListing(id);
   const listing = listingQuery.data;
+  // Photos still uploading in PhotoSection. AI analysis waits for the batch
+  // to settle (none in flight) before it looks at the photo set.
+  const [photosInFlight, setPhotosInFlight] = useState(0);
 
   // The listings SELECT policy makes active listings publicly visible, so a
   // row CAN resolve here without belonging to the caller (another seller's
@@ -190,12 +192,13 @@ export default function SellEditor() {
           sellerId={listing.seller_id}
           editable={isDraft}
           autoPick={autoPick}
+          onUploadsInFlightChange={setPhotosInFlight}
         />
         {/* Keyed by listing id: a fresh mount (and fresh RHF defaultValues)
             only when the displayed listing actually changes, never on an
             incidental background refetch of the same one — which would
             otherwise silently discard in-progress edits. */}
-        <ListingFieldsSection key={listing.id} listing={listing} />
+        <ListingFieldsSection key={listing.id} listing={listing} photosInFlight={photosInFlight} />
       </View>
     );
   }
@@ -229,12 +232,15 @@ function PhotoSection({
   sellerId,
   editable,
   autoPick,
+  onUploadsInFlightChange,
 }: {
   listingId: string;
   sellerId: string;
   editable: boolean;
   /** See `SellEditor`'s own doc comment — opens a picker once, automatically, on mount. */
   autoPick?: 'camera' | 'gallery';
+  /** How many picked photos are still uploading (failed ones don't count). */
+  onUploadsInFlightChange?: (count: number) => void;
 }) {
   const queryClient = useQueryClient();
   const imagesQuery = useListingImages(listingId);
@@ -253,6 +259,11 @@ function PhotoSection({
 
   const totalCount = persisted.length + localPhotos.length;
   const remaining = remainingPhotoSlots(totalCount);
+
+  const uploadsInFlight = localPhotos.filter((item) => item.status === 'uploading').length;
+  useEffect(() => {
+    onUploadsInFlightChange?.(uploadsInFlight);
+  }, [uploadsInFlight, onUploadsInFlightChange]);
 
   async function runUpload(item: LocalPhotoItem) {
     try {
@@ -541,6 +552,12 @@ const SIZE_SYSTEM_ORDER: SizeSystem[] = ['alpha', 'eu_shoe', 'one_size'];
 // not component state, since the grouping never changes at runtime.
 const SIZE_GROUPS = listingSizesBySystem();
 
+/** "Women › Shoes" for the attribute-removal notice; null until categories load. */
+function categoryBreadcrumb(groups: CategoryGroup[], categoryId: string | null): string | null {
+  const selection = findCategorySelection(groups, categoryId);
+  return selection ? formatCategoryBreadcrumb(selection.group, selection.leaf) : null;
+}
+
 /**
  * The pressable "Category" field, shared between the draft and
  * active/reserved editors (ROADMAP 2.1). Reuses TextField's label-above
@@ -609,14 +626,14 @@ type PendingAction = 'save' | 'publish' | null;
  * `publish_listing` already enforces, so the client side uses the exact
  * same `publishableListingSchema`, not a new one.
  */
-function ListingFieldsSection({ listing }: { listing: ListingRow }) {
+function ListingFieldsSection({ listing, photosInFlight }: { listing: ListingRow; photosInFlight: number }) {
   if (listing.status === 'draft') {
-    return <DraftFieldsSection listing={listing} />;
+    return <DraftFieldsSection listing={listing} photosInFlight={photosInFlight} />;
   }
   return <PublishedFieldsSection listing={listing} />;
 }
 
-function DraftFieldsSection({ listing }: { listing: ListingRow }) {
+function DraftFieldsSection({ listing, photosInFlight }: { listing: ListingRow; photosInFlight: number }) {
   const sellerId = listing.seller_id;
   const updateDraft = useUpdateDraft(listing.id, sellerId);
   const publish = usePublishListing(sellerId);
@@ -637,16 +654,6 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [shownBlockers, setShownBlockers] = useState<PublishBlocker[]>([]);
-
-  // ROADMAP 4.3 "Suggestions in the sell flow". `suggestedFields` is which
-  // fields currently show a "Suggested" chip; `suggestedPriceRange` is only
-  // ever read while 'price' is in that set, to render the price field's
-  // helper text. Neither is persisted — both are pure local UI state that
-  // seeding the form from a suggestion writes, and editing a field clears.
-  const suggest = useSuggestListingFromPhotos();
-  const [suggestError, setSuggestError] = useState<string | null>(null);
-  const [suggestedFields, setSuggestedFields] = useState<Set<SuggestedFieldName>>(new Set());
-  const [suggestedPriceRange, setSuggestedPriceRange] = useState<{ min: number; max: number } | null>(null);
 
   const form = useForm<ListingFormInput, unknown, DraftListingInput>({
     resolver: zodResolver(draftListingSchema),
@@ -678,6 +685,57 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
     imageCount,
   );
 
+  // Structured details (item type, colors, …) live outside the form and save
+  // through their own RPC right after it; see useAttributeEditor.
+  const watchedCategoryId = watched.categoryId ?? null;
+  const attributes = useAttributeEditor(
+    listing.id,
+    watchedCategoryId,
+    categoryBreadcrumb(categoryGroups, watchedCategoryId),
+  );
+  const hasUnsavedChanges = formState.isDirty || attributes.dirty;
+
+  // AI-assisted details (Phase 2): runs when the photo set changes, never
+  // overwrites what the seller entered, and offers disagreements instead.
+  // Manual editing works exactly the same whether or not AI is available.
+  const ai = useAiAnalysis({
+    listingId: listing.id,
+    form,
+    editor: attributes,
+    photoPaths: imagesQuery.data?.map((image) => image.storage_path),
+    photosInFlight,
+    categoryGroups,
+    currency: listing.currency,
+  });
+  const suggestedFields = ai.suggestedFields;
+
+  // One spoken update per AI state change (iOS and Android alike), instead of
+  // a live region per field: "analyzing", the result, or why it's unavailable.
+  const previousAiStatus = useRef(ai.status);
+  useEffect(() => {
+    const previous = previousAiStatus.current;
+    previousAiStatus.current = ai.status;
+    if (ai.status === 'analyzing' && previous !== 'analyzing') {
+      AccessibilityInfo.announceForAccessibility('Analyzing photos. You can keep editing.');
+    } else if (previous === 'analyzing' && ai.status === 'idle' && ai.hasAnalysis) {
+      AccessibilityInfo.announceForAccessibility('Suggestions from your photos are ready next to each field.');
+    } else if (ai.status === 'unavailable' && ai.message) {
+      AccessibilityInfo.announceForAccessibility(ai.message);
+    }
+  }, [ai.status, ai.message, ai.hasAnalysis]);
+
+  function aiOffers(field: AiField, fieldLabel: string) {
+    return (
+      <AiOfferRow
+        offers={offersForField(ai.offers, field)}
+        fieldLabel={fieldLabel}
+        disabled={busy}
+        onApply={(offer: AiOffer) => ai.applyOffer(offer)}
+        onDismiss={() => ai.dismissField(field)}
+      />
+    );
+  }
+
   function applySavedValues(saved: ListingRow) {
     // Resets to the server's canonical values (trimmed title, price
     // reformatted to two decimals, etc.) and clears `isDirty` — the "this is
@@ -693,57 +751,38 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
   }
 
   /**
-   * ROADMAP 4.3. Never auto-publishes and never touches the DB — it only
-   * seeds local form state via `form.setValue(..., { shouldDirty: true })`,
-   * the exact same mechanism the category picker's own `onSelect` already
-   * uses. All `ok:false` reasons (no_photos/rate_limited/ai_unavailable/
-   * invalid_request) render identically: stop pending, leave the form
-   * untouched, show `result.message` inline — the Edge Function already
-   * returns a safe, display-ready string, so there is no per-reason
-   * branching here.
+   * Re-analyze: the server reads the SAVED title, description and category,
+   * so unsaved edits are saved first (the same save the button does).
+   * Identical inputs come back from the server's cache with no model call.
    */
-  async function handleSuggest() {
-    setSuggestError(null);
-    try {
-      const result = await suggest.mutateAsync(listing.id);
-      if (!result.ok) {
-        setSuggestError(result.message);
-        return;
-      }
-
-      const { values, suggestedFields: fields } = applySuggestionToForm(result.suggestion, categoryGroups);
-      form.setValue('title', values.title, { shouldDirty: true });
-      form.setValue('description', values.description, { shouldDirty: true });
-      form.setValue('condition', values.condition, { shouldDirty: true });
-      form.setValue('price', values.price, { shouldDirty: true });
-      if (values.categoryId !== undefined) {
-        form.setValue('categoryId', values.categoryId, { shouldDirty: true });
-      }
-      setSuggestedFields(new Set(fields));
-      setSuggestedPriceRange({ min: result.suggestion.priceMinAmount, max: result.suggestion.priceMaxAmount });
-    } catch (err) {
-      // suggestListingFromPhotos maps its own transport failures into an
-      // ok:false result rather than throwing — reaching here means something
-      // genuinely unexpected happened (e.g. a bug), not an expected failure.
-      if (__DEV__) {
-        console.error(err);
-      }
-      setSuggestError("Couldn't get suggestions right now.");
+  async function handleReanalyze() {
+    if (hasUnsavedChanges) {
+      let saved = false;
+      await handleSubmit(async (input) => {
+        saved = await onSaveDraft(input);
+      })();
+      if (!saved) return;
     }
+    ai.reanalyze();
   }
 
-  async function onSaveDraft(input: DraftListingInput) {
+  /** Returns whether the form itself saved (details failing is reported separately). */
+  async function onSaveDraft(input: DraftListingInput): Promise<boolean> {
     setFormError(null);
     setShownBlockers([]);
     setPendingAction('save');
     try {
       const saved = await updateDraft.mutateAsync(input);
       applySavedValues(saved);
+      const attributesError = await attributes.save();
+      if (attributesError) setFormError(attributesError);
+      return true;
     } catch (err) {
       if (__DEV__) {
         console.error(err);
       }
       setFormError(mapListingError(err).message);
+      return false;
     } finally {
       setPendingAction(null);
     }
@@ -759,6 +798,13 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
       // server copy from before their last keystroke.
       const saved = await updateDraft.mutateAsync(input);
       applySavedValues(saved);
+      // Stop here if the details didn't save: publishing swaps this editor
+      // out, which would silently discard them along with the message.
+      const attributesError = await attributes.save();
+      if (attributesError) {
+        setFormError(attributesError);
+        return;
+      }
 
       const blockers = publishBlockers(saved, imageCount);
       if (blockers.length > 0) {
@@ -786,23 +832,32 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
 
   return (
     <View style={styles.fields}>
+      {/* Non-blocking: analysis runs in the background while every field stays editable. */}
       <View style={styles.suggestSection}>
-        <Button
-          variant="secondary"
-          size="sm"
-          onPress={handleSuggest}
-          loading={suggest.isPending}
-          disabled={suggest.isPending || imageCount === 0}>
-          Suggest from photos
-        </Button>
-        {imageCount === 0 ? (
-          <Text variant="caption" color="textTertiary">
-            Add a photo first
-          </Text>
+        <Text variant="caption" color="textSecondary">
+          {ai.status === 'analyzing'
+            ? 'Analyzing photos… You can keep editing.'
+            : ai.message
+              ? ai.message
+              : imageCount === 0
+                ? 'Add photos and we’ll suggest details from them.'
+                : ai.hasAnalysis
+                  ? 'Suggestions from your photos appear next to each field.'
+                  : ' '}
+        </Text>
+        {imageCount > 0 ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            onPress={handleReanalyze}
+            loading={ai.status === 'analyzing'}
+            disabled={busy || !ai.canReanalyze}>
+            {ai.hasAnalysis ? 'Re-analyze' : 'Analyze photos'}
+          </Button>
         ) : null}
-        {suggestError ? (
-          <Text variant="caption" color="danger" accessibilityLiveRegion="polite" accessibilityRole="alert">
-            {suggestError}
+        {imageCount > 0 && hasUnsavedChanges && ai.canReanalyze ? (
+          <Text variant="caption" color="textTertiary">
+            Saves your changes first, so they are included.
           </Text>
         ) : null}
       </View>
@@ -822,7 +877,7 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
               value={field.value}
               onChangeText={(text) => {
                 field.onChange(text);
-                setSuggestedFields((prev) => clearSuggestedField(prev, 'title'));
+                ai.clearSuggested('title');
               }}
               onBlur={field.onBlur}
               error={fieldState.error?.message}
@@ -833,6 +888,7 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
             />
           )}
         />
+        {aiOffers('title', 'Title')}
       </View>
 
       <View style={styles.fieldWithLabel}>
@@ -851,14 +907,14 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
               value={field.value}
               onChangeText={(text) => {
                 field.onChange(text);
-                setSuggestedFields((prev) => clearSuggestedField(prev, 'price'));
+                ai.clearSuggested('price');
               }}
               onBlur={field.onBlur}
               error={fieldState.error?.message}
               disabled={busy}
               helperText={
-                suggestedFields.has('price') && suggestedPriceRange
-                  ? `Suggested range: ${formatMoney(suggestedPriceRange.min, listing.currency)}–${formatMoney(suggestedPriceRange.max, listing.currency)}`
+                suggestedFields.has('price') && ai.priceRange
+                  ? `Suggested range: ${formatMoney(ai.priceRange.minAmount, listing.currency)}–${formatMoney(ai.priceRange.maxAmount, listing.currency)}`
                   : undefined
               }
               accessibilityLabel={[
@@ -871,6 +927,7 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
             />
           )}
         />
+        {aiOffers('price', 'Price')}
       </View>
 
       <Controller
@@ -892,12 +949,13 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
               onSelect={(_group: CategoryGroup, leaf: Category) => {
                 field.onChange(leaf.id);
                 setCategoryPickerOpen(false);
-                setSuggestedFields((prev) => clearSuggestedField(prev, 'categoryId'));
+                ai.clearSuggested('categoryId');
               }}
             />
           </>
         )}
       />
+      {aiOffers('categoryId', 'Category')}
 
       <View style={styles.conditionField}>
         <View style={styles.fieldLabelRow}>
@@ -920,13 +978,14 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
                   disabled={busy}
                   onPress={() => {
                     field.onChange(field.value === value ? null : value);
-                    setSuggestedFields((prev) => clearSuggestedField(prev, 'condition'));
                   }}
                 />
               ))}
             </View>
           )}
         />
+        {/* Condition is confirm-only: AI never sets it, it can only be offered here. */}
+        {aiOffers('condition', 'Condition')}
       </View>
 
       <View style={styles.sizeField}>
@@ -962,6 +1021,18 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
         />
       </View>
 
+      <ListingDetailsFields
+        editor={attributes}
+        categoryId={watchedCategoryId}
+        disabled={busy}
+        ai={{
+          offers: ai.offers,
+          suggested: ai.suggestedFields,
+          onApply: ai.applyOffer,
+          onDismiss: ai.dismissField,
+        }}
+      />
+
       <View style={styles.fieldWithLabel}>
         <View style={styles.fieldLabelRow}>
           <Text variant="label" color="textSecondary">
@@ -979,7 +1050,7 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
               value={field.value}
               onChangeText={(text) => {
                 field.onChange(text);
-                setSuggestedFields((prev) => clearSuggestedField(prev, 'description'));
+                ai.clearSuggested('description');
               }}
               onBlur={field.onBlur}
               error={fieldState.error?.message}
@@ -994,6 +1065,7 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
             />
           )}
         />
+        {aiOffers('description', 'Description')}
       </View>
 
       {/* shownBlockers only ever fills after a blocked publish attempt — which
@@ -1033,7 +1105,7 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
             ? 'Saving…'
             : pendingAction === 'publish'
               ? 'Publishing…'
-              : formState.isDirty
+              : hasUnsavedChanges
                 ? 'Unsaved changes'
                 : ' '}
         </Text>
@@ -1043,7 +1115,7 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
             size="sm"
             onPress={handleSubmit(onSaveDraft)}
             loading={pendingAction === 'save'}
-            disabled={busy || !formState.isDirty}>
+            disabled={busy || !hasUnsavedChanges}>
             Save draft
           </Button>
           <Button
@@ -1106,6 +1178,14 @@ function PublishedFieldsSection({ listing }: { listing: ListingRow }) {
   });
   const { control, handleSubmit, formState } = form;
 
+  const watchedCategoryId = useWatch({ control, name: 'categoryId' });
+  const attributes = useAttributeEditor(
+    listing.id,
+    watchedCategoryId,
+    categoryBreadcrumb(categoryGroups, watchedCategoryId),
+  );
+  const hasUnsavedChanges = formState.isDirty || attributes.dirty;
+
   async function onSave(input: PublishableListingInput) {
     setFormError(null);
     setSaving(true);
@@ -1123,6 +1203,8 @@ function PublishedFieldsSection({ listing }: { listing: ListingRow }) {
         size: saved.size!,
         categoryId: saved.category_id!,
       });
+      const attributesError = await attributes.save();
+      if (attributesError) setFormError(attributesError);
     } catch (err) {
       if (__DEV__) {
         console.error(err);
@@ -1247,6 +1329,8 @@ function PublishedFieldsSection({ listing }: { listing: ListingRow }) {
         />
       </View>
 
+      <ListingDetailsFields editor={attributes} categoryId={watchedCategoryId} disabled={saving} />
+
       <Controller
         control={control}
         name="description"
@@ -1272,7 +1356,7 @@ function PublishedFieldsSection({ listing }: { listing: ListingRow }) {
 
       <View style={styles.fieldsFooter}>
         <Text variant="caption" color="textTertiary">
-          {saving ? 'Saving…' : formState.isDirty ? 'Unsaved changes' : ' '}
+          {saving ? 'Saving…' : hasUnsavedChanges ? 'Unsaved changes' : ' '}
         </Text>
         <View style={styles.fieldsActions}>
           <Button
@@ -1280,7 +1364,7 @@ function PublishedFieldsSection({ listing }: { listing: ListingRow }) {
             size="sm"
             onPress={handleSubmit(onSave)}
             loading={saving}
-            disabled={saving || !formState.isDirty}>
+            disabled={saving || !hasUnsavedChanges}>
             Save changes
           </Button>
         </View>
