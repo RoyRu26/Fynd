@@ -6,7 +6,7 @@
 /** Cover-first, and capped so a draft with many photos still sends a bounded request. */
 export const MAX_SUGGESTION_PHOTOS = 4;
 
-type ListingImageRow = { storage_path: string };
+type ListingImageRow = { id: string; storage_path: string; position: number };
 
 /** Minimal shape of the subset of the supabase-js client this file uses. */
 export type PhotosReadClient = {
@@ -35,16 +35,18 @@ export type PhotosReadClient = {
 };
 
 /**
- * Fetches up to `MAX_SUGGESTION_PHOTOS` storage paths for a listing's
- * images, ordered by `position` ascending so the cover photo comes first.
+ * Fetches up to `MAX_SUGGESTION_PHOTOS` of a listing's images, ordered by
+ * `position` ascending so the cover photo comes first. Read through the
+ * caller-scoped client, so only images the caller may see are returned; the
+ * ids, paths and positions become part of the analysis cache key.
  */
-export async function fetchListingPhotoPaths(
+export async function fetchListingPhotos(
   client: PhotosReadClient,
   listingId: string,
-): Promise<string[]> {
+): Promise<{ imageId: string; storagePath: string; position: number }[]> {
   const { data, error } = await client
     .from('listing_images')
-    .select('storage_path')
+    .select('id, storage_path, position')
     .eq('listing_id', listingId)
     .order('position', { ascending: true })
     .limit(MAX_SUGGESTION_PHOTOS);
@@ -52,7 +54,7 @@ export async function fetchListingPhotoPaths(
   if (error) {
     throw new Error(`Failed to fetch listing photos: ${error.message}`);
   }
-  return (data ?? []).map((row) => row.storage_path);
+  return (data ?? []).map((row) => ({ imageId: row.id, storagePath: row.storage_path, position: row.position }));
 }
 
 /**
@@ -70,7 +72,8 @@ export async function downloadPhotoAsBase64(
 ): Promise<string> {
   const { data, error } = await client.storage.from(bucket).download(storagePath);
   if (error || !data) {
-    throw new Error(`Failed to download ${storagePath}: ${error?.message ?? 'no data returned'}`);
+    // No path in the message: it ends up in function logs.
+    throw new Error(`Failed to download a listing photo: ${error?.message ?? 'no data returned'}`);
   }
   const arrayBuffer = await data.arrayBuffer();
   return encodeBase64(arrayBuffer);
