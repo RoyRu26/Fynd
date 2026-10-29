@@ -11,16 +11,20 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(23);
+select plan(33);
 
 -- ============================================================
 -- FIXTURES
 -- ============================================================
--- A owns a draft (D1) and a separately-published active listing (L_ACTIVE),
--- so both "owned draft" and "owned but not a draft" can be exercised from
--- the same seller. B owns a second draft (D2), used to prove a caller
--- cannot spend another user's attempts. C owns neither -- it attempts
--- against B's draft to prove cross-user access is rejected.
+-- A owns two drafts (D1, D5) and a separately-published active listing
+-- (L_ACTIVE), so both "owned draft" and "owned but not a draft" can be
+-- exercised from the same seller. A's calls are spread over two drafts
+-- because each listing also has its own limit of 3 attempts per 24h (Phase
+-- 2, section 7 below): the per-USER sections must not trip it. B owns a
+-- second user's draft (D2, plus D6 for section 7), used to prove a caller
+-- cannot spend another user's attempts and to test the per-listing limit
+-- with a fresh per-user quota. C owns neither -- it attempts against B's
+-- draft to prove cross-user access is rejected.
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password, created_at, updated_at
@@ -44,7 +48,11 @@ values
   ('ee000000-0000-0000-0000-000000000002', 'f8000000-0000-0000-0000-00000000000a',
    'A active listing', 'AISUGG_ACTIVE', 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
   ('ee000000-0000-0000-0000-000000000003', 'f8000000-0000-0000-0000-00000000000b',
-   'B draft', 'AISUGG_D2', null, null, null, null, 'draft');
+   'B draft', 'AISUGG_D2', null, null, null, null, 'draft'),
+  ('ee000000-0000-0000-0000-000000000005', 'f8000000-0000-0000-0000-00000000000a',
+   'A draft 2', 'AISUGG_D5', null, null, null, null, 'draft'),
+  ('ee000000-0000-0000-0000-000000000006', 'f8000000-0000-0000-0000-00000000000b',
+   'B draft 2', 'AISUGG_D6', null, null, null, null, 'draft');
 
 -- Act as A from here.
 set local role authenticated;
@@ -92,8 +100,8 @@ select is(
 -- backs the "serializes concurrent callers" claim, not this assertion.
 
 select isnt(
-  (select remaining from public.record_ai_suggestion_attempt('ee000000-0000-0000-0000-000000000001')),
-  (select remaining from public.record_ai_suggestion_attempt('ee000000-0000-0000-0000-000000000001')),
+  (select remaining from public.record_ai_suggestion_attempt('ee000000-0000-0000-0000-000000000005')),
+  (select remaining from public.record_ai_suggestion_attempt('ee000000-0000-0000-0000-000000000005')),
   'two immediately-successive calls never report the same remaining value'
 );
 
@@ -134,6 +142,12 @@ select is(
 );
 
 select is(
+  (select limited_by from public.record_ai_suggestion_attempt('ee000000-0000-0000-0000-000000000001')),
+  'user',
+  'a denial at the per-user limit says it was the user limit'
+);
+
+select is(
   (select count(*)::int from public.ai_suggestion_calls
     where user_id = 'f8000000-0000-0000-0000-00000000000a'),
   20,
@@ -152,20 +166,21 @@ select is(
 -- therefore the count) alive regardless of what happens to the listing.
 
 reset role;
-delete from public.listings where id = 'ee000000-0000-0000-0000-000000000001';
+delete from public.listings
+ where id in ('ee000000-0000-0000-0000-000000000001', 'ee000000-0000-0000-0000-000000000005');
 
 select is(
   (select count(*)::int from public.ai_suggestion_calls
     where user_id = 'f8000000-0000-0000-0000-00000000000a'),
   20,
-  'deleting the draft the calls were recorded against does not reduce A''s count'
+  'deleting the drafts the calls were recorded against does not reduce A''s count'
 );
 
 select is(
   (select count(*)::int from public.ai_suggestion_calls
     where user_id = 'f8000000-0000-0000-0000-00000000000a' and listing_id is null),
   20,
-  'the deleted draft''s rows survive with listing_id nulled out, not removed'
+  'the deleted drafts'' rows survive with listing_id nulled out, not removed'
 );
 
 -- A brand new draft doesn't grant a fresh quota -- A is still at the limit.
@@ -289,6 +304,75 @@ select throws_ok(
   $$select last_value from public.ai_suggestion_calls_id_seq$$,
   '42501', null,
   'authenticated cannot read ai_suggestion_calls_id_seq either -- the revoke is not owner-scoped, it is total'
+);
+
+-- ============================================================
+-- 7. Per-listing limit: 3 attempts per listing per rolling 24h (Phase 2)
+-- ============================================================
+-- B has a fresh per-user quota, so any denial here is the listing limit.
+-- Attempts are only recorded for cache MISSES: the Edge Function returns a
+-- cached analysis before ever calling this RPC, so cache hits never count
+-- (an Edge Function property; this suite tests the RPC).
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"f8000000-0000-0000-0000-00000000000b","role":"authenticated"}';
+
+select is(
+  (select row(allowed, limited_by) from public.record_ai_suggestion_attempt('ee000000-0000-0000-0000-000000000003')),
+  row(true, null::text),
+  'listing limit: 1st attempt on a draft is allowed (limited_by is null)'
+);
+select is(
+  (select allowed from public.record_ai_suggestion_attempt('ee000000-0000-0000-0000-000000000003')),
+  true,
+  'listing limit: 2nd attempt is allowed'
+);
+select is(
+  (select allowed from public.record_ai_suggestion_attempt('ee000000-0000-0000-0000-000000000003')),
+  true,
+  'listing limit: 3rd attempt is allowed'
+);
+select is(
+  (select row(allowed, remaining, limited_by) from public.record_ai_suggestion_attempt('ee000000-0000-0000-0000-000000000003')),
+  row(false, 17, 'listing'::text),
+  'listing limit: the 4th attempt on the same draft is denied by the listing limit, with 17 of B''s 20 left'
+);
+select is(
+  (select count(*)::int from public.ai_suggestion_calls where listing_id = 'ee000000-0000-0000-0000-000000000003'),
+  3,
+  'listing limit: the denied 4th attempt recorded no row'
+);
+select is(
+  (select row(allowed, remaining) from public.record_ai_suggestion_attempt('ee000000-0000-0000-0000-000000000006')),
+  row(true, 16),
+  'listing limit: B''s other draft is unaffected and still draws on the per-user quota'
+);
+
+-- Window: attempts older than 24h don't count toward the listing limit.
+reset role;
+insert into public.ai_suggestion_calls (user_id, listing_id, created_at)
+select 'f8000000-0000-0000-0000-00000000000b', 'ee000000-0000-0000-0000-000000000006', now() - interval '25 hours'
+  from generate_series(1, 5);
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"f8000000-0000-0000-0000-00000000000b","role":"authenticated"}';
+
+select is(
+  (select allowed from public.record_ai_suggestion_attempt('ee000000-0000-0000-0000-000000000006')),
+  true,
+  'listing limit: attempts older than 24h do not count'
+);
+
+reset role;
+
+select ok(
+  not has_function_privilege('anon', 'public.record_ai_suggestion_attempt(uuid)', 'execute'),
+  'the re-created record_ai_suggestion_attempt is not executable by anon'
+);
+
+select is(
+  pg_get_function_result('public.record_ai_suggestion_attempt(uuid)'::regprocedure),
+  'TABLE(allowed boolean, remaining integer, limited_by text)',
+  'record_ai_suggestion_attempt returns exactly (allowed, remaining, limited_by)'
 );
 
 select * from finish();
