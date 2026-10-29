@@ -45,7 +45,11 @@
           "cameraPermission": "Fynd needs camera access so you can snap photos for your listings.",
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-font",
+      "expo-image",
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

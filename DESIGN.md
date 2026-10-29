@@ -515,13 +515,19 @@ SCREENS.md Task 6 replaces the plain `ListRow` list with: a Stories row (`StoryR
 
 ### 14.6 Listing detail
 
-The feed card unfolded: same elements, more room — but a different emphasis and order. The feed leads with the photo and defers everything else to a caption block (tag → seller → title → specs → price); detail leads with price and title and gives the attributes their own row.
+SCREENS.md Task 9 (the 6a handoff) resolves this section's own former **[OPEN] — dark treatment** item: the gallery runs full-bleed and edge-to-edge under the status bar (`ListingGallery`'s own fixed `GALLERY_HEIGHT` = 500, not a crop ratio), a content sheet overlaps it by a bespoke 28px radius the token scale's `radius.xl` (16) doesn't reach, and everything in the sheet follows the system theme same as before — "dark" is the gallery area's own photography, not a forced scheme.
 
-Horizontally paged gallery (same image wrapper) → price → title → attribute chips → seller row → description → pinned bottom action bar.
+Floating header → full-bleed gallery (page dots, not a "1/N" counter) → content sheet: price + condition `Sticker` → title → attribute badges → description → seller card → sticky bottom action bar.
 
-**Attribute chips (ROADMAP 2.1)** are three: condition, size, and a category breadcrumb (e.g. "Women › Shoes"). This is the screen that uses chips for attributes — the feed card compresses the same condition/size pair into a single specs line (§14.1) — and it has no numeric cap.
+**Gallery header gradient** (`gradientGalleryHeader`, `tokens.ts`): opaque-to-transparent top-down over the gallery's own top 120px, the same rgb base as `gradientScrim`/`gradientFade` (neutral.950) but the inverse shape — keeps the status bar readable over a bright photo without darkening the photo further down, where `gradientScrim`-style text legibility isn't needed (nothing but the floating header's own `bg`-filled circles sits there).
 
-**[OPEN] — dark treatment.** The media/gallery area may be dark while the informational portion follows the system theme. Not locked; decide with the real design in hand.
+**Attribute badges (ROADMAP 2.1)** are two now, not three: size (filled `bgInverse` pill) and a category breadcrumb (e.g. "Women › Shoes", `text`-outline pill) — condition moved into the price row's own `Sticker`. Static pills, not `Chip`: display-only tags, never a filter, and `Chip`'s own radius is capped at `radius.sm` (§7's pill carve-out reaches `PillButton`/`ReactionPill` and the Sell rack's static status pill, not these). No numeric cap, same as before — the feed card compresses the same condition/size pair into one specs line instead (§14.1).
+
+**Seller card and sticky bar** both carry a hard, offset `text`-colour shadow (a real backing `View`, not a platform shadow) — the same technique `PinnedListingStrip` (§14.7) and `Composer`'s send button already use, now a third and fourth consumer of the identical pattern.
+
+**Favorite moved**: it no longer sits in the price row: the sticky bottom bar's own 52px outline circle is now the only favorite control (filled `favoriteActive` heart when favorited), freeing the price row for price + condition alone.
+
+No blur anywhere the handoff asks for one ("bg 88%/94% + blur" on the floating header circles and the sticky bar): the same documented simplification `Composer` already uses for its own identical request — `expo-blur` isn't a dependency anywhere in this app, and a raw rgba literal would violate §15 rule 1 regardless. A solid `bg` fill is visually close and adds neither.
 
 ### 14.7 Conversation thread
 

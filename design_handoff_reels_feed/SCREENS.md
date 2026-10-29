@@ -1,6 +1,6 @@
 # Handoff: Fynd — Paper & Ink redesign (all screens)
 
-Read `README.md` in this folder first: theme migration plus the feed card (1a). This file covers the remaining screens and the logo. Visual reference: `Thrift Reels.dc.html` (open in a browser; Turn 4 = final Explore/Sell/Inbox/Profile, picks 4a/4c/4e/4g) and `screenshots/`. Turn 2 screens are superseded except the listing editor (2f). Chat = Turn 5, pick 5a.
+Read `README.md` in this folder first: theme migration plus the feed card (1a). This file covers the remaining screens and the logo. Visual reference: `Thrift Reels.dc.html` (open in a browser; Turn 4 = final Explore/Sell/Inbox/Profile, picks 4a/4c/4e/4g) and `screenshots/`. Turn 2 screens are superseded except the listing editor (2f). Chat = Turn 5, pick 5a. Listing page = Turn 6, pick 6a.
 
 ## Ground rules (same as README)
 - Use semantic tokens and existing `components/ui` primitives only. No raw hex in screens.
@@ -84,5 +84,19 @@ Replaces the 2d chat spec. File: `apps/mobile/src/app/(app)/conversation/[id].ts
   - Image message: 150×190, radius 14, 1.5px border, rotated −1.5°.
 - No payments or delivery in v1 — no order status, tracking or progress UI.
 
+## Task 9 — Listing page (6a) · screenshots/6a-listing.png
+File: `apps/mobile/src/app/(app)/listing/[id].tsx`. Keep all existing logic (loading skeleton, error/unavailable states, favorite toggle, MoreActionsSheet/Report, handleMessageSeller, ownership rules). Restyle only.
+- Gallery: full-bleed, edge to edge, 500px tall (≈ 60% of screen), no radius. Top gradient (rgba(20,17,13,.35) → transparent, 120px) so the status bar stays readable. Replace the "1 / 2" counter with page dots 28px above the bottom edge: active = 22×6 pill `bg`, inactive = 6×6 `bg` at 50%.
+- Floating header over the photo: back (left) and more (right) as 44px circles, `bg` 88% + blur, icons `text`. Remove the old header row.
+- Content sheet: `bg`, top radius 28, overlaps the photo by 28px, padding 24/20, 18px gap between blocks.
+- Price row: price in `display` 40/40, letter-spacing −0.02em. Condition as a `Sticker` (accent, rotated 3°, label "{condition} condition") on the right.
+- Title: 24/30 extra-bold.
+- Chips: size = filled `bgInverse` pill; category breadcrumb = 1.5px `text` outline pill. 8px gap, 14px bold, radius full.
+- Description: 15/22 `textSecondary`.
+- Seller card: `bgRaised`, 1.5px `text` border, radius 18, hard 0×3 `text` shadow. 52px avatar inside 2px `accent` ring, name (16 extra-bold), caption "Seller" (`textSecondary`), outline pill "View closet" on the right. Whole card → seller profile (existing route).
+- Sticky bottom bar (replaces the in-flow button): `bg` 94% + blur, hairline top border, padding 12/16 + safe area. 52px outline circle with the favorite heart (filled `accent` when favorited; moves here from the price row), then a 52px `accent` pill "Message seller" with chat icon and hard 0×2 `text` shadow. Error caption shows above the bar. Hide the bar's Message button for the owner (current rules).
+- RTL fix: title and description use `writingDirection: 'auto'` / `textAlign: 'auto'` so Hebrew and mixed text render correctly.
+- Bottom padding on the scroll content = bar height + safe area, so nothing is hidden.
+
 ## Suggested order
-Theme (README) → Task 1 → feed card (README) → Task 2 → 3 → 4 → 5 → 6 → 7 → 8. One commit per task.
+Theme (README) → Task 1 → feed card (README) → Task 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9. One commit per task.

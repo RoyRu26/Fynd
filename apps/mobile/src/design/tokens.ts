@@ -77,6 +77,24 @@ export const gradientFade: LinearGradientValue = {
   ],
 };
 
+// SCREENS.md Task 9 / the 6a handoff — Listing Detail's gallery header
+// gradient. Same rgb base (20,17,13 — neutral.950, the dark scheme's own
+// `bg`) as gradientScrim/gradientFade above, but the OPPOSITE shape: opaque
+// at the top, fading to fully transparent, so the status bar stays readable
+// over a photo without darkening the photo itself further down. The
+// handoff's own "120px" is the HEIGHT of the box this is applied to
+// (GALLERY_HEADER_GRADIENT_HEIGHT in listing/[id].tsx), not encoded here —
+// same convention gradientScrim/gradientFade already follow, where the
+// caller owns the box the percentages are relative to.
+export const gradientGalleryHeader: LinearGradientValue = {
+  type: "linear-gradient",
+  direction: "180deg",
+  colorStops: [
+    { color: "rgba(20,17,13,0.35)", positions: ["0%"] },
+    { color: "rgba(20,17,13,0)", positions: ["100%"] },
+  ],
+};
+
 // DESIGN.md §6 — 4pt spacing scale.
 export const space = {
   0: 0,
