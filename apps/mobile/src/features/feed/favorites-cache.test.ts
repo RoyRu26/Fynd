@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  isListingFavoritedInPages,
-  setFavoriteInPages,
-  type FeedPages,
-} from '@/features/feed/favorites-cache';
+import { setFavoriteInPages, type FeedPages } from '@/features/feed/favorites-cache';
 import type { FeedListing } from '@/features/feed/pagination';
 
 function listing(id: string, isFavorited = false): FeedListing {
@@ -132,35 +128,5 @@ describe('setFavoriteInPages', () => {
 
     // What onError does: hand the snapshot straight back.
     expect(snapshot.pages[0][0].isFavorited).toBe(false);
-    expect(isListingFavoritedInPages(snapshot, 'a')).toBe(false);
-  });
-});
-
-describe('isListingFavoritedInPages', () => {
-  it('reads the current state from the cache', () => {
-    const data = pages([listing('a', true), listing('b')]);
-
-    expect(isListingFavoritedInPages(data, 'a')).toBe(true);
-    expect(isListingFavoritedInPages(data, 'b')).toBe(false);
-  });
-
-  it('finds a listing on a later page', () => {
-    const data = pages([listing('a')], [listing('b', true)]);
-    expect(isListingFavoritedInPages(data, 'b')).toBe(true);
-  });
-
-  /**
-   * `null`, not `false`. The caller treats it as "cannot determine" and
-   * falls back to what the card rendered — guessing `false` would send an
-   * insert for a row that may already exist, which the composite primary
-   * key would reject with 23505.
-   */
-  it('returns null for a listing that is not cached, rather than guessing false', () => {
-    const data = pages([listing('a')]);
-    expect(isListingFavoritedInPages(data, 'missing')).toBeNull();
-  });
-
-  it('returns null for an undefined cache', () => {
-    expect(isListingFavoritedInPages(undefined, 'a')).toBeNull();
   });
 });

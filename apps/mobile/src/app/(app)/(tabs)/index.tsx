@@ -269,14 +269,10 @@ function HomeFeed() {
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<FeedListing>) => (
       <View style={{ height: pageHeight }}>
-        <FeedCard
-          listing={item}
-          includeOwn={INCLUDE_OWN_LISTINGS_FOR_LOCAL_TESTING}
-          followingOnly={followingOnly}
-        />
+        <FeedCard listing={item} />
       </View>
     ),
-    [pageHeight, followingOnly],
+    [pageHeight],
   );
 
   const goToExplore = useCallback(() => {

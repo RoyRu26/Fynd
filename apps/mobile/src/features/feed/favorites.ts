@@ -36,11 +36,10 @@ import { requireUserId } from '@/lib/session';
 /**
  * Favorites an active listing.
  *
- * A listing that is already favorited raises `23505` from the composite
- * primary key. The mutation hook avoids reaching that by deriving the toggle
- * direction from the feed cache and refusing to fire while a toggle for the
- * same listing is already in flight — but the constraint is what guarantees
- * it, not the client.
+ * Idempotent: a listing that is already favorited raises `23505` from the
+ * composite primary key, which means the requested state already holds, so
+ * it is treated as success. A client cache that was briefly stale must not
+ * turn "make this favorited" into an error and a rolled-back heart.
  */
 export async function addFavorite(listingId: string): Promise<void> {
   const userId = await requireUserId('change favorites');
@@ -48,7 +47,7 @@ export async function addFavorite(listingId: string): Promise<void> {
   const { error } = await supabase
     .from('favorites')
     .insert({ user_id: userId, listing_id: listingId });
-  if (error) throw error;
+  if (error && error.code !== '23505') throw error;
 }
 
 /**
@@ -58,6 +57,9 @@ export async function addFavorite(listingId: string): Promise<void> {
  * RLS would scope it to the caller's own rows regardless, but relying on
  * the policy to supply half the key would make the query's cost depend on
  * a policy definition elsewhere.
+ *
+ * Idempotent like `addFavorite`: deleting a row that is already gone is not
+ * an error, so both directions are safe to retry.
  *
  * Deliberately works whatever the listing's current status: the DELETE
  * policy does not mirror the insert policy's `active` check, so a favorite

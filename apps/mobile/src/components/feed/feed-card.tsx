@@ -9,7 +9,7 @@ import { MoreActionsSheet } from '@/components/report/more-actions-sheet';
 import { gradientScrim, radius, space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 import { useAuth } from '@/features/auth/auth-provider';
-import { useToggleFavorite } from '@/features/feed/queries';
+import { useSetFavorite } from '@/features/favorites/queries';
 import { mapInboxError } from '@/features/inbox/errors';
 import { useStartConversation } from '@/features/inbox/queries';
 import { CONDITION_LABELS } from '@/features/listings/condition';
@@ -97,15 +97,9 @@ const MORE_ICON: IconName = { ios: 'ellipsis', android: 'more_vert', web: 'more_
 
 export type FeedCardProps = {
   listing: FeedListing;
-  /** Forwarded to useToggleFavorite so it targets the same cache entry the
-   * visible feed is actually reading — see useFeed's own includeOwn flag. */
-  includeOwn?: boolean;
-  /** Forwarded to useToggleFavorite alongside includeOwn — see useFeed's own
-   * followingOnly flag (ROADMAP 3.2's "For you"/"Following" toggle). */
-  followingOnly?: boolean;
 };
 
-export function FeedCard({ listing, includeOwn, followingOnly }: FeedCardProps) {
+export function FeedCard({ listing }: FeedCardProps) {
   const router = useRouter();
   const { colors } = useAppTheme();
   const { session } = useAuth();
@@ -141,10 +135,9 @@ export function FeedCard({ listing, includeOwn, followingOnly }: FeedCardProps) 
   // bottom padding grows, never the card's own height or the image beneath.
   const insets = useSafeAreaInsets();
 
-  // Cache-optimistic toggle + the same "disable while this listing's own
-  // mutation is in flight" race guard the hook already implements — nothing
-  // feed-card-specific to add here, just wiring.
-  const { toggleFavorite, pendingListingIds } = useToggleFavorite(includeOwn, followingOnly);
+  // Shared with the detail screen: patches every cache showing this heart
+  // and disables it while this listing's own change is in flight.
+  const { setFavorite, pendingListingIds } = useSetFavorite();
   const favoritePending = pendingListingIds.has(listing.listingId);
 
   // Per-card instance on purpose: pending and error state belong to the card
@@ -169,8 +162,8 @@ export function FeedCard({ listing, includeOwn, followingOnly }: FeedCardProps) 
   // still letting the caller replay the pop animation unconditionally.
   const handleDoubleTap = useCallback(() => {
     if (listing.isFavorited || favoritePending) return;
-    toggleFavorite(listing.listingId, listing.isFavorited);
-  }, [listing.isFavorited, listing.listingId, favoritePending, toggleFavorite]);
+    setFavorite(listing.listingId, true);
+  }, [listing.isFavorited, listing.listingId, favoritePending, setFavorite]);
 
   const handleSingleTap = useCallback(() => {
     router.push({ pathname: '/(app)/listing/[id]', params: { id: listing.listingId } });
@@ -342,7 +335,7 @@ export function FeedCard({ listing, includeOwn, followingOnly }: FeedCardProps) 
                 accessibilityLabel={
                   listing.isFavorited ? 'Remove from favorites' : 'Add to favorites'
                 }
-                onPress={() => toggleFavorite(listing.listingId, listing.isFavorited)}
+                onPress={() => setFavorite(listing.listingId, !listing.isFavorited)}
                 disabled={favoritePending}
                 selected={listing.isFavorited}
                 variant="onMedia"

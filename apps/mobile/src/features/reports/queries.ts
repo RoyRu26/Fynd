@@ -10,7 +10,7 @@ import type { ReportReason } from '@/features/reports/reports';
  * (no SELECT grant at all -- see `api.ts`'s doc comment), so there is
  * nothing cached anywhere in this app that a successful report could ever
  * invalidate or update. A single `useMutation`, nothing else -- unlike
- * `useToggleFollow`/`useToggleFavoriteFromDetail`, there is no optimistic
+ * `useToggleFollow`/`useSetFavorite`, there is no optimistic
  * update to stage or roll back, since there is no visible state this
  * mutation changes.
  */

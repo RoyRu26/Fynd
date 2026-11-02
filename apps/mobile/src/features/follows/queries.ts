@@ -40,7 +40,7 @@ export const followKeys = {
 /**
  * A stable mutation key, so `useMutationState` below can find an in-flight
  * toggle without the hook keeping its own parallel state — same pattern as
- * `feed/queries.ts`'s `FAVORITE_MUTATION_KEY`.
+ * `favorites/queries.ts`'s `FAVORITE_MUTATION_KEY`.
  */
 export const FOLLOW_MUTATION_KEY = ['follows', 'toggleFollow'] as const;
 
@@ -114,7 +114,7 @@ type ToggleFollowVariables = { profileId: string; isFollowing: boolean };
  *   * `followKeys.isFollowing(viewerId, profileId)` flips directly.
  *
  * In-flight guard and cache-preferred toggle direction mirror
- * `useToggleFavoriteFromDetail` exactly: `isPending` is derived from the
+ * the former detail-screen favorite toggle: `isPending` is derived from the
  * mutation cache (filtered to this `profileId`, since a different profile
  * screen's toggle must not disable this one's button), and `toggleFollow`
  * refuses to fire while one is already pending for this profile.

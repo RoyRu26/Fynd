@@ -30,7 +30,8 @@ import { mapListingError } from '@/features/listings/errors';
 import { formatMoney } from '@/features/listings/price';
 import { useAttributeVocabulary, useListingAttributes } from '@/features/listings/queries';
 import { formatSizeLabel } from '@/features/listings/size';
-import { useListingDetail, useToggleFavoriteFromDetail } from '@/features/listing-detail/queries';
+import { useSetFavorite } from '@/features/favorites/queries';
+import { useListingDetail } from '@/features/listing-detail/queries';
 
 /**
  * Listing Detail v1 — SCREENS.md Task 9 / the 6a handoff, restyling
@@ -142,7 +143,8 @@ export default function ListingDetailScreen() {
       ? attributeBadgeTerms(attributeVocabQuery.data, listingAttributesQuery.data.values)
       : [];
   const brandLabel = listingAttributesQuery.data ? brandSelectionLabel(listingAttributesQuery.data.brand) : null;
-  const { toggleFavorite, isPending: favoritePending } = useToggleFavoriteFromDetail(id);
+  const { setFavorite, pendingListingIds } = useSetFavorite();
+  const favoritePending = pendingListingIds.has(id);
   const startConversation = useStartConversation();
   // ROADMAP 5.2 -- proactive UX on top of the server-side RLS/RPC
   // enforcement (get_or_create_listing_conversation and the messages
@@ -357,7 +359,7 @@ export default function ListingDetailScreen() {
             <FavoriteButton
               isFavorited={listing.isFavorited}
               disabled={favoritePending}
-              onPress={() => toggleFavorite(listing.isFavorited)}
+              onPress={() => setFavorite(id, !listing.isFavorited)}
             />
             <MessageSellerButton
               loading={startConversation.isPending}
