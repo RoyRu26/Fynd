@@ -923,6 +923,10 @@ export type Database = {
           title: string
         }[]
       }
+      fynd_search_query: { Args: { p_query: string }; Returns: unknown }
+      fynd_text_normalize: { Args: { p_text: string }; Returns: string }
+      fynd_token_variants: { Args: { p_token: string }; Returns: string[] }
+      fynd_variants_text: { Args: { p_text: string }; Returns: string }
       get_or_create_listing_conversation: {
         Args: { p_listing_id: string }
         Returns: string
