@@ -31,7 +31,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
 
 const SEED_PASSWORD = 'FyndSeedDev!2026';
-const FIXTURES_DIR = path.join(repoRoot, 'supabase', 'seed', 'fixtures', 'images');
+const FIXTURES_DIR = path.join(repoRoot, 'supabase', 'seed', 'fixtures', 'images', 'listings');
 
 // ============================================================
 // Safety guards
@@ -165,56 +165,57 @@ const CONDITION_LABELS = {
   fair: 'fair',
 };
 
-// [userKey, title, priceILS, condition, size, categoryKey, imageColor]
+// [userKey, title, priceILS, condition, size, categoryKey, photo]
+// `photo` names supabase/seed/fixtures/images/listings/<photo>.jpg (see ATTRIBUTION.md there).
 const LISTING_TEMPLATES = [
-  ['maya', "מעיל ג'ינס קלאסי", 120, 'good', 'alpha_m', 'womenOuterwear', 'denim'],
-  ['maya', 'Floral Summer Dress', 90, 'very_good', 'alpha_s', 'womenDresses', 'rose'],
-  ['maya', "תיק עור חום וינטג'", 150, 'good', 'one_size', 'womenBags', 'tan'],
-  ['maya', 'סוודר צמר אפור', 70, 'fair', 'alpha_m', 'womenTops', 'charcoal'],
-  ['maya', 'White Linen Blouse', 55, 'like_new', 'alpha_s', 'womenTops', 'cream'],
+  ['maya', "מעיל ג'ינס קלאסי", 120, 'good', 'alpha_m', 'womenOuterwear', 'maya-denim-jacket'],
+  ['maya', 'Floral Summer Dress', 90, 'very_good', 'alpha_s', 'womenDresses', 'maya-floral-summer-dress'],
+  ['maya', "תיק עור חום וינטג'", 150, 'good', 'one_size', 'womenBags', 'maya-brown-leather-bag'],
+  ['maya', 'סוודר צמר אפור', 70, 'fair', 'alpha_m', 'womenTops', 'maya-grey-wool-sweater'],
+  ['maya', 'White Linen Blouse', 55, 'like_new', 'alpha_s', 'womenTops', 'maya-white-linen-blouse'],
 
-  ['noam', 'White Leather Sneakers', 220, 'very_good', 'eu_shoe_42', 'menShoes', 'cream'],
-  ['noam', 'נעלי ריצה שחורות', 180, 'good', 'eu_shoe_43', 'menShoes', 'black'],
-  ['noam', 'Navy Track Jacket', 95, 'good', 'alpha_l', 'menOuterwear', 'navy'],
-  ['noam', 'מכנסי טרנינג אפורים', 60, 'like_new', 'alpha_m', 'menBottoms', 'charcoal'],
+  ['noam', 'White Leather Sneakers', 220, 'very_good', 'eu_shoe_42', 'menShoes', 'noam-white-leather-sneakers'],
+  ['noam', 'נעלי ריצה שחורות', 180, 'good', 'eu_shoe_43', 'menShoes', 'noam-black-running-shoes'],
+  ['noam', 'Navy Track Jacket', 95, 'good', 'alpha_l', 'menOuterwear', 'noam-navy-track-jacket'],
+  ['noam', 'מכנסי טרנינג אפורים', 60, 'like_new', 'alpha_m', 'menBottoms', 'noam-grey-sweatpants'],
 
-  ['tamar', 'Vintage Leather Jacket', 280, 'good', 'alpha_m', 'womenOuterwear', 'black'],
-  ['tamar', 'שמלת קוקטייל שחורה', 110, 'very_good', 'alpha_s', 'womenDresses', 'black'],
-  ['tamar', 'Tan Ankle Boots', 160, 'good', 'eu_shoe_38', 'womenShoes', 'tan'],
-  ['tamar', "צעיף משי וינטג'", 40, 'fair', 'one_size', 'womenAccessories', 'rose'],
-  ['tamar', 'Olive Cargo Pants', 85, 'very_good', 'alpha_m', 'womenBottoms', 'olive'],
+  ['tamar', 'Vintage Leather Jacket', 280, 'good', 'alpha_m', 'womenOuterwear', 'tamar-vintage-leather-jacket'],
+  ['tamar', 'שמלת קוקטייל שחורה', 110, 'very_good', 'alpha_s', 'womenDresses', 'tamar-black-cocktail-dress'],
+  ['tamar', 'Tan Ankle Boots', 160, 'good', 'eu_shoe_38', 'womenShoes', 'tamar-tan-ankle-boots'],
+  ['tamar', "צעיף משי וינטג'", 40, 'fair', 'one_size', 'womenAccessories', 'tamar-silk-scarf'],
+  ['tamar', 'Olive Cargo Pants', 85, 'very_good', 'alpha_m', 'womenBottoms', 'tamar-olive-cargo-pants'],
 
-  ['eitan', 'Charcoal Wool Coat', 320, 'like_new', 'alpha_l', 'menOuterwear', 'charcoal'],
-  ['eitan', 'חולצת פולו כחולה', 50, 'very_good', 'alpha_m', 'menTops', 'navy'],
-  ['eitan', 'Black Chelsea Boots', 240, 'new', 'eu_shoe_44', 'menShoes', 'black'],
+  ['eitan', 'Charcoal Wool Coat', 320, 'like_new', 'alpha_l', 'menOuterwear', 'eitan-charcoal-wool-coat'],
+  ['eitan', 'חולצת פולו כחולה', 50, 'very_good', 'alpha_m', 'menTops', 'eitan-blue-polo-shirt'],
+  ['eitan', 'Black Chelsea Boots', 240, 'new', 'eu_shoe_44', 'menShoes', 'eitan-black-chelsea-boots'],
 
-  ['shira', 'Floral Maxi Dress', 100, 'good', 'alpha_m', 'womenDresses', 'rose'],
-  ['shira', 'מעיל גשם', 75, 'good', 'alpha_s', 'womenOuterwear', 'navy'],
-  ['shira', 'Striped Cotton Top', 45, 'very_good', 'alpha_m', 'womenTops', 'cream'],
-  ['shira', 'נעלי בלרינה שחורות', 80, 'good', 'eu_shoe_37', 'womenShoes', 'black'],
-  ['shira', 'Beige Tote Bag', 65, 'like_new', 'one_size', 'womenBags', 'tan'],
-  ['shira', 'מכנסי ג׳ינס כחולים', 70, 'good', 'alpha_m', 'womenBottoms', 'denim'],
+  ['shira', 'Floral Maxi Dress', 100, 'good', 'alpha_m', 'womenDresses', 'shira-floral-maxi-dress'],
+  ['shira', 'מעיל גשם', 75, 'good', 'alpha_s', 'womenOuterwear', 'shira-raincoat'],
+  ['shira', 'Striped Cotton Top', 45, 'very_good', 'alpha_m', 'womenTops', 'shira-striped-cotton-top'],
+  ['shira', 'נעלי בלרינה שחורות', 80, 'good', 'eu_shoe_37', 'womenShoes', 'shira-black-ballet-flats'],
+  ['shira', 'Beige Tote Bag', 65, 'like_new', 'one_size', 'womenBags', 'shira-beige-tote-bag'],
+  ['shira', 'מכנסי ג׳ינס כחולים', 70, 'good', 'alpha_m', 'womenBottoms', 'shira-blue-jeans'],
 
-  ['yossi', 'Grey Hoodie', 60, 'good', 'alpha_l', 'menTops', 'charcoal'],
-  ['yossi', 'נעלי סקייט שחורות', 140, 'very_good', 'eu_shoe_41', 'menShoes', 'black'],
-  ['yossi', 'Denim Jacket', 130, 'good', 'alpha_m', 'menOuterwear', 'denim'],
-  ['yossi', 'כפכפי עור חומים', 55, 'fair', 'eu_shoe_42', 'menShoes', 'tan'],
+  ['yossi', 'Grey Hoodie', 60, 'good', 'alpha_l', 'menTops', 'yossi-grey-hoodie'],
+  ['yossi', 'נעלי סקייט שחורות', 140, 'very_good', 'eu_shoe_41', 'menShoes', 'yossi-black-skate-shoes'],
+  ['yossi', 'Denim Jacket', 130, 'good', 'alpha_m', 'menOuterwear', 'yossi-denim-jacket'],
+  ['yossi', 'כפכפי עור חומים', 55, 'fair', 'eu_shoe_42', 'menShoes', 'yossi-brown-leather-slides'],
 
-  ['noa', 'Linen Summer Shirt', 50, 'very_good', 'alpha_s', 'womenTops', 'cream'],
-  ['noa', 'שמלת בוהו ארוכה', 95, 'good', 'alpha_m', 'womenDresses', 'olive'],
-  ['noa', 'Woven Straw Bag', 45, 'like_new', 'one_size', 'womenBags', 'tan'],
-  ['noa', 'סנדלי עור שטוחים', 70, 'good', 'eu_shoe_38', 'womenShoes', 'tan'],
+  ['noa', 'Linen Summer Shirt', 50, 'very_good', 'alpha_s', 'womenTops', 'noa-linen-summer-shirt'],
+  ['noa', 'שמלת בוהו ארוכה', 95, 'good', 'alpha_m', 'womenDresses', 'noa-boho-maxi-dress'],
+  ['noa', 'Woven Straw Bag', 45, 'like_new', 'one_size', 'womenBags', 'noa-woven-straw-bag'],
+  ['noa', 'סנדלי עור שטוחים', 70, 'good', 'eu_shoe_38', 'womenShoes', 'noa-flat-leather-sandals'],
 
-  ['daniel', 'Black Cargo Pants', 90, 'very_good', 'alpha_l', 'menBottoms', 'black'],
-  ['daniel', 'נעלי קנבס לבנות', 110, 'good', 'eu_shoe_43', 'menShoes', 'cream'],
-  ['daniel', 'Oversized Hoodie', 75, 'like_new', 'alpha_xl', 'menTops', 'charcoal'],
-  ['daniel', 'מעיל בומבר שחור', 150, 'very_good', 'alpha_m', 'menOuterwear', 'black'],
-  ['daniel', 'Navy Beanie', 25, 'good', 'one_size', 'menAccessories', 'navy'],
+  ['daniel', 'Black Cargo Pants', 90, 'very_good', 'alpha_l', 'menBottoms', 'daniel-black-cargo-pants'],
+  ['daniel', 'נעלי קנבס לבנות', 110, 'good', 'eu_shoe_43', 'menShoes', 'daniel-white-canvas-sneakers'],
+  ['daniel', 'Oversized Hoodie', 75, 'like_new', 'alpha_xl', 'menTops', 'daniel-oversized-hoodie'],
+  ['daniel', 'מעיל בומבר שחור', 150, 'very_good', 'alpha_m', 'menOuterwear', 'daniel-black-bomber-jacket'],
+  ['daniel', 'Navy Beanie', 25, 'good', 'one_size', 'menAccessories', 'daniel-navy-beanie'],
 
-  ['michal', 'חצאית טוויד', 65, 'good', 'alpha_s', 'womenBottoms', 'tan'],
-  ['michal', 'Cream Silk Blouse', 60, 'very_good', 'alpha_m', 'womenTops', 'cream'],
-  ['michal', 'נעלי עקב שחורות', 85, 'good', 'eu_shoe_39', 'womenShoes', 'black'],
-  ['michal', 'Olive Utility Jacket', 130, 'very_good', 'alpha_l', 'womenOuterwear', 'olive'],
+  ['michal', 'חצאית טוויד', 65, 'good', 'alpha_s', 'womenBottoms', 'michal-tweed-skirt'],
+  ['michal', 'Cream Silk Blouse', 60, 'very_good', 'alpha_m', 'womenTops', 'michal-cream-silk-blouse'],
+  ['michal', 'נעלי עקב שחורות', 85, 'good', 'eu_shoe_39', 'womenShoes', 'michal-black-heels'],
+  ['michal', 'Olive Utility Jacket', 130, 'very_good', 'alpha_l', 'womenOuterwear', 'michal-olive-utility-jacket'],
 ];
 
 // Structured attributes per seed listing (AI listing metadata plan, Phase
@@ -329,10 +330,9 @@ function createdAtFor(globalIndex) {
   return new Date(CREATED_AT_BASE + globalIndex * HOURS_BETWEEN_LISTINGS * 60 * 60 * 1000).toISOString();
 }
 
-// Each listing gets two images: its own color, plus a neutral second shot.
-function imageColorsFor(primaryColor) {
-  const secondary = primaryColor === 'cream' ? 'tan' : 'cream';
-  return [primaryColor, secondary];
+// Each listing gets two images: the full photo, then a closer detail crop of it.
+function photoFilesFor(photo) {
+  return [`${photo}.jpg`, `${photo}-detail.jpg`];
 }
 
 // Deterministic, non-self cross-favorites: user[i] favorites one listing
@@ -435,7 +435,7 @@ async function main() {
     const listingsByUser = new Map();
     let imageCount = 0;
     let listingIndex = 0;
-    for (const [userKey, title, priceILS, condition, size, categoryKey, color] of LISTING_TEMPLATES) {
+    for (const [userKey, title, priceILS, condition, size, categoryKey, photo] of LISTING_TEMPLATES) {
       const sellerId = userIdByKey.get(userKey);
       const listingKey = `${userKey}:${title}`;
       const listingId = seedId(`listing:${listingKey}`);
@@ -457,13 +457,13 @@ async function main() {
       if (!listingsByUser.has(userKey)) listingsByUser.set(userKey, []);
       listingsByUser.get(userKey).push({ key: listingKey, id: listingId });
 
-      const colors = imageColorsFor(color);
-      for (let position = 0; position < colors.length; position += 1) {
+      const files = photoFilesFor(photo);
+      for (let position = 0; position < files.length; position += 1) {
         await ensureListingImage(admin, db, {
           sellerId,
           listingId,
           position,
-          color: colors[position],
+          file: files[position],
           imageKey: `image:${listingKey}:${position}`,
         });
         imageCount += 1;
@@ -624,8 +624,8 @@ async function upsertListing(db, listing) {
  * succeeded, so a `listing_images` row can never point at a Storage object
  * that doesn't exist.
  */
-async function ensureListingImage(admin, db, { sellerId, listingId, position, color, imageKey }) {
-  const bytes = readFileSync(path.join(FIXTURES_DIR, `${color}.jpg`));
+async function ensureListingImage(admin, db, { sellerId, listingId, position, file, imageKey }) {
+  const bytes = readFileSync(path.join(FIXTURES_DIR, file));
   const storagePath = `${sellerId}/${listingId}/${seedId(imageKey)}.jpg`;
 
   const { error: uploadError } = await admin.storage.from('listing-images').upload(storagePath, bytes, {
