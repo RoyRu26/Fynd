@@ -2,10 +2,16 @@ import { NativeTabs } from 'expo-router/native-tabs';
 
 import { getColors } from '@/design/theme';
 
-// Bar styling unchanged from the previous version (dark pin, light-scheme
-// selected label — see git history for the measured-on-device rationale).
+// Bar background stays pinned dark (see git history for the rationale).
+//
+// Labels and icons are coloured by the native tint only, with no
+// `labelStyle`/`iconColor`. Those two become per-item title text attributes
+// in the bar's UITabBarAppearance, and on iOS 26's glass tab bar that made
+// unselected labels lay out too narrow ("Expl…", "Prof…") until a tap
+// re-laid them out, and left the selected label near-black on the dark glass.
+// With the tint alone, UIKit sizes and colours the labels itself: selected
+// item in accent, the rest in the system's adaptive secondary colour.
 const colors = getColors('dark');
-const selectedLabelColor = getColors('light').text;
 
 // Icon system (DESIGN.md §4): every tab uses an SF Symbol / Material Symbol
 // pair so all five render at the same native tab-icon size and weight.
@@ -18,8 +24,7 @@ export default function AppTabs() {
     <NativeTabs
       backgroundColor={colors.bg}
       indicatorColor={colors.bgElevated}
-      labelStyle={{ default: { color: colors.textSecondary }, selected: { color: selectedLabelColor } }}
-      iconColor={{ default: colors.textSecondary, selected: colors.accent }}>
+      tintColor={colors.accent}>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
