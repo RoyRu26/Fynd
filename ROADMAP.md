@@ -75,11 +75,44 @@ Source of truth for what gets built next. The `autopilot` skill works through th
 - [ ] **6.5 [DECISION] Build & release setup** — EAS build config, app icons/splash, store listing. Ask before starting.
 - [ ] **Checkpoint 6**
 
+## Milestone 7 — Land in-progress work + smarter search
+
+Search phases follow the listing-metadata plan (`~/.claude/plans/pasted-content-id-211e-i-d-make-ticklish-treasure.md` §10).
+
+- [x] **7.1 Land in-progress work** — Review and commit the feed/detail like-sync fix (`features/favorites/`, idempotent target-state mutation) and the per-listing seed photos (`supabase/seed/fixtures/images/listings/`, `scripts/seed-dev.mjs`). Delete the now-unused `isListingFavoritedInPages`.
+  Done when: code review is clean and both land as separate commits.
+- [ ] **7.2 Hebrew search functions (3a)** — `fynd_text_normalize`, `fynd_token_variants`, `fynd_search_query` as IMMUTABLE SQL, plus a `search_text.sql` pgTAP suite. No change to production search.
+  Done when: every case in plan §10.5 passes, including niqqud, prefixes, plurals, final letters, mixed Hebrew/English, and the documented negative cases.
+- [ ] **7.3 Search over attributes (3b backend)** — Trigger-maintained `search_tsv` built from title, description, brand + aliases, item type, category names, attribute labels and keywords (weights per §10.3), with a non-destructive backfill. `search_listings` gains brand / item type / color / style / material / pattern / fit filters (OR within a kind, AND across kinds), keeping block enforcement and keyset pagination.
+  Done when: pgTAP covers each filter, Hebrew queries and refresh on attribute/brand change; drafts and removed listings never appear.
+- [ ] **7.4 Explore attribute filters (3b UI)** — Explore filter sheet gains brand and attribute filters with active-filter chips, reusing `Sheet` and `Chip`.
+- [ ] **7.5 Search aliases + query chips (3c)** — Server-side synonyms (e.g. "sneakers" ↔ "trainers", "hoodie" ↔ "קפוצ'ון") and tap-to-apply chips that turn a recognised word in the query into a structured filter.
+- [ ] **Checkpoint 7**
+
+## Milestone 8 — AI quality + signals
+
+- [ ] **8.1 Engagement events** — Emit `open` and `favorite` events into `listing_events` (plan §16 Phase 4), for future recommendations. Insert-only, server-validated.
+- [ ] **8.2 [NEEDS ROY] Live AI check** — Needs `ANTHROPIC_API_KEY` in `supabase/functions/.env`. Run suggest-listing on real seed drafts: analysis runs once, cache hit on repeat, item type respects category, condition is confirm-only, manual listing still works with the key unset.
+- [ ] **8.3 [NEEDS ROY] AI evaluation + thresholds** — Small labelled set from seed photos, a script that scores field accuracy, then tune the 0.85 / 0.6 / brand-0.9 thresholds. Needs 8.2.
+- [ ] **8.4 [NEEDS ROY] Design review** — `design-review` skill over the Sell Details group, AI offer rows, listing badges and the new Explore filters. Needs the simulator running.
+- [ ] **Checkpoint 8**
+
+## Milestone 9 — Launch prep
+
+- [ ] **9.1 [DECISION] Merge to main** — `listing-metadata` + `autopilot/m7`/`m8` into `main` (merge vs squash, and whether to push).
+- [ ] **9.2 [DECISION] Privacy policy + terms** — Real text for the placeholder screens, including photo processing by Anthropic and the 180-day analysis retention.
+- [ ] **9.3** Resume 5.5 Push notifications and 6.5 Build & release (both [DECISION], above).
+- [ ] **Checkpoint 9**
+
 ---
 
 ## Progress log
 
 Autopilot appends one line per finished item: date, item, commit hash, notes.
+
+**Milestone 7 started** on branch `autopilot/m7` (branched from `listing-metadata`, which carries the unmerged M5, M6 and listing-metadata work; merging to `main` is 9.1).
+
+- 2026-11-02 — 7.1 Land in-progress work — `777b0c5` + `b64547b` — Feed and listing-detail likes now share one `useSetFavorite` mutation that sends the target state rather than a toggle, so a stale cache on either screen can't send the wrong write. Code review found no Must-fix; three Should-fix items fixed before commit: a failed write restored whole-cache snapshots (erasing other listings' in-flight hearts and pages loaded meanwhile), now it reverts only that listing via a new tested pure `previousFavoriteState`; the in-flight guard read render-time state, now it checks the mutation cache at call time; and every like cancelled in-flight feed page loads, now only the detail fetch is cancelled. Seed listings got 40 Wikimedia Commons photos (CC0/PD/CC BY/BY-SA, attributed in `ATTRIBUTION.md`); the existing local Storage objects were replaced in place with no DB row changes.
 
 **Milestone 6 started** on branch `autopilot/m5` (continuing the same branch — 5.5 "Push notifications" is deferred at Roy's request, pending an Expo/EAS account and a real device, rather than merged/closed out first; Milestone 5's own checkpoint has not been delivered yet as a result. 6.1 does not depend on 5.5 in any way, so this is purely a branch-naming artifact, not a scope dependency).
 
