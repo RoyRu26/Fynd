@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   FlatList,
   Keyboard,
@@ -40,9 +41,11 @@ import {
   type CategoryGroup,
 } from '@/features/categories/categories';
 import { useCategories } from '@/features/categories/queries';
+import { describeRemovedTerms, type AttributeKind } from '@/features/listings/attributes';
 import { CONDITION_LABELS } from '@/features/listings/condition';
 import { mapListingError } from '@/features/listings/errors';
 import { currencySymbol, formatMinorUnitsForInput } from '@/features/listings/price';
+import { useAttributeVocabulary } from '@/features/listings/queries';
 import { LISTING_CONDITIONS } from '@/features/listings/schemas';
 import {
   formatSizeLabel,
@@ -52,14 +55,19 @@ import {
 } from '@/features/listings/size';
 import {
   deriveActiveFilterChips,
+  EMPTY_EXPLORE_FILTERS,
   getExploreEmptyCopy,
   hasActiveFilters,
   parsePriceRangeInput,
   PRICE_CURRENCY,
   removeFilter,
-  type ActiveFilterKey,
+  toSearchFilters,
+  type ActiveFilterRemoval,
+  type ExploreFilters,
 } from '@/features/search/active-filters';
-import type { SearchFilters, SearchListing } from '@/features/search/api';
+import type { SearchListing } from '@/features/search/api';
+import { AttributeFilterFields } from '@/features/search/attribute-filter-fields';
+import { BrandFilterField } from '@/features/search/brand-filter-field';
 import {
   chunkIntoBlocks,
   COLLAGE_BLOCK_SIZE,
@@ -72,8 +80,14 @@ import {
 import { shuffleWithSeed } from '@/features/search/shuffle';
 import { useSearch } from '@/features/search/queries';
 import {
+  categoryScope,
+  clearTermKind,
+  pruneTermFiltersForScope,
   SEARCH_SORT_LABELS,
   SEARCH_SORT_ORDER,
+  toggleBrandFilter,
+  toggleTermFilter,
+  type BrandFilterValue,
   type SearchSort,
 } from '@/features/search/search';
 import { useRecentSearches } from '@/features/search/use-recent-searches';
@@ -174,17 +188,6 @@ function toCollageBase(listing: SearchListing): CollageItem {
   return { listingId: listing.listingId, title: listing.title, coverUrl: listing.coverUrl };
 }
 
-/** The filter fields this screen commits/drafts — everything in SearchFilters except query/sort, which the screen manages separately. */
-type ExploreFilters = Pick<SearchFilters, 'categoryId' | 'condition' | 'size' | 'priceMin' | 'priceMax'>;
-
-const EMPTY_FILTERS: ExploreFilters = {
-  categoryId: null,
-  condition: null,
-  size: null,
-  priceMin: null,
-  priceMax: null,
-};
-
 export default function ExploreScreen() {
   const router = useRouter();
   const { colors } = useAppTheme();
@@ -192,7 +195,7 @@ export default function ExploreScreen() {
 
   const [queryInput, setQueryInput] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
-  const [committedFilters, setCommittedFilters] = useState<ExploreFilters>(EMPTY_FILTERS);
+  const [committedFilters, setCommittedFilters] = useState<ExploreFilters>(EMPTY_EXPLORE_FILTERS);
   const [sort, setSort] = useState<SearchSort>('newest');
   const recent = useRecentSearches();
 
@@ -236,16 +239,8 @@ export default function ExploreScreen() {
     [recent],
   );
 
-  const searchFilters = useMemo<SearchFilters>(
-    () => ({
-      query: effectiveQuery.length > 0 ? effectiveQuery : null,
-      categoryId: committedFilters.categoryId,
-      condition: committedFilters.condition,
-      size: committedFilters.size,
-      priceMin: committedFilters.priceMin,
-      priceMax: committedFilters.priceMax,
-      sort,
-    }),
+  const searchFilters = useMemo(
+    () => toSearchFilters(committedFilters, effectiveQuery.length > 0 ? effectiveQuery : null, sort),
     [effectiveQuery, committedFilters, sort],
   );
 
@@ -270,9 +265,14 @@ export default function ExploreScreen() {
   // A leaf chosen in the filter sheet still lights up its parent tab.
   const activeCategoryGroupId = committedCategoryMatch?.group.id ?? null;
 
+  // Item type, color, style, … (ROADMAP 7.4). Cached for a day; until it
+  // loads, attribute filters simply aren't offered and nothing is pruned.
+  const vocabQuery = useAttributeVocabulary();
+  const vocab = vocabQuery.data;
+
   const activeChips = useMemo(
-    () => deriveActiveFilterChips(committedFilters, committedCategoryLabel),
-    [committedFilters, committedCategoryLabel],
+    () => deriveActiveFilterChips(committedFilters, committedCategoryLabel, vocab),
+    [committedFilters, committedCategoryLabel, vocab],
   );
   const filtersOrQueryActive = hasActiveFilters(committedFilters) || searchFilters.query !== null;
 
@@ -300,10 +300,23 @@ export default function ExploreScreen() {
   // can read it back for its own `title`, exactly as `CategoryPickerSheet`
   // does internally for the Sell flow's separate Sheet.
   const [categoryActiveGroupId, setCategoryActiveGroupId] = useState<string | null>(null);
-  const [draftFilters, setDraftFilters] = useState<ExploreFilters>(EMPTY_FILTERS);
+  const [draftFilters, setDraftFilters] = useState<ExploreFilters>(EMPTY_EXPLORE_FILTERS);
   const [draftPriceMinInput, setDraftPriceMinInput] = useState('');
   const [draftPriceMaxInput, setDraftPriceMaxInput] = useState('');
   const [priceError, setPriceError] = useState<string | null>(null);
+  // "Removed Hoodie — it doesn't fit Women › Shoes." after a category change
+  // in the sheet pruned attribute values; cleared by the next filter edit.
+  const [pruneNotice, setPruneNotice] = useState<string | null>(null);
+  // Latest committed draft, read by handlers that must derive a side effect
+  // (the prune notice + announcement) without doing it inside an updater.
+  const draftFiltersRef = useRef(draftFilters);
+  useEffect(() => {
+    draftFiltersRef.current = draftFilters;
+  }, [draftFilters]);
+  const draftScope = useMemo(
+    () => categoryScope(categoryGroups, draftFilters.categoryId),
+    [categoryGroups, draftFilters.categoryId],
+  );
 
   function openFilterSheet() {
     // Initialized from committedFilters only at the moment the sheet opens
@@ -313,6 +326,7 @@ export default function ExploreScreen() {
     setDraftPriceMinInput(formatMinorUnitsForInput(committedFilters.priceMin));
     setDraftPriceMaxInput(formatMinorUnitsForInput(committedFilters.priceMax));
     setPriceError(null);
+    setPruneNotice(null);
     setPickerView('filters');
     setCategoryActiveGroupId(null);
     setFilterSheetOpen(true);
@@ -329,10 +343,41 @@ export default function ExploreScreen() {
   }
 
   function handleClearDraft() {
-    setDraftFilters(EMPTY_FILTERS);
+    setDraftFilters(EMPTY_EXPLORE_FILTERS);
     setDraftPriceMinInput('');
     setDraftPriceMaxInput('');
     setPriceError(null);
+    setPruneNotice(null);
+  }
+
+  // Every in-sheet draft edit goes through here, so the prune notice clears
+  // on the next change of any kind, not just term toggles.
+  function updateDraft(updater: (prev: ExploreFilters) => ExploreFilters) {
+    setPruneNotice(null);
+    setDraftFilters(updater);
+  }
+
+  function handleDraftPriceMinChange(text: string) {
+    setPruneNotice(null);
+    setDraftPriceMinInput(text);
+  }
+
+  function handleDraftPriceMaxChange(text: string) {
+    setPruneNotice(null);
+    setDraftPriceMaxInput(text);
+  }
+
+  function handleToggleTerm(termId: string) {
+    if (!vocab) return;
+    updateDraft((prev) => ({ ...prev, termIds: toggleTermFilter(vocab, prev.termIds, termId) }));
+  }
+
+  function handleClearTermKind(kind: AttributeKind) {
+    updateDraft((prev) => ({ ...prev, termIds: clearTermKind(prev.termIds, kind) }));
+  }
+
+  function handleToggleBrand(brand: BrandFilterValue) {
+    updateDraft((prev) => ({ ...prev, brands: toggleBrandFilter(prev.brands, brand) }));
   }
 
   // Category view opens inside the SAME Sheet instance as the filters view
@@ -344,13 +389,34 @@ export default function ExploreScreen() {
     setPickerView('category');
   }
 
+  // A narrower category prunes the attribute values that stop applying, and
+  // says so (politely, in the sheet) — never silently keeping a filter the
+  // category can no longer match.
   function handleCategorySelect(_group: CategoryGroup, leaf: Category) {
-    setDraftFilters((prev) => ({ ...prev, categoryId: leaf.id }));
+    const scope = categoryScope(categoryGroups, leaf.id);
+    // The notice is derived outside the (pure) updater from the latest draft;
+    // the updater re-prunes from `prev` so the state itself never goes stale.
+    const { removed } = pruneTermFiltersForScope(vocab, draftFiltersRef.current.termIds, scope);
+    setDraftFilters((prev) => ({
+      ...prev,
+      categoryId: leaf.id,
+      termIds: pruneTermFiltersForScope(vocab, prev.termIds, scope).kept,
+    }));
+    const notice = describeRemovedTerms(
+      removed,
+      formatCategoryMatchLabel(findCategoryMatch(categoryGroups, leaf.id)),
+    );
+    setPruneNotice(notice);
+    // accessibilityLiveRegion is Android-only, and a region mounted already
+    // holding text is often skipped — announce explicitly as well.
+    if (notice) AccessibilityInfo.announceForAccessibility(notice);
     setPickerView('filters');
   }
 
+  // No category is the widest scope, so nothing can stop applying.
   function handleCategoryClear() {
     setDraftFilters((prev) => ({ ...prev, categoryId: null }));
+    setPruneNotice(null);
     setPickerView('filters');
   }
 
@@ -385,24 +451,39 @@ export default function ExploreScreen() {
   }
 
   function handleSortSelect(next: SearchSort) {
+    setPruneNotice(null);
     setSort(next);
     setPickerView('filters');
   }
 
-  function handleRemoveChip(key: ActiveFilterKey) {
-    setCommittedFilters((prev) => removeFilter(prev, key));
+  function handleRemoveChip(removal: ActiveFilterRemoval) {
+    setCommittedFilters((prev) => removeFilter(prev, removal));
+  }
+
+  // Filters only — the query and sort are the user's own text and choice,
+  // not filters, and stay as they are.
+  function clearAllFilters() {
+    setCommittedFilters(EMPTY_EXPLORE_FILTERS);
   }
 
   // Tabs commit immediately (no draft/Apply round trip) — they are a browse
   // control, not part of the filter sheet's editable draft. `null` is "All".
+  // Attribute values that stop applying are pruned silently here: the
+  // active-filter row re-renders right below the rings, which is notice
+  // enough for a one-tap browse control.
   function handleCategoryTabSelect(groupId: string | null) {
-    setCommittedFilters((prev) => ({ ...prev, categoryId: groupId }));
+    const scope = categoryScope(categoryGroups, groupId);
+    setCommittedFilters((prev) => ({
+      ...prev,
+      categoryId: groupId,
+      termIds: pruneTermFiltersForScope(vocab, prev.termIds, scope).kept,
+    }));
   }
 
   function clearAll() {
     setQueryInput('');
     setImmediateQuery(null);
-    setCommittedFilters(EMPTY_FILTERS);
+    setCommittedFilters(EMPTY_EXPLORE_FILTERS);
   }
 
   // ============================================================
@@ -546,7 +627,7 @@ export default function ExploreScreen() {
         onSelect={handleCategoryTabSelect}
       />
 
-      {hasActiveFilters(committedFilters) ? (
+      {activeChips.length > 0 ? (
         <View style={styles.chipRow}>
           {activeChips.map((chip) => (
             <Chip
@@ -560,10 +641,15 @@ export default function ExploreScreen() {
               tone="inverse"
               selectable
               selected={false}
-              accessibilityLabel={`Remove ${chip.label} filter`}
-              onPress={() => handleRemoveChip(chip.key)}
+              accessibilityLabel={chip.accessibilityLabel}
+              onPress={() => handleRemoveChip(chip.removal)}
             />
           ))}
+          {activeChips.length >= 2 ? (
+            <Button variant="ghost" size="sm" accessibilityLabel="Clear all filters" onPress={clearAllFilters}>
+              Clear all
+            </Button>
+          ) : null}
         </View>
       ) : null}
 
@@ -716,7 +802,32 @@ export default function ExploreScreen() {
         // title, matching what `CategoryPickerSheet` announces for the same
         // content in the Sell flow. The other two views have no separate
         // wording, and Sheet falls back to `title` on its own.
-        accessibilityLabel={pickerView === 'category' ? 'Choose a category' : sheetTitle}>
+        accessibilityLabel={pickerView === 'category' ? 'Choose a category' : sheetTitle}
+        // Pinned, so Clear/Apply stay reachable however far the (now long)
+        // filter list scrolls — and above the keyboard while a price is typed.
+        footer={
+          pickerView === 'filters' ? (
+            <View style={styles.sheetFooter}>
+              {priceError ? (
+                <Text
+                  variant="caption"
+                  color="danger"
+                  accessibilityLiveRegion="polite"
+                  accessibilityRole="alert">
+                  {priceError}
+                </Text>
+              ) : null}
+              <View style={styles.sheetFooterButtons}>
+                <Button variant="secondary" onPress={handleClearDraft} style={styles.sheetFooterButton}>
+                  Clear
+                </Button>
+                <Button variant="primary" onPress={handleApplyFilters} style={styles.sheetFooterButton}>
+                  Apply
+                </Button>
+              </View>
+            </View>
+          ) : undefined
+        }>
         {pickerView === 'sort' ? (
           <View style={styles.sortOptions}>
             {SEARCH_SORT_ORDER.map((option) => (
@@ -771,7 +882,24 @@ export default function ExploreScreen() {
                 selected={draftFilters.categoryId !== null}
                 onPress={openCategoryPicker}
               />
+              {pruneNotice ? (
+                <Text variant="caption" color="textSecondary" accessibilityLiveRegion="polite">
+                  {pruneNotice}
+                </Text>
+              ) : null}
             </View>
+
+            <AttributeFilterFields
+              only="item_type"
+              vocab={vocab}
+              vocabError={vocabQuery.isError}
+              scope={draftScope}
+              termIds={draftFilters.termIds}
+              onToggle={handleToggleTerm}
+              onClearKind={handleClearTermKind}
+            />
+
+            <BrandFilterField brands={draftFilters.brands} onToggle={handleToggleBrand} />
 
             <View style={styles.conditionField}>
               <Text variant="label" color="textSecondary">
@@ -782,7 +910,7 @@ export default function ExploreScreen() {
                   label="Any condition"
                   selectable
                   selected={draftFilters.condition === null}
-                  onPress={() => setDraftFilters((prev) => ({ ...prev, condition: null }))}
+                  onPress={() => updateDraft((prev) => ({ ...prev, condition: null }))}
                 />
                 {LISTING_CONDITIONS.map((value) => (
                   <Chip
@@ -790,7 +918,7 @@ export default function ExploreScreen() {
                     label={CONDITION_LABELS[value]}
                     selectable
                     selected={draftFilters.condition === value}
-                    onPress={() => setDraftFilters((prev) => ({ ...prev, condition: value }))}
+                    onPress={() => updateDraft((prev) => ({ ...prev, condition: value }))}
                   />
                 ))}
               </View>
@@ -805,7 +933,7 @@ export default function ExploreScreen() {
                   label="Any size"
                   selectable
                   selected={draftFilters.size === null}
-                  onPress={() => setDraftFilters((prev) => ({ ...prev, size: null }))}
+                  onPress={() => updateDraft((prev) => ({ ...prev, size: null }))}
                 />
               </View>
               <View style={styles.sizeGroups}>
@@ -821,7 +949,7 @@ export default function ExploreScreen() {
                           label={formatSizeLabel(value)}
                           selectable
                           selected={draftFilters.size === value}
-                          onPress={() => setDraftFilters((prev) => ({ ...prev, size: value }))}
+                          onPress={() => updateDraft((prev) => ({ ...prev, size: value }))}
                         />
                       ))}
                     </View>
@@ -836,30 +964,26 @@ export default function ExploreScreen() {
                 label={`Min price (${currencySymbol(PRICE_CURRENCY)})`}
                 keyboardType="decimal-pad"
                 value={draftPriceMinInput}
-                onChangeText={setDraftPriceMinInput}
+                onChangeText={handleDraftPriceMinChange}
               />
               <TextField
                 containerStyle={styles.priceField}
                 label={`Max price (${currencySymbol(PRICE_CURRENCY)})`}
                 keyboardType="decimal-pad"
                 value={draftPriceMaxInput}
-                onChangeText={setDraftPriceMaxInput}
+                onChangeText={handleDraftPriceMaxChange}
               />
             </View>
-            {priceError ? (
-              <Text variant="caption" color="danger" accessibilityLiveRegion="polite" accessibilityRole="alert">
-                {priceError}
-              </Text>
-            ) : null}
 
-            <View style={styles.sheetFooter}>
-              <Button variant="secondary" onPress={handleClearDraft} style={styles.sheetFooterButton}>
-                Clear
-              </Button>
-              <Button variant="primary" onPress={handleApplyFilters} style={styles.sheetFooterButton}>
-                Apply
-              </Button>
-            </View>
+            <AttributeFilterFields
+              only="details"
+              vocab={vocab}
+              vocabError={vocabQuery.isError}
+              scope={draftScope}
+              termIds={draftFilters.termIds}
+              onToggle={handleToggleTerm}
+              onClearKind={handleClearTermKind}
+            />
           </View>
         ) : (
           <CategoryPickerContent
@@ -1176,6 +1300,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sheetFooter: {
+    gap: space[2],
+  },
+  sheetFooterButtons: {
     flexDirection: 'row',
     gap: space[3],
   },

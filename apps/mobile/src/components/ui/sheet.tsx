@@ -36,6 +36,12 @@ export type SheetProps = {
   title?: string;
   /** Falls back to `title` when omitted. */
   accessibilityLabel?: string;
+  /**
+   * Pinned below the scroll area, inside the sheet's safe-area padding, so
+   * actions like Clear/Apply stay reachable however long the content is. It
+   * rides inside the keyboard-avoiding region, so it also clears the keyboard.
+   */
+  footer?: ReactNode;
 };
 
 // 36×4 literal drag-handle size — a decorative affordance local to this one
@@ -52,7 +58,7 @@ const HANDLE_SIZE = { width: 36, height: 4 };
  * shadow is invented for it here. Depth instead comes from the scrim, the
  * bgElevated-vs-bg contrast, and a hairline top border.
  */
-export function Sheet({ visible, onClose, children, title, accessibilityLabel }: SheetProps) {
+export function Sheet({ visible, onClose, children, title, accessibilityLabel, footer }: SheetProps) {
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
@@ -167,13 +173,26 @@ export function Sheet({ visible, onClose, children, title, accessibilityLabel }:
               {/* Mirrors screen.tsx's keyboardAvoiding pattern (same behavior/
                   offset convention) scoped to the title+content region only —
                   the backdrop and drag handle stay outside it. */}
-              <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                style={styles.body}>
                 {title ? (
                   <Text variant="heading" style={styles.title}>
                     {title}
                   </Text>
                 ) : null}
-                <ScrollView contentContainerStyle={styles.scrollContent}>{children}</ScrollView>
+                {/* "handled": a tap on a Chip/Button inside the sheet acts on
+                    the first press even while the keyboard is up, instead of
+                    being swallowed to dismiss it — see DESIGN.md §13 Sheet. */}
+                <ScrollView
+                  style={styles.scroll}
+                  contentContainerStyle={styles.scrollContent}
+                  keyboardShouldPersistTaps="handled">
+                  {children}
+                </ScrollView>
+                {footer ? (
+                  <View style={[styles.footer, { borderTopColor: colors.border }]}>{footer}</View>
+                ) : null}
               </KeyboardAvoidingView>
             </Animated.View>
           </GestureDetector>
@@ -207,7 +226,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[5],
     paddingBottom: space[2],
   },
+  // Both shrink (the footer does not) so that when content outgrows the
+  // sheet's maxHeight the scroll area gives up the space, never the footer.
+  body: {
+    flexShrink: 1,
+  },
+  scroll: {
+    flexShrink: 1,
+  },
   scrollContent: {
     paddingHorizontal: space[5],
+  },
+  footer: {
+    flexShrink: 0,
+    paddingHorizontal: space[5],
+    paddingTop: space[3],
+    borderTopWidth: border.hairline,
   },
 });

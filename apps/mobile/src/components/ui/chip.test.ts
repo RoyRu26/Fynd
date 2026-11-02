@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getChipSurface, getChipVisualState, type ChipProps } from '@/components/ui/chip-state';
+import { getChipHitSlop, getChipSurface, getChipVisualState, type ChipProps } from '@/components/ui/chip-state';
 
 describe('getChipVisualState', () => {
   it('a static chip is never interactive', () => {
@@ -69,5 +69,15 @@ describe('getChipSurface', () => {
         onPress: () => {},
       }),
     ).toBe('inverse');
+  });
+});
+
+describe('getChipHitSlop', () => {
+  it('pads a 28pt chip to a 44pt target vertically, never horizontally', () => {
+    expect(getChipHitSlop(28, 44)).toEqual({ top: 8, bottom: 8, left: 0, right: 0 });
+  });
+
+  it('never goes negative for a chip already taller than the target', () => {
+    expect(getChipHitSlop(50, 44)).toEqual({ top: 0, bottom: 0, left: 0, right: 0 });
   });
 });

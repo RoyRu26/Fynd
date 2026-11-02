@@ -69,3 +69,23 @@ export function getChipSurface(props: ChipProps): ChipSurface {
   if (props.selectable && props.selected) return 'selected';
   return props.tone === 'inverse' ? 'inverse' : 'default';
 }
+
+export type ChipHitSlop = { top: number; bottom: number; left: number; right: number };
+
+/**
+ * Invisible touch slop that lifts a chip to the §12.1 minimum target without
+ * changing how it looks.
+ *
+ * VERTICAL ONLY, deliberately. Chip rows and walls space chips `space[2]`
+ * apart in both directions, and the vertical slop for the resting chip
+ * height is that same 8pt — so each chip's slop reaches exactly to its
+ * neighbour's edge and never over it. Horizontal slop would have to share
+ * the same 8pt gap with the chip beside it and is unnecessary anyway: a
+ * label plus `space[3]` padding on each side is already about 44pt wide for
+ * the shortest real label. A taller chip (Dynamic Type) needs less slop, so
+ * the result never goes negative.
+ */
+export function getChipHitSlop(visualHeight: number, minTarget: number): ChipHitSlop {
+  const vertical = Math.max(0, (minTarget - visualHeight) / 2);
+  return { top: vertical, bottom: vertical, left: 0, right: 0 };
+}

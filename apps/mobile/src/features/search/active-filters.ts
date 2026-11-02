@@ -1,13 +1,23 @@
+import { isolate } from '@/features/brands/brands';
+import type { AttributeKind, AttributeVocabulary } from '@/features/listings/attributes';
 import { CONDITION_LABELS } from '@/features/listings/condition';
 import { formatMoney, parsePriceToMinorUnits } from '@/features/listings/price';
 import { formatSizeLabel } from '@/features/listings/size';
-import type { SearchFilters } from '@/features/search/search';
+import {
+  EMPTY_TERM_FILTERS,
+  normalizeFilterIds,
+  type AttributeTermFilters,
+  type BrandFilterValue,
+  type SearchFilters,
+  type SearchSort,
+} from '@/features/search/search';
 
 /**
- * Pure Explore-screen logic (ROADMAP 2.3): deriving the active-filter chip
- * row, removing one filter, and the price-range text input's validation --
- * none of it react-native/`@/lib/supabase`-aware, same split every other
- * feature module in this app uses.
+ * Pure Explore-screen logic (ROADMAP 2.3, 7.4): the filter state the screen
+ * commits/drafts, deriving the active-filter chip row, removing one filter,
+ * and the price-range text input's validation -- none of it
+ * react-native/`@/lib/supabase`-aware, same split every other feature module
+ * in this app uses.
  *
  * Deliberately decoupled from `features/categories/categories.ts`: the
  * category's display label is resolved by the caller (via
@@ -17,11 +27,67 @@ import type { SearchFilters } from '@/features/search/search';
  * than a leaf.
  */
 
-type ExploreFilterFields = Pick<SearchFilters, 'categoryId' | 'condition' | 'size' | 'priceMin' | 'priceMax'>;
+/**
+ * The filter fields Explore commits/drafts — everything in `SearchFilters`
+ * except query/sort, which the screen manages separately. Brands keep their
+ * names (the chip row needs a label and `search_brands` is a typeahead, not
+ * a lookup), so they are stored as `{ id, name }` and reduced to ids only in
+ * `toSearchFilters`.
+ */
+export type ExploreFilters = Pick<SearchFilters, 'categoryId' | 'condition' | 'size' | 'priceMin' | 'priceMax'> & {
+  brands: readonly BrandFilterValue[];
+  termIds: AttributeTermFilters;
+};
 
-export type ActiveFilterKey = 'categoryId' | 'condition' | 'size' | 'price';
+export const EMPTY_EXPLORE_FILTERS: ExploreFilters = {
+  categoryId: null,
+  condition: null,
+  size: null,
+  priceMin: null,
+  priceMax: null,
+  brands: [],
+  termIds: EMPTY_TERM_FILTERS,
+};
 
-export type ActiveFilterChip = { key: ActiveFilterKey; label: string };
+/**
+ * The `useSearch` argument. Every id list is sorted and deduped here, so two
+ * selections made in different orders produce the same query key (and so
+ * the same cache entry) — see queries.ts.
+ */
+export function toSearchFilters(filters: ExploreFilters, query: string | null, sort: SearchSort): SearchFilters {
+  return {
+    query,
+    categoryId: filters.categoryId,
+    condition: filters.condition,
+    size: filters.size,
+    priceMin: filters.priceMin,
+    priceMax: filters.priceMax,
+    sort,
+    brandIds: normalizeFilterIds(filters.brands.map((brand) => brand.id)),
+    termIds: {
+      item_type: normalizeFilterIds(filters.termIds.item_type),
+      color: normalizeFilterIds(filters.termIds.color),
+      style: normalizeFilterIds(filters.termIds.style),
+      material: normalizeFilterIds(filters.termIds.material),
+      pattern: normalizeFilterIds(filters.termIds.pattern),
+      fit: normalizeFilterIds(filters.termIds.fit),
+    },
+  };
+}
+
+export type ActiveFilterRemoval =
+  | { type: 'categoryId' | 'condition' | 'size' | 'price' }
+  | { type: 'brand'; id: string }
+  | { type: 'term'; kind: AttributeKind; id: string };
+
+export type ActiveFilterChip = {
+  /** Stable and unique within the row — usable as a React key. */
+  key: string;
+  label: string;
+  /** Names the kind too ("Remove Fit Slim filter"): a bare value like "Slim" is ambiguous out of context. */
+  accessibilityLabel: string;
+  removal: ActiveFilterRemoval;
+};
 
 // Every price label in this codebase hard-codes ILS (see price.ts's own
 // header) -- `search_listings` has no per-row currency filter, so there is
@@ -29,6 +95,19 @@ export type ActiveFilterChip = { key: ActiveFilterKey; label: string };
 // inputs, in `explore.tsx`) could legitimately be labelled in. Exported so
 // it has exactly one source of truth instead of being redeclared per file.
 export const PRICE_CURRENCY = 'ILS';
+
+export const UNKNOWN_FILTER_LABEL = 'Unknown filter';
+
+// Used for the accessible name only when the vocabulary has not loaded (its
+// own kind labels win otherwise), so a term chip still says which kind it is.
+const FALLBACK_KIND_LABELS: Record<AttributeKind, string> = {
+  item_type: 'Item type',
+  color: 'Color',
+  style: 'Style',
+  material: 'Material',
+  pattern: 'Pattern',
+  fit: 'Fit',
+};
 
 function formatPriceChipLabel(priceMin: number | null, priceMax: number | null): string {
   if (priceMin !== null && priceMax !== null) {
@@ -43,31 +122,84 @@ function formatPriceChipLabel(priceMin: number | null, priceMax: number | null):
   return `Up to ${formatMoney(priceMax as number, PRICE_CURRENCY)}`;
 }
 
+function removeLabel(kindLabel: string, valueLabel: string): string {
+  return `Remove ${kindLabel} ${valueLabel} filter`;
+}
+
 /**
- * One chip per active filter, in a fixed display order (category,
- * condition, size, price) -- never per-field insertion order, so the row
- * never reshuffles depending on which filter the seller touched last. Price
- * min/max collapse into a single chip (`key: 'price'`), since removing
- * "the price filter" should clear both bounds together, not surface two
- * near-duplicate chips for one concept.
+ * One chip per active filter VALUE, in a fixed display order (category,
+ * brands, item type, condition, size, color, style, material, pattern, fit,
+ * price) -- never per-field insertion order, so the row never reshuffles
+ * depending on which filter the user touched last. Price min/max collapse
+ * into a single chip, since removing "the price filter" should clear both
+ * bounds together.
+ *
+ * A term the vocabulary cannot resolve still gets a chip ("Unknown filter")
+ * rather than being dropped: it is still sent to the server, so hiding it
+ * would leave a live filter invisible and unremovable. The category chip is
+ * the one exception, as before: its label resolves from the same taxonomy
+ * the Drops row needs to render at all.
  */
 export function deriveActiveFilterChips(
-  filters: ExploreFilterFields,
+  filters: ExploreFilters,
   categoryLabel: string | null,
+  vocab: AttributeVocabulary | undefined,
 ): ActiveFilterChip[] {
   const chips: ActiveFilterChip[] = [];
 
+  const termChips = (kind: AttributeKind) => {
+    const kindLabel = vocab?.kinds.find((info) => info.kind === kind)?.label ?? FALLBACK_KIND_LABELS[kind];
+    for (const id of filters.termIds[kind]) {
+      const term = vocab?.termsById.get(id);
+      const label = term ? term.label : UNKNOWN_FILTER_LABEL;
+      chips.push({
+        key: `term:${kind}:${id}`,
+        label,
+        accessibilityLabel: term ? removeLabel(kindLabel, label) : `Remove unknown ${kindLabel} filter`,
+        removal: { type: 'term', kind, id },
+      });
+    }
+  };
+
   if (filters.categoryId !== null && categoryLabel !== null) {
-    chips.push({ key: 'categoryId', label: categoryLabel });
+    chips.push({
+      key: 'categoryId',
+      label: categoryLabel,
+      accessibilityLabel: removeLabel('Category', categoryLabel),
+      removal: { type: 'categoryId' },
+    });
   }
+  for (const brand of filters.brands) {
+    const label = isolate(brand.name);
+    chips.push({
+      key: `brand:${brand.id}`,
+      label,
+      accessibilityLabel: removeLabel('Brand', label),
+      removal: { type: 'brand', id: brand.id },
+    });
+  }
+  termChips('item_type');
   if (filters.condition !== null) {
-    chips.push({ key: 'condition', label: CONDITION_LABELS[filters.condition] });
+    const label = CONDITION_LABELS[filters.condition];
+    chips.push({
+      key: 'condition',
+      label,
+      accessibilityLabel: removeLabel('Condition', label),
+      removal: { type: 'condition' },
+    });
   }
   if (filters.size !== null) {
-    chips.push({ key: 'size', label: formatSizeLabel(filters.size) });
+    const label = formatSizeLabel(filters.size);
+    chips.push({ key: 'size', label, accessibilityLabel: removeLabel('Size', label), removal: { type: 'size' } });
   }
+  termChips('color');
+  termChips('style');
+  termChips('material');
+  termChips('pattern');
+  termChips('fit');
   if (filters.priceMin !== null || filters.priceMax !== null) {
-    chips.push({ key: 'price', label: formatPriceChipLabel(filters.priceMin, filters.priceMax) });
+    const label = formatPriceChipLabel(filters.priceMin, filters.priceMax);
+    chips.push({ key: 'price', label, accessibilityLabel: removeLabel('Price', label), removal: { type: 'price' } });
   }
 
   return chips;
@@ -76,22 +208,34 @@ export function deriveActiveFilterChips(
 /**
  * Clears one active filter, returning a new object -- `'price'` nulls BOTH
  * `priceMin` and `priceMax` together, since they are presented (and
- * removed) as the single chip `deriveActiveFilterChips` derives above.
+ * removed) as the single chip `deriveActiveFilterChips` derives above; a
+ * brand or term removes only that one id.
  */
-export function removeFilter<T extends ExploreFilterFields>(filters: T, key: ActiveFilterKey): T {
-  if (key === 'price') {
-    return { ...filters, priceMin: null, priceMax: null };
+export function removeFilter<T extends ExploreFilters>(filters: T, removal: ActiveFilterRemoval): T {
+  switch (removal.type) {
+    case 'price':
+      return { ...filters, priceMin: null, priceMax: null };
+    case 'brand':
+      return { ...filters, brands: filters.brands.filter((brand) => brand.id !== removal.id) };
+    case 'term':
+      return {
+        ...filters,
+        termIds: { ...filters.termIds, [removal.kind]: filters.termIds[removal.kind].filter((id) => id !== removal.id) },
+      };
+    default:
+      return { ...filters, [removal.type]: null };
   }
-  return { ...filters, [key]: null };
 }
 
-export function hasActiveFilters(filters: ExploreFilterFields): boolean {
+export function hasActiveFilters(filters: ExploreFilters): boolean {
   return (
     filters.categoryId !== null ||
     filters.condition !== null ||
     filters.size !== null ||
     filters.priceMin !== null ||
-    filters.priceMax !== null
+    filters.priceMax !== null ||
+    filters.brands.length > 0 ||
+    Object.values(filters.termIds).some((ids) => ids.length > 0)
   );
 }
 

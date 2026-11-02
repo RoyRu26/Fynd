@@ -28,6 +28,11 @@ export const searchKeys = {
  * when a filter changes" logic anywhere that calls this hook — there is
  * nothing to reset; the key shape already makes that a no-op concern. A
  * future reader should not "fix" this by flattening the key.
+ *
+ * The brand / attribute-term id lists (ROADMAP 7.4) are sorted and deduped
+ * when the `SearchFilters` is built (`toSearchFilters`), so the same
+ * selection made in a different order hashes to the same key and reuses the
+ * same cache entry instead of refetching.
  */
 export function useSearch(filters: SearchFilters) {
   return useInfiniteQuery({

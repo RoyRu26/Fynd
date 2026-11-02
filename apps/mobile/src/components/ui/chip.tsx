@@ -1,13 +1,30 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { getChipSurface, getChipVisualState, type ChipProps, type ChipTone } from '@/components/ui/chip-state';
+import {
+  getChipHitSlop,
+  getChipSurface,
+  getChipVisualState,
+  type ChipProps,
+  type ChipTone,
+} from '@/components/ui/chip-state';
 import { Icon } from '@/components/ui/icon';
 import { Text, type TextColor } from '@/components/ui/text';
-import { radius, space } from '@/design/tokens';
+import { textVariantStyles } from '@/components/ui/text-variants';
+import { minTouchTarget, radius, space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 
 export type { ChipProps, ChipTone };
-export { getChipSurface, getChipVisualState };
+export { getChipHitSlop, getChipSurface, getChipVisualState };
+
+const CHIP_PADDING_VERTICAL = space[1];
+
+// Resting visual height, derived from the tokens that produce it (the `label`
+// line box plus vertical padding) rather than measured, so the slop is known
+// on the first render. Vertical only — see getChipHitSlop.
+const CHIP_HIT_SLOP = getChipHitSlop(
+  (textVariantStyles.label.lineHeight ?? 0) + CHIP_PADDING_VERTICAL * 2,
+  minTouchTarget,
+);
 
 export function Chip(props: ChipProps) {
   const { colors } = useAppTheme();
@@ -61,6 +78,7 @@ export function Chip(props: ChipProps) {
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ selected: props.selected, disabled }}
+      hitSlop={CHIP_HIT_SLOP}
       style={({ pressed }) => [...baseStyle, { opacity: disabled ? 0.4 : pressed ? 0.7 : 1 }]}>
       {content}
     </Pressable>
@@ -74,6 +92,6 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     gap: space[1],
     paddingHorizontal: space[3],
-    paddingVertical: space[1],
+    paddingVertical: CHIP_PADDING_VERTICAL,
   },
 });
