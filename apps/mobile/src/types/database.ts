@@ -925,6 +925,7 @@ export type Database = {
       }
       fynd_search_query: { Args: { p_query: string }; Returns: unknown }
       fynd_text_normalize: { Args: { p_text: string }; Returns: string }
+      fynd_text_tsvector: { Args: { p_text: string }; Returns: unknown }
       fynd_token_variants: { Args: { p_token: string }; Returns: string[] }
       fynd_variants_text: { Args: { p_text: string }; Returns: string }
       get_or_create_listing_conversation: {
@@ -1165,17 +1166,24 @@ export type Database = {
       }
       search_listings: {
         Args: {
+          p_brand_ids?: string[]
           p_category_id?: string
+          p_color_ids?: string[]
           p_condition?: Database["public"]["Enums"]["listing_condition"]
           p_cursor_created_at?: string
           p_cursor_id?: string
           p_cursor_price?: number
+          p_fit_ids?: string[]
+          p_item_type_ids?: string[]
           p_limit?: number
+          p_material_ids?: string[]
+          p_pattern_ids?: string[]
           p_price_max?: number
           p_price_min?: number
           p_query?: string
           p_size?: Database["public"]["Enums"]["listing_size"]
           p_sort?: Database["public"]["Enums"]["search_sort"]
+          p_style_ids?: string[]
         }
         Returns: {
           category_id: string
