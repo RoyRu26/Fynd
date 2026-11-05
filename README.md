@@ -33,7 +33,7 @@ Built as a pnpm monorepo: an Expo / React Native app and a Supabase backend (Pos
 | Mobile | React Native, Expo, Expo Router, TypeScript (strict) |
 | State and forms | TanStack Query, React Hook Form, Zod |
 | Backend | Supabase: PostgreSQL, Auth, Storage, Realtime, Edge Functions (Deno) |
-| AI | Anthropic Claude (Haiku 4.5) via the `suggest-listing` Edge Function |
+| AI | Anthropic Claude via the `suggest-listing` Edge Function |
 | Testing | Vitest (app logic), pgTAP (database) |
 | Tooling | pnpm workspaces, ESLint |
 
