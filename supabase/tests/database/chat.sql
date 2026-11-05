@@ -31,7 +31,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(145);
+select plan(166);
 
 -- ============================================================
 -- FIXTURES
@@ -635,6 +635,156 @@ select ok(
   'the relocated guard is still SECURITY DEFINER and STABLE'
 );
 
+-- ============================================================
+-- 9c. Blocks (ROADMAP 5.2) -- messaging enforcement
+-- ============================================================
+-- Dedicated fixtures, same discipline as section 22's own F/G pair below:
+-- fresh ids so these assertions are not entangled with the message
+-- volume/conversation counts accumulated by every earlier section. H
+-- sells, I buys.
+
+reset role;
+
+insert into auth.users (
+  id, instance_id, aud, role, email, encrypted_password, created_at, updated_at
+)
+values
+  ('f5000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'pgtap-chat-h@test.dev', 'x', now(), now()),
+  ('f5000000-0000-0000-0000-000000000012', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'pgtap-chat-i@test.dev', 'x', now(), now());
+
+insert into public.listings
+  (id, seller_id, title, description, price_amount, condition, size, category_id, status)
+values
+  ('aaaa5000-0000-0000-0000-000000000021', 'f5000000-0000-0000-0000-000000000011',
+   'Block test one', 'CHAT_BLOCK_1', 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
+  ('aaaa5000-0000-0000-0000-000000000022', 'f5000000-0000-0000-0000-000000000011',
+   'Block test two', 'CHAT_BLOCK_2', 2000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
+  ('aaaa5000-0000-0000-0000-000000000023', 'f5000000-0000-0000-0000-000000000011',
+   'Block test three', 'CHAT_BLOCK_3', 3000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active');
+
+-- I (the buyer) opens a conversation on listing 21 and sends into it, before
+-- any block exists -- establishes the normal-flow baseline this section's
+-- later assertions are a deviation from.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-000000000012","role":"authenticated"}';
+
+create temp table block_conv as
+select public.get_or_create_listing_conversation('aaaa5000-0000-0000-0000-000000000021') as cv21;
+
+reset role;
+grant select on block_conv to authenticated;
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-000000000012","role":"authenticated"}';
+
+select lives_ok(
+  $$insert into public.messages (conversation_id, sender_id, body, client_nonce)
+    values ((select cv21 from block_conv),
+            'f5000000-0000-0000-0000-000000000012', 'before any block', 'nonce-i-block-01')$$,
+  'sanity: I can message H normally before any block exists'
+);
+
+-- H (the seller) blocks I. blocks' own INSERT policy pins blocker_id to
+-- auth.uid(), so this must run as H.
+set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-000000000011","role":"authenticated"}';
+
+insert into public.blocks (blocker_id, blocked_id)
+values ('f5000000-0000-0000-0000-000000000011', 'f5000000-0000-0000-0000-000000000012');
+
+-- A NEW conversation (listing 22, a different listing from the same
+-- seller) cannot be STARTED while the block exists -- direction 1: the
+-- SELLER blocked the buyer.
+set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-000000000012","role":"authenticated"}';
+
+select throws_ok(
+  $$select public.get_or_create_listing_conversation('aaaa5000-0000-0000-0000-000000000022')$$,
+  '42501', null,
+  'a NEW conversation cannot be started once the seller has blocked the buyer'
+);
+
+-- Direct INSERT into the EXISTING conversation (listing 21) is rejected
+-- once the block exists, from EITHER sender -- the gap the RPC's own
+-- "resume is never gated" rule would otherwise leave open.
+select throws_ok(
+  $$insert into public.messages (conversation_id, sender_id, body, client_nonce)
+    values ((select cv21 from block_conv),
+            'f5000000-0000-0000-0000-000000000012', 'after block, from buyer', 'nonce-i-block-02')$$,
+  '42501', null,
+  'the buyer cannot send into the existing conversation once a block exists'
+);
+
+set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-000000000011","role":"authenticated"}';
+
+select throws_ok(
+  $$insert into public.messages (conversation_id, sender_id, body, client_nonce)
+    values ((select cv21 from block_conv),
+            'f5000000-0000-0000-0000-000000000011', 'after block, from seller', 'nonce-h-block-01')$$,
+  '42501', null,
+  'the seller (the blocker) cannot send into the existing conversation either -- messaging is severed both ways, not just for the blocked party'
+);
+
+-- But it still RESUMES -- no error, the SAME conversation id -- rather
+-- than silently hiding history once a block exists. This is the one place
+-- in this section a block must NOT change behavior.
+set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-000000000012","role":"authenticated"}';
+
+select is(
+  (select public.get_or_create_listing_conversation('aaaa5000-0000-0000-0000-000000000021')),
+  (select cv21 from block_conv),
+  'resuming the existing conversation after a block still returns the same id, with no error'
+);
+
+-- Unblock. H is still the blocker_id on this row, so the DELETE must run
+-- as H -- mirrors blocks.sql's own owner-scoped delete policy.
+set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-000000000011","role":"authenticated"}';
+
+delete from public.blocks
+ where blocker_id = 'f5000000-0000-0000-0000-000000000011'
+   and blocked_id = 'f5000000-0000-0000-0000-000000000012';
+
+-- Unblocking restores sending on the existing conversation...
+select lives_ok(
+  $$insert into public.messages (conversation_id, sender_id, body, client_nonce)
+    values ((select cv21 from block_conv),
+            'f5000000-0000-0000-0000-000000000011', 'unblocked, from seller', 'nonce-h-block-02')$$,
+  'unblocking restores the seller''s ability to send into the existing conversation'
+);
+
+-- ...and restores the ability to start a brand NEW one too (listing 22,
+-- refused above while blocked).
+set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-000000000012","role":"authenticated"}';
+
+select isnt(
+  (select public.get_or_create_listing_conversation('aaaa5000-0000-0000-0000-000000000022')),
+  null,
+  'unblocking restores the ability to start a brand new conversation too'
+);
+
+-- Direction 2: the BUYER blocks the SELLER (listing 23, untouched so far,
+-- isolating this from the resume-branch assertions above). Symmetric
+-- outcome expected -- has_block_between does not care which side blocked
+-- which.
+insert into public.blocks (blocker_id, blocked_id)
+values ('f5000000-0000-0000-0000-000000000012', 'f5000000-0000-0000-0000-000000000011');
+
+select throws_ok(
+  $$select public.get_or_create_listing_conversation('aaaa5000-0000-0000-0000-000000000023')$$,
+  '42501', null,
+  'a NEW conversation is refused the other direction too -- the BUYER blocked the seller'
+);
+
+delete from public.blocks
+ where blocker_id = 'f5000000-0000-0000-0000-000000000012'
+   and blocked_id = 'f5000000-0000-0000-0000-000000000011';
+
+select isnt(
+  (select public.get_or_create_listing_conversation('aaaa5000-0000-0000-0000-000000000023')),
+  null,
+  'unblocking (from the buyer''s side this time) restores the ability to start a new conversation'
+);
+
 -- Back to the buyer for the read-state section below.
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-00000000000b","role":"authenticated"}';
@@ -890,6 +1040,34 @@ select is(
   'the other participant''s public profile is joined in, costing no extra query'
 );
 
+-- SCREENS.md Task 6: `seller_id` is what lets the client derive
+-- Buying/Selling itself (viewerId = seller_id is Selling), the same
+-- "client compares its own id" shape `conversation_detail`'s `can_review`
+-- comment already established -- asserted from both sides of the same row.
+select is(
+  (select i.seller_id from public.inbox_conversations(50) i
+    where i.listing_title = 'P2 main'),
+  'f5000000-0000-0000-0000-00000000000d',
+  'the buyer''s own view of seller_id names the actual seller, not themselves'
+);
+
+set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-00000000000d","role":"authenticated"}';
+
+select is(
+  (select i.seller_id from public.inbox_conversations(50) i
+    where i.listing_title = 'P2 main'),
+  'f5000000-0000-0000-0000-00000000000d',
+  'the seller''s own view of seller_id equals their own id -- viewerId = seller_id is Selling'
+);
+
+select isnt(
+  (select i.other_participant_id from public.inbox_conversations(50) i
+    where i.listing_title = 'P2 main'),
+  (select i.seller_id from public.inbox_conversations(50) i
+    where i.listing_title = 'P2 main'),
+  'seller_id is never the OTHER participant from the seller''s own side -- it always names the viewer'
+);
+
 -- The third party is in none of these conversations.
 set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-00000000000c","role":"authenticated"}';
 
@@ -1039,6 +1217,55 @@ select is(
 -- phase handles with a fallback tile. Recorded here so the NULL above is not
 -- confused with that separate, deliberate gap.
 
+-- SCREENS.md Task 6: listing_price_amount/listing_currency, for the thread's
+-- pinned listing strip. Same left-joined-with-listings shape as
+-- listing_title/listing_status/cover_storage_path above, asserted from both
+-- a still-active listing (cv10 / P2 main) and a sold one (cv12 / P2 sold) --
+-- the sold case is what actually exercises DEFINER, the same reason section
+-- 13 exists for listing_status.
+select is(
+  (select d.listing_price_amount from public.conversation_detail((select cv10 from p2_conv)) d),
+  1000::bigint,
+  'conversation_detail returns the listing''s price for the pinned strip'
+);
+
+select is(
+  (select d.listing_currency from public.conversation_detail((select cv10 from p2_conv)) d),
+  'ILS',
+  'and its currency'
+);
+
+select is(
+  (select d.listing_price_amount from public.conversation_detail((select cv12 from p2_conv)) d),
+  3000::bigint,
+  'the price survives for a SOLD listing too -- the buyer still needs it after the sale'
+);
+
+-- SCREENS.md Task 8: seller_id (the header's "Buying from you"/"Selling to
+-- you" caption) and listing_size (the pinned strip's "price . size" line).
+-- Still as E (buyer on cv10 / P2 main) from the block above.
+select is(
+  (select d.seller_id from public.conversation_detail((select cv10 from p2_conv)) d),
+  'f5000000-0000-0000-0000-00000000000d',
+  'conversation_detail returns the conversation''s seller_id to the buyer'
+);
+
+select is(
+  (select d.listing_size from public.conversation_detail((select cv10 from p2_conv)) d),
+  'alpha_m'::public.listing_size,
+  'and the listing''s size'
+);
+
+set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-00000000000d","role":"authenticated"}';
+
+select is(
+  (select d.seller_id from public.conversation_detail((select cv10 from p2_conv)) d),
+  'f5000000-0000-0000-0000-00000000000d',
+  'and the seller''s own view of seller_id equals their own id -- viewerId = seller_id is "selling"'
+);
+
+set local request.jwt.claims = '{"sub":"f5000000-0000-0000-0000-00000000000e","role":"authenticated"}';
+
 -- ============================================================
 -- 15. conversation_detail -- indistinguishable failure modes
 -- ============================================================
@@ -1083,6 +1310,35 @@ select ok(
     where p.proname = 'conversation_detail'
       and p.pronamespace = 'public'::regnamespace),
   'conversation_detail does not return either read timestamp'
+);
+
+-- The mirror of the two checks above: `seller_id` (SCREENS.md Task 6) IS
+-- a declared OUT parameter of inbox_conversations, so the Buying/Selling
+-- split this migration exists for cannot silently regress.
+select ok(
+  (select p.proargnames @> array['seller_id']
+     from pg_proc p
+    where p.proname = 'inbox_conversations'
+      and p.pronamespace = 'public'::regnamespace),
+  'inbox_conversations returns seller_id'
+);
+
+-- Same mirror, for conversation_detail's own Task 6 addition.
+select ok(
+  (select p.proargnames @> array['listing_price_amount', 'listing_currency']
+     from pg_proc p
+    where p.proname = 'conversation_detail'
+      and p.pronamespace = 'public'::regnamespace),
+  'conversation_detail returns listing_price_amount and listing_currency'
+);
+
+-- And its Task 8 addition.
+select ok(
+  (select p.proargnames @> array['seller_id', 'listing_size']
+     from pg_proc p
+    where p.proname = 'conversation_detail'
+      and p.pronamespace = 'public'::regnamespace),
+  'conversation_detail returns seller_id and listing_size'
 );
 
 set local role authenticated;

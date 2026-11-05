@@ -1,30 +1,45 @@
 // Color primitives and the semantic layer, as pure data.
 //
-// No runtime import of any kind — not react-native, not expo-router. This is
-// the same split as text-variants.ts / text.tsx: tokens.ts imports
-// Platform/StyleSheet and theme.ts imports expo-router, and since ES modules
-// execute their whole body on import, either one would transitively pull in
-// react-native's Flow source, which the test runner's transform cannot parse.
-// Keeping the palette here is what makes palette.test.ts — the contrast and
-// color-vision harness — able to assert against the real shipped values
-// rather than a hand-copied duplicate that can silently drift.
+// No runtime import of any kind — not react-native, not expo-router. tokens.ts
+// imports Platform/StyleSheet and theme.ts imports expo-router; either would
+// pull react-native's Flow source into the test runner. Keeping the palette
+// here lets palette.test.ts (contrast + colour-vision harness) assert against
+// the real shipped values.
 //
 // tokens.ts re-exports the ramps and theme.ts re-exports the semantic layer,
 // so no consumer imports this file directly.
+//
+// PAPER & INK (replaces Olive & Oat). Paper-cream surfaces, warm black ink,
+// one loud orange-red. Danger moved off red to magenta so the brand owns the
+// red-orange sector alone (DESIGN.md §8).
+//
+// ============================================================
+// The structural consequence of a red-orange brand, measured
+// ============================================================
+// Olive & Oat could put brand and danger 78 degrees apart, because a green
+// brand and a red danger live in opposite sectors. Paper & Ink deliberately
+// moves the brand INTO the warm sector, which means brand and danger are now
+// neighbours (36-52 degrees apart) rather than opposites. Hue alone can no
+// longer carry the "Save is not Delete" signal, so the separation is carried
+// by LUMINANCE instead, and that is what forced most of the values below.
+//
+// Two hard constraints pin `danger` in each scheme, and they pull opposite
+// ways:
+//   * it is a FOREGROUND token (TextField's error caption, the Sell screens'
+//     error text), so it needs 4.5:1 against its own background;
+//   * it is also the error BORDER, so it needs 3:1 against `borderFocus`, or
+//     a focused field and a focused+errored field become the same control.
+// Together those leave danger only a narrow luminance window — roughly
+// 0.117-0.153 on paper, 0.201-0.266 on ink. `accent` therefore has to sit
+// clearly OUTSIDE that window, or the two collapse together for a dichromat.
+// Every accent/danger value below is a consequence of that, not a taste call.
 
 // ============================================================
 // Primitive ramps — DESIGN.md §3
 // ============================================================
 
-// Warm neutral ramp. Unchanged by the Olive & Oat migration: it was already
-// tinted toward red/yellow, which §3 requires ("never blue").
-//
-// 450 and 550 are new. `textTertiary` was neutral.500 in both schemes and
-// measured 3.56:1 on the old cream — below the 4.5:1 floor for the
-// normal-sized text it actually carries (TextField placeholder, TextField
-// helper text, the onboarding availability caption). That was a pre-existing
-// accessibility defect, not one this migration introduced; these two steps
-// are the minimum correction that keeps the three-tier text hierarchy intact.
+// Warm neutral ramp. 900/950 retuned to the Paper & Ink "ink" blacks; every
+// other step unchanged (already red/yellow-tinted, never blue).
 export const neutral = {
   0: '#FFFFFF',
   25: '#FAF9F8',
@@ -35,95 +50,80 @@ export const neutral = {
   300: '#CAC4BF',
   400: '#A8A19B',
   450: '#8C857E', // dark textTertiary
-  500: '#857E78', // no consumer since the textTertiary correction; retained as a ramp step
+  500: '#857E78',
   550: '#726B65', // light textTertiary
   600: '#655F5A',
   700: '#4A4541',
   800: '#2E2A28',
-  900: '#1A1716',
-  950: '#0C0A0B',
+  900: '#1E1A15',
+  950: '#14110D',
 } as const;
 
-// Oat surface ramp — light scheme only, replacing the former `cream`.
-// The neutral steps above are near-white greys and read cold against a warm
-// canvas, so surfaces keep their own family. Softened from the previous
-// cream anchor (#FBF1D8, S 72%) to roughly S 44%: at full cream saturation
-// the canvas tints every thumbnail in a 3-up grid and competes with the
-// product photography that §1 makes the hero.
-export const oat = {
-  50: '#FCFAF3', // light bgElevated
-  100: '#F6F2E8', // swatch anchor — light bg
-  200: '#EAE4D4', // light bgSunken
+// Paper surface ramp — light scheme only.
+export const paper = {
+  50: '#FAF7F0', // light bgElevated
+  100: '#F4EFE4', // light bg
+  200: '#E6E0D2', // light bgSunken
 } as const;
 
-// Olive brand ramp — hue ~78-83, S 33-45%, replacing the former brick-crimson
-// `red`. The brand leaves the red sector entirely so `danger` owns it
-// unambiguously: the previous accent sat 1 degree of hue and 1.87:1 from
-// danger, which DESIGN.md §8 calls "a safety problem, not an aesthetic one."
+// Ink brand ramp — orange-red, hue ~8-20.
 //
-// Olive is deliberately low-chroma. A saturated accent competes with product
-// photography; this one recedes behind it, per §1's "the interface recedes."
-export const olive = {
-  300: '#B8CC8A',
-  400: '#8FA855', // dark accentText
-  500: '#6B8A36',
-  600: '#5E7A2E', // dark accent
-  700: '#4A5D28', // light accent, light accentText, dark accentPressed
-  800: '#33421A', // light accentPressed
+// 500 is the brand swatch: it is the colour the brand IS, and it ships as
+// large-type brand ink. (It also backed `ambientGlow.primary` until that token
+// was removed with the auth redesign.) It is deliberately NOT either scheme's
+// `accent` fill, because it cannot be one:
+//   * white on it measures 3.9:1 (fails AA for button labels);
+//   * as normal-size text on paper it measures 3.4:1 (fails AA);
+//   * its luminance (0.219) sits INSIDE the dark scheme's danger window
+//     (0.201-0.266), so on near-black it is the one orange that cannot be
+//     told apart from the magenta danger by a dichromat.
+// So the two schemes each take the step that clears their own constraints,
+// and the brand swatch stays the brand swatch.
+//
+// There is no 600 step. The ramp is numbered by lightness position, and
+// nothing currently needs a value between the brand swatch and the light
+// scheme's accent — an unused step is a value someone will eventually reach
+// for by accident.
+export const ink = {
+  200: '#FFA385', // dark accentPressed
+  300: '#FF7D52', // dark accent
+  400: '#F06A45', // dark accentText, dark favoriteActive
+  500: '#E8481F', // BRAND SWATCH — large-type brand ink
+  700: '#8B1604', // light accent, light accentText, light favoriteActive
+  800: '#6B1103', // light accentPressed
 } as const;
 
-// Favorite ramp, replacing `magenta`. Now a per-scheme pair like `accent`
-// (§3 rule 1) rather than one hue: the old single magenta measured 1.02:1
-// from danger — near-identical luminance, separated by hue alone. Splitting
-// it lets each scheme pick a step that clears both its own background and
-// danger.
-export const rose = {
-  500: '#FF6FA5', // dark favoriteActive
-  600: '#E93A7D', // light favoriteActive
-} as const;
-
-// Success ramp, replacing the single `success.500 #2E9E63`.
-//
-// Two changes, both forced by measurement rather than taste. First the hue:
-// with an olive brand, a yellow-green success would reproduce the exact
-// collision this migration exists to remove, so success moved to teal (~170)
-// — 90 degrees off the accent. Second, it became a per-scheme pair, for the
-// same reason `accent` is one (§3 rule 1): the single value measured 3.73:1
-// as caption text on the dark scheme, and a teal dark enough to pass on oat
-// is muddy on near-black.
-//
-// Both steps are additionally verified to stay distinguishable from the
-// olive accent under deuteranopia and protanopia, which the first teal
-// candidate (#12796B) failed at 1.21:1.
+// Success ramp — teal, ~155-165 degrees off the ink accent. Unchanged from
+// Olive & Oat: it was already chosen to sit far from a warm accent, and it
+// still measures 1.65:1 from `accent` under both dichromat simulations.
 export const teal = {
   400: '#63CDBC', // dark success
   700: '#0B5F55', // light success
 } as const;
 
-// Danger ramp, replacing the single `danger.500 #D93A3A`.
+// Danger ramp — magenta, moved off red so it never reads as the brand.
 //
-// The old value was chosen so a WHITE FOREGROUND on it cleared AA (4.55:1) —
-// but `danger`'s actual consumers use it as a foreground, not a fill:
-// TextField's error caption, the onboarding availability row, and the Sell
-// screens' error text. Measured as text it was 4.07:1 on the light canvas
-// and 4.34:1 on the dark one. Both fail. Like `accent`, it has to be a
-// per-scheme pair to clear a pale canvas and a near-black one.
+// Both steps are more saturated and further from the accent's luminance than
+// a "calmer" magenta would be, and that is deliberate: magenta's blue channel
+// is the only thing a deuteranope or protanope has left to tell it apart from
+// an orange accent once hue collapses. Desaturating either step toward a
+// dusty rose drops accent-vs-danger below 1.6:1 under simulation — i.e. it
+// would make "Delete" look like "Save" for a dichromat, which DESIGN.md §8
+// calls "a safety problem, not an aesthetic one."
 //
-// A consequence worth stating: on the dark scheme a red light enough to read
-// as text is too light for white on top, so `onDanger` becomes ink there.
-// That is precisely why §3 rule 6 keeps `onDanger` decoupled from
-// `onAccent` instead of assuming both are white forever.
-export const crimson = {
-  400: '#E8564B', // dark danger
-  700: '#BF2A22', // light danger
+// Dark step is light enough for text on near-black, so onDanger is ink there.
+export const magenta = {
+  400: '#F00094', // dark danger
+  700: '#D0116A', // light danger
 } as const;
 
-// Warning ramp, replacing the single `warning.500 #C87A16`, which measured
-// 3.00:1 as text on the light canvas. Same per-scheme correction; the dark
-// step keeps the original value, which was already fine on near-black.
+// Warning ramp — amber, pushed from hue ~34 to ~46 (light) / ~46 (dark).
+// Against an ORANGE brand the old amber sat 14-20 degrees away, close enough
+// to read as a dimmer accent; the golder hue restores 31-40 degrees of
+// separation while staying unmistakably "amber", not chartreuse.
 export const amber = {
-  400: '#C87A16', // dark warning
-  700: '#9A5D0E', // light warning
+  400: '#C7A123', // dark warning
+  700: '#7A6410', // light warning
 } as const;
 
 // ============================================================
@@ -148,14 +148,14 @@ export type SemanticColors = {
   borderFocus: string;
   accent: string;
   accentPressed: string;
+  // NOT white in both schemes — see darkColors.onAccent. Defined by its
+  // contrast against `accent`, exactly like `onDanger` is against `danger`.
   onAccent: string;
   accentText: string;
   favoriteActive: string;
   danger: string;
   dangerBg: string;
-  // Deliberately its own token, not reused from onAccent — even though both
-  // currently resolve to white, danger's foreground is defined by its own
-  // contrast needs against `danger`, never borrowed from accent's.
+  // Own token, not reused from onAccent — defined by its contrast against danger.
   onDanger: string;
   success: string;
   successBg: string;
@@ -166,71 +166,81 @@ export type SemanticColors = {
 };
 
 export const lightColors: SemanticColors = {
-  bg: oat[100],
-  bgElevated: oat[50],
-  bgSunken: oat[200],
-  bgInverse: neutral[900],
-  text: neutral[900],
+  bg: paper[100],
+  bgElevated: paper[50],
+  bgSunken: paper[200],
+  bgInverse: neutral[950],
+  text: neutral[950],
   textSecondary: neutral[600],
   textTertiary: neutral[550],
-  textInverse: neutral[25],
+  textInverse: paper[100],
   textOnMedia: '#FFFFFF',
   border: neutral[200],
   borderStrong: neutral[300],
-  // Achromatic, NOT the brand accent — focus is a system state, not a brand
-  // moment (§3 rule 2a). Deepened from neutral.800 to neutral.950 because the
-  // danger correction above darkened the error border: against the new
-  // crimson.700 the old charcoal measured 2.42:1, below the 3:1 a focused
-  // field needs to stay distinguishable from a focused+errored one. Now
-  // 3.36:1. Still achromatic, so the rule's intent is unchanged.
+  // Achromatic — focus is a system state, not a brand moment (§3 rule 2a).
   borderFocus: neutral[950],
-  accent: olive[700],
-  accentPressed: olive[800],
+  // A deep burnt red-orange, not the brand swatch, and it has to be: on
+  // paper the accent fill must clear 4.5:1 for its white label AND sit far
+  // enough below danger's luminance window (0.117-0.153) that the two do not
+  // collapse under dichromat simulation. Measured: white 9.5:1, 11.5:1
+  // against bg, 1.90/1.76:1 from danger under deuteranopia/protanopia.
+  accent: ink[700],
+  accentPressed: ink[800],
   onAccent: '#FFFFFF',
-  accentText: olive[700],
-  favoriteActive: rose[600],
-  danger: crimson[700],
-  dangerBg: '#FDF0F0',
+  accentText: ink[700],
+  // Same value as `accent` by design (Paper & Ink puts favorite on the brand
+  // ramp). §12.4 is satisfied by the icon's own filled/outline shape change,
+  // never by colour alone — see DESIGN.md §4.
+  favoriteActive: ink[700],
+  danger: magenta[700],
+  dangerBg: '#FBEAF2',
   onDanger: '#FFFFFF',
   success: teal[700],
   successBg: '#E4F1EE',
   warning: amber[700],
   warningBg: '#FDF6E8',
-  overlayScrim: 'rgba(12,10,11,0.55)',
-  skeleton: neutral[100],
+  overlayScrim: 'rgba(20,17,13,0.55)',
+  skeleton: paper[200],
 };
 
 export const darkColors: SemanticColors = {
   bg: neutral[950],
   bgElevated: neutral[900],
   bgSunken: neutral[950],
-  bgInverse: neutral[50],
-  text: neutral[25],
+  bgInverse: paper[100],
+  text: paper[100],
   textSecondary: neutral[400],
   textTertiary: neutral[450],
-  textInverse: neutral[900],
+  textInverse: neutral[950],
   textOnMedia: '#FFFFFF',
   border: neutral[800],
   borderStrong: neutral[700],
-  // Lightened from neutral.200 for the same reason as the light scheme: the
-  // dark danger step is lighter, so the ring had to move further from it
-  // (2.63:1 -> 3.24:1).
   borderFocus: neutral[50],
-  accent: olive[600],
-  accentPressed: olive[700],
-  onAccent: '#FFFFFF',
-  accentText: olive[400],
-  favoriteActive: rose[500],
-  danger: crimson[400],
-  dangerBg: '#3A1E1E',
-  // Ink, not white: see the crimson ramp's note. A red light enough to read
-  // as text on near-black cannot carry a white foreground.
-  onDanger: neutral[900],
+  // Brighter than the brand swatch, not darker. On near-black the accent has
+  // to clear danger's luminance window (0.201-0.266) to stay distinguishable
+  // under dichromat simulation, and the only direction with room is UP — a
+  // darker orange would fail 3:1 against the background instead. Measured:
+  // 8.1:1 against bg, 1.68/2.05:1 from danger under deuteranopia/protanopia.
+  accent: ink[300],
+  // Pressed BRIGHTENS here rather than darkening. On a near-black ground that
+  // is the direction that reads as "pressed", and darkening would walk the
+  // fill straight back into danger's luminance window.
+  accentPressed: ink[200],
+  // Ink, not white — the same decoupling `onDanger` has always had, for the
+  // same reason. An orange loud enough to be the dark-scheme accent is far
+  // too light for a white label (white on it measures 3.1:1); ink on it
+  // measures 7.5:1. This is why §3 rule 6 keeps onAccent its own token.
+  onAccent: neutral[950],
+  accentText: ink[400],
+  favoriteActive: ink[400],
+  danger: magenta[400],
+  dangerBg: '#3A1528',
+  onDanger: neutral[950],
   success: teal[400],
   successBg: '#0F2E29',
   warning: amber[400],
   warningBg: '#332714',
-  overlayScrim: 'rgba(12,10,11,0.55)',
+  overlayScrim: 'rgba(20,17,13,0.55)',
   skeleton: neutral[800],
 };
 

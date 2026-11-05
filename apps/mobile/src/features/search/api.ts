@@ -13,6 +13,8 @@ export type { SearchCursor, SearchFilters, SearchListing } from '@/features/sear
 
 /**
  * Database access for ROADMAP 2.2 "Search backend".
+ * ROADMAP 7.3 adds the brand / attribute-term filters (`p_brand_ids`,
+ * `p_*_ids`) and Hebrew-aware fynd text matching (`fynd_search_query`).
  *
  * The privilege model this layer respects, enforced server-side:
  *

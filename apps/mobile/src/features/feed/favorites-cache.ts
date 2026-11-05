@@ -64,30 +64,3 @@ export function setFavoriteInPages<TPageParam>(
   }
   return { ...data, pages };
 }
-
-/**
- * Whether any loaded page currently has this listing favorited.
- *
- * The feed RPC's `is_favorited` is the authoritative read state, so the
- * toggle direction is derived from the cache rather than from a second
- * client-owned source of truth. Returns `null` when the listing is not in
- * the cache at all, which the caller treats as "cannot determine" rather
- * than as "not favorited" — guessing would risk sending an `insert` for a
- * row that already exists (a 23505 from the composite primary key).
- */
-export function isListingFavoritedInPages<TPageParam>(
-  data: FeedPages<TPageParam> | undefined,
-  listingId: string,
-): boolean | null {
-  if (!data) {
-    return null;
-  }
-  for (const page of data.pages) {
-    for (const listing of page) {
-      if (listing.listingId === listingId) {
-        return listing.isFavorited;
-      }
-    }
-  }
-  return null;
-}

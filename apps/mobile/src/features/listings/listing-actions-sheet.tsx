@@ -1,4 +1,5 @@
-import { Alert, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
 
 import { Icon, ListRow, Sheet, type IconName } from '@/components/ui';
 import { space } from '@/design/tokens';
@@ -8,21 +9,31 @@ import type { ListingRow as ListingRowData } from '@/features/listings/api';
 import { mapListingError } from '@/features/listings/errors';
 import {
   useDeleteDraft,
+  useListingConversationBuyers,
   useMarkListingActive,
   useMarkListingReserved,
   useMarkListingSold,
   useRemoveListing,
 } from '@/features/listings/queries';
+import { MARK_SOLD_ICON, resolveSoldBuyerName } from '@/features/listings/sold-buyer';
+import { SoldBuyerPicker } from '@/features/listings/sold-buyer-picker';
 
 // Verified against the installed packages (same discipline as every other
 // IconName constant in this codebase): every ios/android/web name below
 // exists in sf-symbols-typescript's types and expo-symbols' android/
 // symbols.json respectively.
+//
+// mark_sold reuses MARK_SOLD_ICON from sold-buyer.ts (not a copy of the
+// same literal) -- sold-buyer-picker.tsx's "Sold outside Fynd" row needs
+// the identical glyph (it's a second view of this exact action), and that
+// shared pure module is what both this file and the picker already import
+// from, so it's the one place a single value can live without this file
+// and the picker importing from each other.
 const ACTION_ICON: Record<ListingAction, IconName> = {
   edit: { ios: 'pencil', android: 'edit', web: 'edit' },
   mark_reserved: { ios: 'clock', android: 'schedule', web: 'schedule' },
   mark_active: { ios: 'arrow.uturn.backward', android: 'undo', web: 'undo' },
-  mark_sold: { ios: 'checkmark.circle', android: 'check_circle', web: 'check_circle' },
+  mark_sold: MARK_SOLD_ICON,
   remove: { ios: 'eye.slash', android: 'visibility_off', web: 'visibility_off' },
   delete_draft: { ios: 'trash', android: 'delete', web: 'delete' },
 };
@@ -67,12 +78,37 @@ export type ListingActionsSheetProps = {
  * per action `getAvailableActions` offers for the listing's current status.
  *
  * mark_reserved/mark_active fire immediately, no confirmation — freely
- * reversible between each other. mark_sold/remove/delete_draft close the
- * sheet first, then confirm via a native Alert.alert with a destructive
- * confirm button, mirroring my-listings.tsx's existing handleDeleteDraft
- * shape exactly (DESIGN.md §16 item 8 is still open for Button's solid
- * danger fill, so native Alert stays the destructive-confirmation pattern
- * here too, not a custom in-sheet control).
+ * reversible between each other. remove/delete_draft close the sheet
+ * first, then confirm via a native Alert.alert with a destructive confirm
+ * button, mirroring my-listings.tsx's existing handleDeleteDraft shape
+ * exactly (DESIGN.md §16 item 8 is still open for Button's solid danger
+ * fill, so native Alert stays the destructive-confirmation pattern here
+ * too, not a custom in-sheet control).
+ *
+ * mark_sold is the one action with a second view: ROADMAP 5.3 "Mark sold
+ * to a buyer" adds a `view: 'menu' | 'pick_buyer'` split, the same single-
+ * `Sheet`-instance shape `MoreActionsSheet` already established for its own
+ * menu/report split (one Sheet, content swapped, never a second Modal —
+ * see that file's own comment on the close/open animation overlap a
+ * sibling-Sheet handoff would otherwise create). `view` resets to `'menu'`
+ * whenever the sheet is freshly opened on a (possibly different) listing,
+ * mirroring `MoreActionsSheet`'s `prevVisible` sync pattern exactly, just
+ * keyed off the listing's id rather than a plain `visible` boolean since
+ * this sheet has no boolean prop of its own (`listing !== null` is already
+ * `Sheet`'s own `visible`).
+ *
+ * Tapping "Mark as sold" while the listing's conversation-buyer list is
+ * EMPTY, or still resolving (loading or errored), falls straight through
+ * to the exact pre-5.3 behaviour: confirm, then `markSold.mutateAsync`
+ * with `buyerId: null` — zero regression for the overwhelmingly common
+ * case of a listing nobody has messaged about, and a deliberate choice not
+ * to block or disable the row while the fetch is in flight (a listing with
+ * a genuinely slow/failed fetch must still be markable as sold). The row
+ * does show a small trailing spinner while still resolving, though, so a
+ * fast tap that lands before the list resolves reads as "still checking,"
+ * not as silent, indistinguishable-from-normal behavior that happens to
+ * skip the picker. Only once the list is known to be non-empty does
+ * tapping switch to the picker view instead.
  */
 export function ListingActionsSheet({ listing, sellerId, onClose, onEdit, onError }: ListingActionsSheetProps) {
   const { colors } = useAppTheme();
@@ -83,6 +119,27 @@ export function ListingActionsSheet({ listing, sellerId, onClose, onEdit, onErro
   const deleteDraft = useDeleteDraft(sellerId);
 
   const actions = listing ? getAvailableActions(listing.status) : [];
+  const canMarkSold = actions.includes('mark_sold');
+
+  // Prefetched whenever the sheet is open on a listing that offers
+  // mark_sold -- by the time the user actually taps the row, the list has
+  // usually already resolved, so the common case never shows a spinner.
+  const conversationBuyersQuery = useListingConversationBuyers(canMarkSold ? listing?.id : undefined);
+  const conversationBuyers = conversationBuyersQuery.data ?? [];
+
+  const [view, setView] = useState<'menu' | 'pick_buyer'>('menu');
+
+  // Resets to the menu view every time the sheet opens on a (possibly
+  // different) listing -- React's documented "adjust state when a prop
+  // changes" pattern, mirroring `MoreActionsSheet`'s own `prevVisible`
+  // sync. Keyed off the listing's id rather than a boolean `visible` prop,
+  // since this sheet derives its own visibility from `listing !== null`.
+  const currentListingId = listing?.id ?? null;
+  const [prevListingId, setPrevListingId] = useState(currentListingId);
+  if (currentListingId !== prevListingId) {
+    setPrevListingId(currentListingId);
+    if (currentListingId !== null) setView('menu');
+  }
 
   async function run(mutateAsync: (listingId: string) => Promise<unknown>, listingId: string) {
     onError(null);
@@ -134,15 +191,24 @@ export function ListingActionsSheet({ listing, sellerId, onClose, onEdit, onErro
         onClose();
         run((id) => markActive.mutateAsync(id), listingId);
         return;
-      case 'mark_sold':
-        confirmAndRun(
-          'Mark as sold?',
-          "This moves the listing out of active browsing. This can't be undone.",
-          'Mark sold',
-          (id) => markSold.mutateAsync(id),
-          listingId,
-        );
+      case 'mark_sold': {
+        // Still resolving (or failed) is treated the same as empty -- see
+        // this component's own doc comment for why: never race or block
+        // the action on a slow/failed fetch.
+        const stillResolving = conversationBuyersQuery.isPending || conversationBuyersQuery.isError;
+        if (stillResolving || conversationBuyers.length === 0) {
+          confirmAndRun(
+            'Mark as sold?',
+            "This moves the listing out of active browsing. This can't be undone.",
+            'Mark sold',
+            (id) => markSold.mutateAsync({ listingId: id, buyerId: null }),
+            listingId,
+          );
+          return;
+        }
+        setView('pick_buyer');
         return;
+      }
       case 'remove':
         confirmAndRun(
           'Remove this listing?',
@@ -164,27 +230,68 @@ export function ListingActionsSheet({ listing, sellerId, onClose, onEdit, onErro
     }
   }
 
+  /**
+   * A row was tapped in the buyer picker. `buyerId` is `null` for the
+   * pinned "Sold outside Fynd" row. Closes the sheet first (resetting
+   * `view` back to `'menu'` for next time), then confirms via the SAME
+   * destructive `Alert.alert` pattern every other action in this file
+   * uses -- now naming the buyer when there is one.
+   */
+  function handleSelectBuyer(buyerId: string | null) {
+    if (!listing) return;
+    const listingId = listing.id;
+    const buyer = buyerId ? conversationBuyers.find((candidate) => candidate.buyerId === buyerId) : undefined;
+    const title = buyer ? `Mark sold to ${resolveSoldBuyerName(buyer)}?` : 'Mark as sold?';
+
+    onClose();
+    setView('menu');
+    Alert.alert(title, "This moves the listing out of active browsing. This can't be undone.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Mark sold',
+        style: 'destructive',
+        onPress: () => run((id) => markSold.mutateAsync({ listingId: id, buyerId }), listingId),
+      },
+    ]);
+  }
+
+  const pickingBuyer = view === 'pick_buyer';
+
   return (
     <Sheet
       visible={listing !== null}
       onClose={onClose}
-      title={listing ? listing.title ?? 'Untitled listing' : undefined}
-      accessibilityLabel="Manage listing">
-      <View style={styles.rows}>
-        {actions.map((action) => {
-          const danger = DANGER_ACTIONS.has(action);
-          return (
-            <ListRow
-              key={action}
-              title={ACTION_LABEL[action]}
-              titleColor={danger ? 'danger' : 'text'}
-              leading={<Icon name={ACTION_ICON[action]} color={danger ? colors.danger : colors.text} />}
-              onPress={() => handleAction(action)}
-              accessibilityLabel={ACTION_LABEL[action]}
-            />
-          );
-        })}
-      </View>
+      title={pickingBuyer ? 'Mark as sold' : listing ? listing.title ?? 'Untitled listing' : undefined}
+      accessibilityLabel={pickingBuyer ? 'Choose who you sold this to' : 'Manage listing'}>
+      {pickingBuyer ? (
+        <SoldBuyerPicker buyers={conversationBuyers} onSelect={handleSelectBuyer} />
+      ) : (
+        <View style={styles.rows}>
+          {actions.map((action) => {
+            const danger = DANGER_ACTIONS.has(action);
+            // Trailing spinner only for mark_sold while its own buyer list
+            // is still resolving -- a visible "still checking" cue so a
+            // fast tap landing before the fetch settles doesn't read as
+            // identical to the listing genuinely having no buyers to pick
+            // from. Never disables the row: see this component's own doc
+            // comment for why a slow/failed fetch must still be markable.
+            const showResolvingIndicator = action === 'mark_sold' && conversationBuyersQuery.isPending;
+            return (
+              <ListRow
+                key={action}
+                title={ACTION_LABEL[action]}
+                titleColor={danger ? 'danger' : 'text'}
+                leading={<Icon name={ACTION_ICON[action]} color={danger ? colors.danger : colors.text} />}
+                trailing={showResolvingIndicator ? <ActivityIndicator color={colors.textTertiary} /> : undefined}
+                onPress={() => handleAction(action)}
+                accessibilityLabel={
+                  showResolvingIndicator ? `${ACTION_LABEL[action]}, checking who messaged about this listing` : ACTION_LABEL[action]
+                }
+              />
+            );
+          })}
+        </View>
+      )}
     </Sheet>
   );
 }

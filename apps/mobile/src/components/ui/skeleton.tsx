@@ -35,8 +35,7 @@ export function Skeleton({ width, height, aspectRatio, radius: radiusKey = 'sm',
   const opacity = useSharedValue(1);
 
   // Started here (not in the render body) so a parent re-render never
-  // restarts or reassigns an already-running loop — same discipline
-  // ambient-background.tsx's Glow effect follows. Reduced motion simply
+  // restarts or reassigns an already-running loop. Reduced motion simply
   // never starts the loop, leaving opacity at its static initial value of 1.
   useEffect(() => {
     if (reducedMotion) return;
@@ -88,11 +87,18 @@ export function SkeletonRow({ showTrailing = false }: { showTrailing?: boolean }
   );
 }
 
-/** Loading placeholder mirroring ListingGridTile's own tile/image metrics, so a grid of these lines up pixel-for-pixel with real tiles. */
-export function SkeletonListingCard() {
+/**
+ * Loading placeholder mirroring ListingGridTile's own tile/image metrics, so
+ * a grid of these lines up pixel-for-pixel with real tiles.
+ *
+ * `aspectRatio` has to be passed through for that to keep holding: Explore's
+ * tiles are 4:5 while Saved's are square, and a skeleton stuck at one ratio
+ * would make every tile jump height the moment real data arrives.
+ */
+export function SkeletonListingCard({ aspectRatio = 1 }: { aspectRatio?: number } = {}) {
   return (
     <View style={styles.tile}>
-      <Skeleton width="100%" aspectRatio={1} radius="sm" />
+      <Skeleton width="100%" aspectRatio={aspectRatio} radius="sm" />
       <Skeleton height={19} width="50%" radius="xs" />
       <Skeleton height={18} width="70%" radius="xs" />
     </View>

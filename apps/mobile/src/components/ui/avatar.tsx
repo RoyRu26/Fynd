@@ -1,11 +1,11 @@
 import { Image } from 'expo-image';
+import { SymbolView } from 'expo-symbols';
 import { StyleSheet, View } from 'react-native';
 
-import { getInitials } from '@/components/ui/avatar-state';
-import { Text, type TextVariant } from '@/components/ui/text';
+import type { IconName } from '@/components/ui/icon';
 import { useAppTheme } from '@/design/theme-provider';
 
-export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg';
+export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
 export type AvatarProps = {
   size?: AvatarSize;
@@ -18,13 +18,19 @@ export type AvatarProps = {
 // DESIGN.md doesn't specify exact avatar sizes, and there's exactly one
 // consumer (this file) — per the second-caller rule these stay local rather
 // than being promoted to a shared token.
-const DIAMETER: Record<AvatarSize, number> = { xs: 24, sm: 32, md: 40, lg: 56 };
-const INITIALS_VARIANT: Record<AvatarSize, TextVariant> = {
-  xs: 'micro',
-  sm: 'caption',
-  md: 'label',
-  lg: 'heading',
-};
+// `xl` (84) is the onboarding avatar picker's size. It exists as a real step
+// rather than being faked with a `style` override because the picker's empty
+// state is a separate 84px dashed circle: if the two diverged, the control
+// would visibly resize the instant a photo was chosen.
+const DIAMETER: Record<AvatarSize, number> = { xs: 24, sm: 32, md: 40, lg: 56, xl: 84 };
+
+// No photo: a generic person glyph rather than initials, so every
+// photo-less user reads as "no picture yet" in one consistent way. The glyph
+// scales with the circle (the shared `iconSize` scale tops out at 28, below
+// the larger avatars), so it is sized locally for the same second-caller
+// reason as DIAMETER.
+const PLACEHOLDER_ICON: IconName = { ios: 'person.fill', android: 'person', web: 'person' };
+const PLACEHOLDER_GLYPH: Record<AvatarSize, number> = { xs: 14, sm: 18, md: 22, lg: 32, xl: 48 };
 
 export function Avatar({ size = 'md', source, name, accessibilityLabel }: AvatarProps) {
   const { colors } = useAppTheme();
@@ -42,9 +48,7 @@ export function Avatar({ size = 'md', source, name, accessibilityLabel }: Avatar
       {source ? (
         <Image source={{ uri: source }} style={StyleSheet.absoluteFill} contentFit="cover" />
       ) : (
-        <Text variant={INITIALS_VARIANT[size]} color="textSecondary">
-          {getInitials(name ?? '')}
-        </Text>
+        <SymbolView name={PLACEHOLDER_ICON} size={PLACEHOLDER_GLYPH[size]} tintColor={colors.textTertiary} />
       )}
     </View>
   );

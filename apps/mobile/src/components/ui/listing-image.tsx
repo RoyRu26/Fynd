@@ -57,8 +57,7 @@ export function ListingImage({
 }: ListingImageProps) {
   const { colors } = useAppTheme();
   // DESIGN.md §10 rule 3 / §12.5: reduced motion disables this image's own
-  // fade-in outright (0ms) rather than merely shortening it — the same
-  // mechanism AmbientBackground already uses for its own motion.
+  // fade-in outright (0ms) rather than merely shortening it.
   const reducedMotion = useReducedMotion();
 
   return (

@@ -1,5 +1,23 @@
+import {
+  brandSelectionFromListing,
+  brandSelectionToArgs,
+  type BrandSelection,
+} from '@/features/brands/brands';
+import {
+  normalizeVocabulary,
+  type AttributeValueRow,
+  type AttributeVocabulary,
+} from '@/features/listings/attributes';
 import { LISTING_IMAGES_BUCKET, LISTING_IMAGE_CONTENT_TYPE } from '@/features/listings/paths';
+import { createAvatarUrls } from '@/features/profile/api';
+import { groupLowestPositionCoverByListingId, type ListingImageCoverRow } from '@/features/listings/rack';
 import type { DraftListingInput, PublishableListingInput } from '@/features/listings/schemas';
+import {
+  associateSoldBuyerAvatarUrls,
+  normalizeSoldBuyerRow,
+  type SoldBuyerCandidate,
+} from '@/features/listings/sold-buyer';
+import { createSignedStorageUrls } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 import type { Tables } from '@/types/database';
 
@@ -81,27 +99,59 @@ export async function fetchListingImages(listingId: string): Promise<ListingImag
 /**
  * The bucket is private, so rendering a photo needs a signed URL. Owner-
  * generated: the Storage SELECT policy only grants the caller their own uid
- * prefix.
+ * prefix. A thin wrapper over the shared `createSignedStorageUrls` — see
+ * that function's own header for why this isn't inlined (it used to be,
+ * and a second inlined copy in `features/profile/api.ts` is what caused a
+ * require cycle between these two features).
  */
 export async function createListingImageUrls(
   storagePaths: string[],
   expiresInSeconds = 60 * 60,
 ): Promise<Record<string, string>> {
-  if (storagePaths.length === 0) {
+  return createSignedStorageUrls(LISTING_IMAGES_BUCKET, storagePaths, expiresInSeconds);
+}
+
+/**
+ * Cover photo URL per listing id, for the Sell tab's "your rack" strip
+ * (SCREENS.md Task 5) — one round trip for `listing_images` rows across every
+ * listing in `listingIds`, ordered by `position` so
+ * `groupLowestPositionCoverByListingId` can take the first row per id as that
+ * listing's cover, plus one batched signed-URL call.
+ *
+ * Not the `listings -> listing_images` embedded-select `seller-profile/api.ts`
+ * uses: that query filters to `status = 'active'`, where `publish_listing`'s
+ * own photo requirement guarantees at least one image per row. The rack shows
+ * every status, drafts included, and a draft can legitimately have zero
+ * photos — so a listing simply has no entry in the returned map rather than
+ * the strict "throw if missing" the seller-profile grid relies on.
+ *
+ * Direct `listing_images` access, not `listings`, is what RLS allows here too:
+ * the table's SELECT policy "follows listing visibility", so a seller reading
+ * their own non-active listings' images is already covered by the same rule
+ * that lets them read the listings themselves.
+ */
+export async function fetchListingCovers(listingIds: string[]): Promise<Record<string, string>> {
+  if (listingIds.length === 0) {
     return {};
   }
-  const { data, error } = await supabase.storage
-    .from(LISTING_IMAGES_BUCKET)
-    .createSignedUrls(storagePaths, expiresInSeconds);
+  const { data, error } = await supabase
+    .from('listing_images')
+    .select('listing_id, storage_path, position')
+    .in('listing_id', listingIds)
+    .order('position', { ascending: true });
   if (error) throw error;
 
-  const urls: Record<string, string> = {};
-  for (const entry of data) {
-    if (entry.signedUrl && entry.path) {
-      urls[entry.path] = entry.signedUrl;
+  const storagePathByListingId = groupLowestPositionCoverByListingId(data as ListingImageCoverRow[]);
+  const urlsByPath = await createListingImageUrls(Object.values(storagePathByListingId));
+
+  const coverUrlByListingId: Record<string, string> = {};
+  for (const [listingId, storagePath] of Object.entries(storagePathByListingId)) {
+    const url = urlsByPath[storagePath];
+    if (url) {
+      coverUrlByListingId[listingId] = url;
     }
   }
-  return urls;
+  return coverUrlByListingId;
 }
 
 // ============================================================
@@ -211,13 +261,68 @@ export async function markListingActive(listingId: string): Promise<ListingRow> 
 }
 
 /**
- * active|reserved -> sold. Deliberately the simple no-buyer-tracking
- * version -- no buyer id. ROADMAP 5.3 adds buyer selection later.
+ * active|reserved -> sold. `buyerId` is `null` for "sold outside Fynd" --
+ * the pre-5.3 behaviour, still fully supported -- or the id of someone who
+ * actually messaged about THIS listing (enforced server-side; the RPC
+ * rejects a buyer who never messaged about it, even one who messaged the
+ * same seller about a different listing). See
+ * supabase/migrations/20261020073200_listing_sold_buyer.sql for the full
+ * validation this RPC performs, including why a since-blocked buyer may
+ * still be selected.
  */
-export async function markListingSold(listingId: string): Promise<ListingRow> {
-  const { data, error } = await supabase.rpc('mark_listing_sold', { p_listing_id: listingId });
+export async function markListingSold(
+  listingId: string,
+  buyerId: string | null,
+): Promise<ListingRow> {
+  const { data, error } = await supabase.rpc('mark_listing_sold', {
+    p_listing_id: listingId,
+    // The generated Args type is `string | undefined` -- RPC Args codegen
+    // does not model a parameter's SQL `default null` as `| null` the way
+    // table-column nullability is modelled -- so `null` (our own domain's
+    // "no buyer" value) is converted at this one boundary. The server side
+    // treats an omitted argument and an explicit `null` identically either
+    // way (`p_buyer_id uuid default null`).
+    p_buyer_id: buyerId ?? undefined,
+  });
   if (error) throw error;
   return data;
+}
+
+/**
+ * ROADMAP 5.3: the people who messaged about this listing, who may
+ * therefore be picked as the sold-to buyer -- most-recent-conversation
+ * first, exactly the order `listing_conversation_buyers` already returns.
+ *
+ * A SECURITY DEFINER RPC, not a direct client query, because of a
+ * COLUMN-GRANT gap rather than an RLS gap: `conversations` only grants
+ * `select (id, buyer_id, seller_id)` to `authenticated` (see
+ * `20260929090000_chat_conversations_and_messages.sql`), so a client
+ * cannot even NAME `listing_id` in a query, regardless of what RLS would
+ * have allowed. See the RPC's own migration comment for the full
+ * reasoning.
+ *
+ * Avatar URLs are resolved the same batched way `inbox/api.ts`'s
+ * `fetchInboxPage` already does: one signed-URL round trip for every
+ * non-null avatar path in the result, never one request per buyer.
+ */
+export async function fetchListingConversationBuyers(
+  listingId: string,
+): Promise<SoldBuyerCandidate[]> {
+  const { data, error } = await supabase.rpc('listing_conversation_buyers', {
+    p_listing_id: listingId,
+  });
+  if (error) throw error;
+
+  const rows = data.map(normalizeSoldBuyerRow);
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const avatarPaths = Array.from(
+    new Set(rows.map((row) => row.avatarPath).filter((path): path is string => path !== null)),
+  );
+  const urlsByPath = await createAvatarUrls(avatarPaths);
+  return associateSoldBuyerAvatarUrls(rows, urlsByPath);
 }
 
 /**
@@ -253,6 +358,83 @@ export async function updateListingDetails(
   });
   if (error) throw error;
   return data;
+}
+
+// ============================================================
+// Structured attributes (AI listing metadata plan, Phases 1a + 1b)
+// ============================================================
+// The four vocabulary tables are authenticated-SELECT only, with no client
+// writes. Values are written only through `set_listing_attributes` (no
+// INSERT/UPDATE/DELETE grant on listing_attribute_values, no column grant on
+// listings.keywords, brand_id or brand_text), which works for draft, active
+// and reserved listings.
+
+export async function fetchAttributeVocabulary(): Promise<AttributeVocabulary> {
+  const [kinds, terms, kindCategories, itemTypeCategories] = await Promise.all([
+    supabase.from('listing_attribute_kinds').select('kind, label, max_values, position'),
+    supabase.from('listing_attribute_terms').select('id, kind, slug, label, position, retired_at'),
+    supabase.from('listing_attribute_kind_categories').select('kind, category_id'),
+    supabase.from('listing_item_type_categories').select('term_id, category_id'),
+  ]);
+  if (kinds.error) throw kinds.error;
+  if (terms.error) throw terms.error;
+  if (kindCategories.error) throw kindCategories.error;
+  if (itemTypeCategories.error) throw itemTypeCategories.error;
+
+  return normalizeVocabulary({
+    kinds: kinds.data,
+    terms: terms.data,
+    kindCategories: kindCategories.data,
+    itemTypeCategories: itemTypeCategories.data,
+  });
+}
+
+export type ListingAttributes = {
+  values: AttributeValueRow[];
+  keywords: string[];
+  brand: BrandSelection;
+};
+
+export async function fetchListingAttributes(listingId: string): Promise<ListingAttributes> {
+  const [values, listing] = await Promise.all([
+    supabase.from('listing_attribute_values').select('term_id, kind, position').eq('listing_id', listingId),
+    // The brand name comes from an embedded read of the catalog row, so a
+    // known brand never needs a second round trip to be displayed.
+    supabase
+      .from('listings')
+      .select('keywords, brand_id, brand_text, brand:brands!listings_brand_id_fkey(id, name)')
+      .eq('id', listingId)
+      .single(),
+  ]);
+  if (values.error) throw values.error;
+  if (listing.error) throw listing.error;
+  return {
+    values: values.data,
+    keywords: listing.data.keywords,
+    brand: brandSelectionFromListing(listing.data),
+  };
+}
+
+/**
+ * Replaces the whole set — values, keywords and brand. Order within a kind
+ * becomes `position` (first color = primary). Free-text brand that exactly
+ * matches a catalog alias is stored as that brand by the server, so callers
+ * re-read the listing afterwards instead of assuming what was stored.
+ */
+export async function setListingAttributes(
+  listingId: string,
+  input: { termIds: string[]; keywords: string[]; brand: BrandSelection },
+): Promise<void> {
+  const { brandId, brandText } = brandSelectionToArgs(input.brand);
+  const { error } = await supabase.rpc('set_listing_attributes', {
+    p_listing_id: listingId,
+    p_term_ids: input.termIds,
+    p_keywords: input.keywords,
+    // Omitted rather than null: the generated args type marks them optional.
+    ...(brandId !== null ? { p_brand_id: brandId } : {}),
+    ...(brandText !== null ? { p_brand_text: brandText } : {}),
+  });
+  if (error) throw error;
 }
 
 // ============================================================

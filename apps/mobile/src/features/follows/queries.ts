@@ -24,7 +24,10 @@ import {
 export const FOLLOW_LIST_PAGE_SIZE = 20;
 
 export const followKeys = {
-  counts: (profileId: string) => ['follows', profileId, 'counts'] as const,
+  // `string | undefined`, same reasoning as `isFollowing`'s own `viewerId`
+  // just below: `useFollowCounts` now reads a possibly-still-hydrating
+  // session id too (SCREENS.md Task 7's Profile tab).
+  counts: (profileId: string | undefined) => ['follows', profileId, 'counts'] as const,
   // `viewerId` is `string | undefined` (mirroring `savedItemsKeys.listings`'s
   // own `userId: string | undefined` shape) rather than requiring a resolved
   // id: the auth session can still be hydrating when a profile screen
@@ -37,14 +40,22 @@ export const followKeys = {
 /**
  * A stable mutation key, so `useMutationState` below can find an in-flight
  * toggle without the hook keeping its own parallel state — same pattern as
- * `feed/queries.ts`'s `FAVORITE_MUTATION_KEY`.
+ * `favorites/queries.ts`'s `FAVORITE_MUTATION_KEY`.
  */
 export const FOLLOW_MUTATION_KEY = ['follows', 'toggleFollow'] as const;
 
-export function useFollowCounts(profileId: string) {
+/**
+ * `profileId` is `string | undefined` (not required, as every prior caller's
+ * route-param id was) — SCREENS.md Task 7's Profile tab reads it off the
+ * auth session, which can still be hydrating when this screen mounts. Same
+ * `enabled: !!profileId` gate this file's own `useIsFollowing` already uses
+ * for an identical reason, rather than firing a query keyed on `undefined`.
+ */
+export function useFollowCounts(profileId: string | undefined) {
   return useQuery({
     queryKey: followKeys.counts(profileId),
-    queryFn: () => fetchFollowCounts(profileId),
+    queryFn: () => fetchFollowCounts(profileId as string),
+    enabled: !!profileId,
   });
 }
 
@@ -103,7 +114,7 @@ type ToggleFollowVariables = { profileId: string; isFollowing: boolean };
  *   * `followKeys.isFollowing(viewerId, profileId)` flips directly.
  *
  * In-flight guard and cache-preferred toggle direction mirror
- * `useToggleFavoriteFromDetail` exactly: `isPending` is derived from the
+ * the former detail-screen favorite toggle: `isPending` is derived from the
  * mutation cache (filtered to this `profileId`, since a different profile
  * screen's toggle must not disable this one's button), and `toggleFollow`
  * refuses to fire while one is already pending for this profile.

@@ -90,7 +90,7 @@ type SendMessageVariables = {
  * Sends messages in `conversationId`, with optimistic bubbles and a
  * visible, retryable failure state.
  *
- * Mirrors `useToggleFavorite`'s onMutate/onError/onSuccess shape, with one
+ * Mirrors `useSetFavorite`'s onMutate/onError/onSuccess shape, with one
  * deliberate difference: `onError` does NOT restore a pre-mutation
  * snapshot. Rolling back would silently vanish the bubble the user just
  * watched themselves send — exactly the "offline send disappears" failure

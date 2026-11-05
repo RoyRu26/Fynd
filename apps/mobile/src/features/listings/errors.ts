@@ -77,6 +77,10 @@ export function mapListingError(error: unknown): MappedListingError {
     // A CHECK constraint: title length, positive price, completeness.
     case '23514':
       return { message: "That value isn't allowed. Please check the highlighted fields." };
+    // set_listing_attributes input validation: too many values for a kind, a
+    // duplicate, unknown or retired term. The editor prevents these up front.
+    case '22023':
+      return { message: "Some of those details aren't allowed. Please review them and try again." };
     default:
       break;
   }

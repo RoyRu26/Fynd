@@ -2,7 +2,7 @@ import { createListingImageUrls } from '@/features/listings/api';
 import { createAvatarUrls } from '@/features/profile/api';
 import { supabase } from '@/lib/supabase';
 import {
-  associateConversationHeaderAvatarUrl,
+  associateConversationHeaderUrls,
   associateInboxAvatarUrls,
   associateInboxCoverUrls,
   normalizeConversationHeader,
@@ -102,8 +102,9 @@ export async function markConversationRead(params: {
 }
 
 /**
- * The thread header for the stub `[id].tsx` screen: who, about what, and
- * what state that listing is in.
+ * The thread header for `[id].tsx`: who, about what, what state that
+ * listing is in, and — for the pinned listing strip (SCREENS.md Task 6) —
+ * its cover photo and price.
  *
  * `conversation_detail` never actually returns zero rows for "no such
  * conversation" or "not yours" — for both cases it `raise exception ...
@@ -131,8 +132,11 @@ export async function fetchConversationDetail(
   }
 
   const normalized = normalizeConversationHeader(row);
-  const urlsByPath = await createAvatarUrls(normalized.otherAvatarPath ? [normalized.otherAvatarPath] : []);
-  return associateConversationHeaderAvatarUrl(normalized, urlsByPath);
+  const [avatarUrlsByPath, coverUrlsByPath] = await Promise.all([
+    createAvatarUrls(normalized.otherAvatarPath ? [normalized.otherAvatarPath] : []),
+    createListingImageUrls(normalized.coverStoragePath ? [normalized.coverStoragePath] : []),
+  ]);
+  return associateConversationHeaderUrls(normalized, avatarUrlsByPath, coverUrlsByPath);
 }
 
 /**

@@ -49,6 +49,21 @@ export function mapAuthError(error: unknown): MappedAuthError {
         };
       case 'over_request_rate_limit':
         return { message: 'Too many attempts. Please wait a moment and try again.' };
+      // GoTrue's email-specific limit, distinct from the request limit above
+      // and reached by the resend and password-reset flows. Without its own
+      // branch it fell through to "Something went wrong", which reads as a
+      // bug for what is really "wait a bit" — and invites the user to keep
+      // hammering a button that cannot succeed yet.
+      case 'over_email_send_rate_limit':
+        return { message: 'Too many emails requested. Please wait a few minutes and try again.' };
+      // Raised on sign-in when confirmations are enabled and the address has
+      // not been confirmed. Names the actual blocker so the user looks in
+      // their inbox instead of assuming a wrong password.
+      case 'email_not_confirmed':
+        return {
+          field: 'email',
+          message: 'Confirm your email first. Check your inbox for the confirmation link.',
+        };
       default:
         return { message: 'Something went wrong. Please try again.' };
     }

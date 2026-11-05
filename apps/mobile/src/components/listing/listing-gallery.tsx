@@ -9,21 +9,31 @@ import {
   type NativeScrollEvent,
 } from 'react-native';
 
-import { ListingImage, Text } from '@/components/ui';
+import { ListingImage } from '@/components/ui';
 import { radius, space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 import { prefetchFeedCoverImages } from '@/features/feed/api';
 
 /**
- * The listing detail screen's photo gallery: one large, full-width,
- * square-cropped image per page, swiped horizontally, in upload order, with
- * a "1 / N" indicator. No pinch-to-zoom — that's explicitly a later slice.
+ * The listing detail screen's photo gallery (SCREENS.md Task 9 / the 6a
+ * handoff): one large, full-width, fixed-height image per page, swiped
+ * horizontally, in upload order, with a row of page dots. No pinch-to-zoom
+ * — that's explicitly a later slice.
  *
- * Width is measured (`onLayout`), never guessed — the same pattern Home's
- * own feed page height uses — since it's what both `getItemLayout` and each
- * page's own size need to be exactly right for `pagingEnabled` to snap
- * cleanly.
+ * Fixed `GALLERY_HEIGHT`, not `aspectRatio` — the handoff's own "500px
+ * (≈60% of screen)" is a height, not a crop ratio, and the screen around
+ * this component already treats that height as a known constant (the
+ * content sheet below overlaps it by a fixed amount). Width is still
+ * measured (`onLayout`), never guessed — the same pattern Home's own feed
+ * page uses — since `getItemLayout` and each page's own width need to be
+ * exactly right for `pagingEnabled` to snap cleanly.
  */
+
+/** The handoff's own number — see this file's header comment for why it's a fixed height, not a ratio. */
+export const GALLERY_HEIGHT = 500;
+const DOT_BOTTOM_OFFSET = 28;
+const DOT_ACTIVE_WIDTH = 22;
+const DOT_SIZE = 6;
 
 export type ListingGalleryImage = { id: string; url: string };
 
@@ -61,7 +71,7 @@ export function ListingGallery({ images, title }: ListingGalleryProps) {
 
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<ListingGalleryImage>) => (
-      <View style={{ width, aspectRatio: 1 }}>
+      <View style={{ width, height: GALLERY_HEIGHT }}>
         <ListingImage uri={item.url} fill contentFit="cover" accessibilityLabel={title} />
       </View>
     ),
@@ -92,16 +102,26 @@ export function ListingGallery({ images, title }: ListingGalleryProps) {
           onMomentumScrollEnd={onMomentumScrollEnd}
         />
       ) : (
-        // Reserves the square aspect ratio before the first layout pass, so
+        // Reserves the gallery height before the first layout pass, so
         // nothing above/below the gallery jumps once width is known.
         <View style={styles.placeholder} />
       )}
 
       {images.length > 1 ? (
-        <View style={[styles.indicator, { backgroundColor: colors.overlayScrim }]}>
-          <Text variant="caption" color="textOnMedia">
-            {`${index + 1} / ${images.length}`}
-          </Text>
+        <View style={styles.dots}>
+          {images.map((image, dotIndex) => (
+            <View
+              key={image.id}
+              style={[
+                styles.dot,
+                dotIndex === index ? styles.dotActive : null,
+                // "bg at 50%" for the inactive dot — an opacity modifier on
+                // the semantic color, same technique the Profile closet
+                // grid's sold-item wash already uses, not a second raw color.
+                { backgroundColor: colors.bg, opacity: dotIndex === index ? 1 : 0.5 },
+              ]}
+            />
+          ))}
         </View>
       ) : null}
     </View>
@@ -110,14 +130,23 @@ export function ListingGallery({ images, title }: ListingGalleryProps) {
 
 const styles = StyleSheet.create({
   placeholder: {
-    aspectRatio: 1,
+    height: GALLERY_HEIGHT,
   },
-  indicator: {
+  dots: {
     position: 'absolute',
-    right: space[3],
-    bottom: space[3],
-    paddingHorizontal: space[2],
-    paddingVertical: space[1],
-    borderRadius: radius.sm,
+    left: 0,
+    right: 0,
+    bottom: DOT_BOTTOM_OFFSET,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: space[1],
+  },
+  dot: {
+    width: DOT_SIZE,
+    height: DOT_SIZE,
+    borderRadius: radius.full,
+  },
+  dotActive: {
+    width: DOT_ACTIVE_WIDTH,
   },
 });

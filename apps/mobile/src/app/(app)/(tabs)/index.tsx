@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FeedCard } from '@/components/feed/feed-card';
-import { Chip, EmptyState, type IconName } from '@/components/ui';
+import { Chip, EmptyState, Skeleton, type IconName } from '@/components/ui';
 import { space } from '@/design/tokens';
 import { AppThemeProvider, useAppTheme } from '@/design/theme-provider';
 import { prefetchFeedCoverImages } from '@/features/feed/api';
@@ -44,7 +44,23 @@ import { mapListingError } from '@/features/listings/errors';
 // user-facing, never left true.
 const INCLUDE_OWN_LISTINGS_FOR_LOCAL_TESTING = false;
 
-const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 60, minimumViewTime: 800 };
+// Debounced on purpose: a fly-by glance mid-flick shouldn't count as an
+// impression, so this one waits for 800ms of continuous visibility.
+const IMPRESSION_VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 60, minimumViewTime: 800 };
+
+// Deliberately NOT debounced, unlike the impression config above: this one
+// drives "what post is the user currently on" (last-viewed-post tracking
+// for scope-switch restoration, and prefetching the next few covers), which
+// needs to reflect the CURRENT page the instant it settles, not 800ms
+// later. Sharing the impression config's minimumViewTime here was a real
+// bug -- swiping through posts faster than 800ms each (completely normal
+// browsing speed) meant those posts never fired the callback at all, so the
+// remembered position silently stayed on whichever earlier post the user
+// had lingered on long enough, not the one they were actually on when they
+// switched scope. Two separate viewability configs via
+// `viewabilityConfigCallbackPairs` below, not one shared config, is what
+// lets each concern use the debounce it actually needs.
+const POSITION_VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 60 };
 
 // Small and deliberately position-driven: only the covers just past
 // whatever is primarily in view right now, never the whole loaded feed.
@@ -137,67 +153,79 @@ function HomeFeed() {
   // each scope's last-viewed page needs to be remembered independently —
   // otherwise whichever scope the user is NOT currently on would silently
   // keep whatever scroll position the other one left it at.
+  //
+  // Keyed by listingId, not raw index: a raw index would survive a scope
+  // switch only until that scope's query next refetched in the background
+  // (any switch back after `staleTime` elapses triggers exactly that) —
+  // reordering or new/removed listings shift what sits at a given index,
+  // so restoring by index alone would silently land on a DIFFERENT post,
+  // not necessarily the one the user actually left. Restoring by identity
+  // instead re-locates the same post whenever it's still present, and
+  // falls back to the top when it genuinely isn't (removed, or this scope
+  // was never visited) rather than guessing.
   const flatListRef = useRef<FlatList<FeedListing>>(null);
-  const lastIndexByScope = useRef<Record<FeedScope, number>>({ forYou: 0, following: 0 });
+  const lastListingIdByScope = useRef<Record<FeedScope, string | null>>({
+    forYou: null,
+    following: null,
+  });
 
-  // A plain module-scope object already has fully stable identity across
-  // every render — no ref needed for viewabilityConfig at all.
-  const onViewableItemsChanged = useCallback(
+  const onImpressionViewableItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: ViewToken<FeedListing>[] }) => {
       const currentListings = listingsRef.current;
       const nowViewable = viewableItems.filter((token) => token.isViewable);
 
-      // Impressions ---------------------------------------------------
       const viewableIds = nowViewable.map((token) => token.item.listingId);
       const newlyEligible = selectNewlyViewableImpressions(
         viewableIds,
         impressionStateRef.current,
       );
 
-      if (newlyEligible.length > 0) {
-        // Marked pending synchronously, before any RPC call starts — this
-        // is what closes the window a second viewability event could
-        // otherwise fire a concurrent duplicate send through.
-        impressionStateRef.current = markImpressionsPending(
-          impressionStateRef.current,
-          newlyEligible,
-        );
-
-        const sessionId = getFeedSessionId();
-        for (const listingId of newlyEligible) {
-          // The item's index in the fully flattened feed IS the absolute
-          // feed_position — see flattenFeedPages's own doc comment.
-          const feedPosition = currentListings.findIndex((l) => l.listingId === listingId);
-          if (feedPosition === -1) {
-            continue;
-          }
-
-          recordListingImpression({ listingId, sessionId, feedPosition })
-            .then(() => {
-              impressionStateRef.current = markImpressionConfirmed(
-                impressionStateRef.current,
-                listingId,
-              );
-            })
-            .catch((error: unknown) => {
-              // Never surfaced to the user and never interrupts scrolling —
-              // released back to eligible so it retries next time this
-              // listing becomes viewable again.
-              if (__DEV__) {
-                console.warn('[feed] impression failed, will retry when viewable again', error);
-              }
-              impressionStateRef.current = markImpressionFailed(
-                impressionStateRef.current,
-                listingId,
-              );
-            });
-        }
+      if (newlyEligible.length === 0) {
+        return;
       }
 
-      // Prefetch --------------------------------------------------------
-      const primary = nowViewable[0];
+      // Marked pending synchronously, before any RPC call starts — this
+      // is what closes the window a second viewability event could
+      // otherwise fire a concurrent duplicate send through.
+      impressionStateRef.current = markImpressionsPending(impressionStateRef.current, newlyEligible);
+
+      const sessionId = getFeedSessionId();
+      for (const listingId of newlyEligible) {
+        // The item's index in the fully flattened feed IS the absolute
+        // feed_position — see flattenFeedPages's own doc comment.
+        const feedPosition = currentListings.findIndex((l) => l.listingId === listingId);
+        if (feedPosition === -1) {
+          continue;
+        }
+
+        recordListingImpression({ listingId, sessionId, feedPosition })
+          .then(() => {
+            impressionStateRef.current = markImpressionConfirmed(impressionStateRef.current, listingId);
+          })
+          .catch((error: unknown) => {
+            // Never surfaced to the user and never interrupts scrolling —
+            // released back to eligible so it retries next time this
+            // listing becomes viewable again.
+            if (__DEV__) {
+              console.warn('[feed] impression failed, will retry when viewable again', error);
+            }
+            impressionStateRef.current = markImpressionFailed(impressionStateRef.current, listingId);
+          });
+      }
+    },
+    [],
+  );
+
+  // Eager counterpart to the impression callback above — see
+  // POSITION_VIEWABILITY_CONFIG's own comment for why this needs its own,
+  // non-debounced viewability config rather than sharing the impression
+  // one.
+  const onPositionViewableItemsChanged = useCallback(
+    ({ viewableItems }: { viewableItems: ViewToken<FeedListing>[] }) => {
+      const currentListings = listingsRef.current;
+      const primary = viewableItems.find((token) => token.isViewable);
       if (primary && typeof primary.index === 'number') {
-        lastIndexByScope.current[scopeRef.current] = primary.index;
+        lastListingIdByScope.current[scopeRef.current] = primary.item.listingId;
 
         const upcoming = currentListings
           .slice(primary.index + 1, primary.index + 1 + PREFETCH_AHEAD_COUNT)
@@ -209,6 +237,18 @@ function HomeFeed() {
     },
     [],
   );
+
+  // RN forbids changing `viewabilityConfigCallbackPairs`'s identity after
+  // mount, same restriction as a lone `onViewableItemsChanged`. A ref would
+  // normally be the tool for "created once, stable forever," but the React
+  // Compiler this codebase runs under forbids reading `.current` during
+  // render (see the identical note on `listingsRef` above) — `useState`'s
+  // lazy initializer gives the same create-once guarantee without that
+  // restriction, since the returned value is ordinary state, not a ref.
+  const [viewabilityConfigCallbackPairs] = useState(() => [
+    { viewabilityConfig: IMPRESSION_VIEWABILITY_CONFIG, onViewableItemsChanged: onImpressionViewableItemsChanged },
+    { viewabilityConfig: POSITION_VIEWABILITY_CONFIG, onViewableItemsChanged: onPositionViewableItemsChanged },
+  ]);
 
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = feedQuery;
   const handleEndReached = useCallback(() => {
@@ -229,46 +269,63 @@ function HomeFeed() {
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<FeedListing>) => (
       <View style={{ height: pageHeight }}>
-        <FeedCard
-          listing={item}
-          includeOwn={INCLUDE_OWN_LISTINGS_FOR_LOCAL_TESTING}
-          followingOnly={followingOnly}
-        />
+        <FeedCard listing={item} />
       </View>
     ),
-    [pageHeight, followingOnly],
+    [pageHeight],
   );
 
   const goToExplore = useCallback(() => {
     router.push('/(app)/(tabs)/explore');
   }, [router]);
 
-  // Restores the scope being switched TO at whatever page it was last left
-  // on, rather than the top. Unconditional -- including index 0 -- because
+  // Restores the scope being switched TO at whatever post it was last left
+  // on, rather than the top. Unconditional -- including "not found" -- because
   // without key={scope} forcing a remount, the FlatList's scroll offset
   // never resets on its own: if it doesn't, switching to a scope that was
-  // never scrolled (index 0) would leave it sitting at whatever pixel
-  // offset the PREVIOUS scope had reached, so whatever this scope's data
-  // happens to render at that same offset (often still the previous
+  // never scrolled (no remembered post) would leave it sitting at whatever
+  // pixel offset the PREVIOUS scope had reached, so whatever this scope's
+  // data happens to render at that same offset (often still the previous
   // scope's card, for an instant) stays on screen instead of jumping to
   // this one's actual top. Runs whenever scope or pageHeight changes:
   // pageHeight is in the dependency list because the offset math needs it,
   // not because it signals a scope change. useLayoutEffect, not useEffect,
   // so the jump happens before the frame is presented rather than as a
   // visible flash to the old position first.
+  //
+  // `listings` is deliberately read directly (not added to the dependency
+  // list): on the render that actually changes `scope`, it already reflects
+  // the new scope's cached data (useInfiniteQuery resolves synchronously
+  // from the cache for a key that's been fetched before), so the closure
+  // captured here is current for that render. Adding it as a dependency
+  // would instead re-run this effect on every later pagination fetch too --
+  // forcibly snapping an actively-scrolling user back to their last-viewed
+  // post the instant a background page finishes loading.
   useLayoutEffect(() => {
     if (pageHeight === 0) return;
-    const index = lastIndexByScope.current[scope];
-    flatListRef.current?.scrollToOffset({ offset: index * pageHeight, animated: false });
+    const listingId = lastListingIdByScope.current[scope];
+    const index = listingId ? listings.findIndex((item) => item.listingId === listingId) : -1;
+    flatListRef.current?.scrollToOffset({
+      offset: (index === -1 ? 0 : index) * pageHeight,
+      animated: false,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope, pageHeight]);
 
   let body: ReactNode;
   if (feedQuery.isPending) {
-    body = (
-      <View style={styles.centered}>
-        <ActivityIndicator color={colors.textTertiary} />
-      </View>
-    );
+    // Full-bleed, plain shimmering rectangle — deliberately restrained
+    // (DESIGN.md §14.1's "moderate, leaning minimal" chrome budget), not
+    // faked price/title placeholder bars. `flex: 1` (styles.feedSkeleton),
+    // not `height={pageHeight}`: pageHeight starts at 0 until
+    // onContainerLayout's first measurement lands, and this branch can
+    // render before that happens — an explicit height of 0 would paint as
+    // an invisible rectangle for a frame, a real (if brief) regression
+    // against the plain ActivityIndicator this replaced, which filled its
+    // flex:1 parent immediately regardless of measured pixels. `body`
+    // renders as a direct child of the root flex:1 View below, so flex:1
+    // here fills it the same way, with no dependency on measurement timing.
+    body = <Skeleton style={styles.feedSkeleton} />;
   } else if (feedQuery.isError) {
     body = (
       <View style={styles.centered}>
@@ -342,8 +399,7 @@ function HomeFeed() {
         // symptom above, and the most likely single cause of it. The memory
         // saving isn't worth that risk for a feed whose images are already
         // managed by ListingImage's own caching.
-        onViewableItemsChanged={onViewableItemsChanged}
-        viewabilityConfig={VIEWABILITY_CONFIG}
+        viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
         onEndReached={handleEndReached}
         onEndReachedThreshold={1.5}
       />
@@ -394,6 +450,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: space[3],
     paddingHorizontal: space[6],
+  },
+  feedSkeleton: {
+    flex: 1,
+    borderRadius: 0,
   },
   scopeToggle: {
     position: 'absolute',

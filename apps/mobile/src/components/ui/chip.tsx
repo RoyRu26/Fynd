@@ -1,25 +1,46 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { getChipVisualState, type ChipProps } from '@/components/ui/chip-state';
+import {
+  getChipHitSlop,
+  getChipSurface,
+  getChipVisualState,
+  type ChipProps,
+  type ChipTone,
+} from '@/components/ui/chip-state';
 import { Icon } from '@/components/ui/icon';
 import { Text, type TextColor } from '@/components/ui/text';
-import { radius, space } from '@/design/tokens';
+import { textVariantStyles } from '@/components/ui/text-variants';
+import { minTouchTarget, radius, space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 
-export type { ChipProps };
-export { getChipVisualState };
+export type { ChipProps, ChipTone };
+export { getChipHitSlop, getChipSurface, getChipVisualState };
+
+const CHIP_PADDING_VERTICAL = space[1];
+
+// Resting visual height, derived from the tokens that produce it (the `label`
+// line box plus vertical padding) rather than measured, so the slop is known
+// on the first render. Vertical only — see getChipHitSlop.
+const CHIP_HIT_SLOP = getChipHitSlop(
+  (textVariantStyles.label.lineHeight ?? 0) + CHIP_PADDING_VERTICAL * 2,
+  minTouchTarget,
+);
 
 export function Chip(props: ChipProps) {
   const { colors } = useAppTheme();
   const { label, disabled, icon, accessibilityLabel } = props;
-  const { interactive, emphasis } = getChipVisualState(props);
-  const selected = emphasis === 'selected';
+  const { interactive } = getChipVisualState(props);
+  const surface = getChipSurface(props);
 
   // Selected: solid accent fill — one of DESIGN.md §3's four explicitly
   // sanctioned accent uses ("selected chips/filters"), not an interpretation
-  // stretch. Unselected/static: quiet neutral surface with a hairline border.
-  const textColor: TextColor = selected ? 'onAccent' : 'text';
-  const iconColor = selected ? colors.onAccent : colors.text;
+  // stretch. Inverse: the neutral extreme, for a committed/dismissible token
+  // (see ChipTone). Default: quiet neutral surface with a hairline border.
+  const textColor: TextColor =
+    surface === 'selected' ? 'onAccent' : surface === 'inverse' ? 'textInverse' : 'text';
+  const iconColor = colors[textColor];
+  const backgroundColor =
+    surface === 'selected' ? colors.accent : surface === 'inverse' ? colors.bgInverse : colors.bgSunken;
 
   const content = (
     <>
@@ -33,9 +54,11 @@ export function Chip(props: ChipProps) {
   const baseStyle = [
     styles.base,
     {
-      backgroundColor: selected ? colors.accent : colors.bgSunken,
+      backgroundColor,
       borderRadius: radius.sm, // never radius.full — DESIGN.md §7 excludes pills for chips
-      borderWidth: selected ? 0 : StyleSheet.hairlineWidth,
+      // Only the quiet default surface needs a stroke to separate it from the
+      // page; both filled surfaces already carry their own edge.
+      borderWidth: surface === 'default' ? StyleSheet.hairlineWidth : 0,
       borderColor: colors.border,
     },
   ];
@@ -55,6 +78,7 @@ export function Chip(props: ChipProps) {
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ selected: props.selected, disabled }}
+      hitSlop={CHIP_HIT_SLOP}
       style={({ pressed }) => [...baseStyle, { opacity: disabled ? 0.4 : pressed ? 0.7 : 1 }]}>
       {content}
     </Pressable>
@@ -68,6 +92,6 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     gap: space[1],
     paddingHorizontal: space[3],
-    paddingVertical: space[1],
+    paddingVertical: CHIP_PADDING_VERTICAL,
   },
 });

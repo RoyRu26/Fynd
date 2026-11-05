@@ -11,6 +11,7 @@ import { deriveNextSavedListingsOffset } from '@/features/saved-items/saved-item
 export const SAVED_LISTINGS_PAGE_SIZE = 12;
 
 export const savedItemsKeys = {
+  all: ['saved-items'] as const,
   listings: (userId: string | undefined) => ['saved-items', userId, 'listings'] as const,
 };
 

@@ -3,17 +3,19 @@ import { useQueryClient } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import {
   Button,
   Chip,
+  EmptyState,
   Icon,
   IconButton,
   ListingImage,
   Screen,
+  Skeleton,
   Text,
   TextField,
   type IconName,
@@ -30,9 +32,12 @@ import {
   type CategoryGroup,
 } from '@/features/categories/categories';
 import { useCategories } from '@/features/categories/queries';
+import { AiOfferRow } from '@/features/listings/ai-offer-row';
+import { offersForField, type AiField, type AiOffer } from '@/features/listings/ai-policy';
 import type { ListingImageRow, ListingRow } from '@/features/listings/api';
 import { mapListingError } from '@/features/listings/errors';
 import { uploadAndAttachListingImage } from '@/features/listings/images';
+import { ListingDetailsFields } from '@/features/listings/listing-details-fields';
 import { createImageId, MAX_LISTING_PHOTOS } from '@/features/listings/paths';
 import {
   addLocalPhotos,
@@ -46,6 +51,7 @@ import {
 import {
   currencySymbol,
   formatMinorUnitsForInput,
+  formatMoney,
   parsePriceToMinorUnits,
 } from '@/features/listings/price';
 import {
@@ -76,6 +82,8 @@ import {
   SIZE_SYSTEM_LABELS,
   type SizeSystem,
 } from '@/features/listings/size';
+import { useAiAnalysis } from '@/features/listings/use-ai-analysis';
+import { useAttributeEditor } from '@/features/listings/use-attribute-editor';
 
 // Verified against the installed packages: every name below exists in
 // sf-symbols-typescript's types and in expo-symbols' android/symbols.json.
@@ -87,15 +95,25 @@ const MOVE_LATER_ICON: IconName = { ios: 'chevron.right', android: 'chevron_righ
 // Same chevron used for the category field's disclosure affordance — matches
 // profile/index.tsx's own CHEVRON_ICON and category-picker-sheet.tsx's.
 const CATEGORY_CHEVRON_ICON: IconName = { ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' };
+// Same shape as explore.tsx/inbox/index.tsx's own ERROR_ICON constants.
+const ERROR_ICON: IconName = { ios: 'exclamationmark.triangle', android: 'warning', web: 'warning' };
 
 export default function SellEditor() {
   const router = useRouter();
-  const { colors } = useAppTheme();
   const { session } = useAuth();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // `autoPick` is only ever set by the Sell tab's hero card (SCREENS.md Task
+  // 5): "Open camera"/"From gallery" create a fresh draft and land here with
+  // it set, so the photo picker opens immediately instead of making the
+  // seller tap "Add photos" themselves right after tapping a button whose
+  // whole point was to skip that extra step. A rack tile or any other entry
+  // point into this screen never sets it.
+  const { id, autoPick } = useLocalSearchParams<{ id: string; autoPick?: 'camera' | 'gallery' }>();
 
   const listingQuery = useListing(id);
   const listing = listingQuery.data;
+  // Photos still uploading in PhotoSection. AI analysis waits for the batch
+  // to settle (none in flight) before it looks at the photo set.
+  const [photosInFlight, setPhotosInFlight] = useState(0);
 
   // The listings SELECT policy makes active listings publicly visible, so a
   // row CAN resolve here without belonging to the caller (another seller's
@@ -114,17 +132,31 @@ export default function SellEditor() {
   let body: ReactNode;
   if (listingQuery.isPending) {
     body = (
-      <View style={styles.centered}>
-        <ActivityIndicator color={colors.textTertiary} />
+      <View style={styles.body}>
+        <Skeleton height={28} width="60%" radius="xs" />
+        <View style={styles.grid}>
+          {Array.from({ length: 3 }, (_, index) => (
+            <Skeleton key={index} width={CELL_BASIS} aspectRatio={1} radius="sm" />
+          ))}
+        </View>
+        <View style={styles.fields}>
+          <Skeleton height={56} width="100%" radius="md" />
+          <Skeleton height={56} width="100%" radius="md" />
+          <Skeleton height={56} width="100%" radius="md" />
+          <Skeleton height={56} width="100%" radius="md" />
+        </View>
       </View>
     );
   } else if (listingQuery.isError) {
     body = (
-      <View style={styles.centered}>
-        <Text variant="body" color="danger">
-          {mapListingError(listingQuery.error).message}
-        </Text>
-      </View>
+      <EmptyState
+        variant="error"
+        icon={ERROR_ICON}
+        title="Something went wrong"
+        body={mapListingError(listingQuery.error).message}
+        actionLabel="Try again"
+        onAction={() => listingQuery.refetch()}
+      />
     );
   } else if (!isOwner || !listing) {
     body = (
@@ -155,12 +187,18 @@ export default function SellEditor() {
         {/* Photos first and largest, per DESIGN.md §14.4. Read-only once the
             listing is no longer a draft -- listing_images stays draft-scoped
             at the RLS/RPC layer, so editing is photo-read-only here too. */}
-        <PhotoSection listingId={listing.id} sellerId={listing.seller_id} editable={isDraft} />
+        <PhotoSection
+          listingId={listing.id}
+          sellerId={listing.seller_id}
+          editable={isDraft}
+          autoPick={autoPick}
+          onUploadsInFlightChange={setPhotosInFlight}
+        />
         {/* Keyed by listing id: a fresh mount (and fresh RHF defaultValues)
             only when the displayed listing actually changes, never on an
             incidental background refetch of the same one — which would
             otherwise silently discard in-progress edits. */}
-        <ListingFieldsSection key={listing.id} listing={listing} />
+        <ListingFieldsSection key={listing.id} listing={listing} photosInFlight={photosInFlight} />
       </View>
     );
   }
@@ -193,10 +231,16 @@ function PhotoSection({
   listingId,
   sellerId,
   editable,
+  autoPick,
+  onUploadsInFlightChange,
 }: {
   listingId: string;
   sellerId: string;
   editable: boolean;
+  /** See `SellEditor`'s own doc comment — opens a picker once, automatically, on mount. */
+  autoPick?: 'camera' | 'gallery';
+  /** How many picked photos are still uploading (failed ones don't count). */
+  onUploadsInFlightChange?: (count: number) => void;
 }) {
   const queryClient = useQueryClient();
   const imagesQuery = useListingImages(listingId);
@@ -216,6 +260,11 @@ function PhotoSection({
   const totalCount = persisted.length + localPhotos.length;
   const remaining = remainingPhotoSlots(totalCount);
 
+  const uploadsInFlight = localPhotos.filter((item) => item.status === 'uploading').length;
+  useEffect(() => {
+    onUploadsInFlightChange?.(uploadsInFlight);
+  }, [uploadsInFlight, onUploadsInFlightChange]);
+
   async function runUpload(item: LocalPhotoItem) {
     try {
       await uploadAndAttachListingImage({
@@ -233,6 +282,21 @@ function PhotoSection({
         setLocalPhotoStatus(prev, item.localId, 'failed', mapListingError(err).message),
       );
     }
+  }
+
+  /** Shared tail of both pickers: clamp to the remaining slots, add local cells, kick off each upload. */
+  function enqueuePickedPhotos(uris: string[]) {
+    const slots = remainingPhotoSlots(persisted.length + localPhotos.length);
+    const clamped = clampToRemainingSlots(uris, slots);
+    const newItems: LocalPhotoItem[] = clamped.map((uri) => ({
+      localId: createImageId(),
+      sourceUri: uri,
+      status: 'uploading',
+    }));
+    setLocalPhotos((prev) => addLocalPhotos(prev, newItems));
+    newItems.forEach((item) => {
+      runUpload(item);
+    });
   }
 
   async function handleAddPhotos() {
@@ -263,20 +327,57 @@ function PhotoSection({
       return;
     }
 
-    const uris = clampToRemainingSlots(
-      result.assets.map((asset) => asset.uri),
-      slots,
-    );
-    const newItems: LocalPhotoItem[] = uris.map((uri) => ({
-      localId: createImageId(),
-      sourceUri: uri,
-      status: 'uploading',
-    }));
-    setLocalPhotos((prev) => addLocalPhotos(prev, newItems));
-    newItems.forEach((item) => {
-      runUpload(item);
-    });
+    enqueuePickedPhotos(result.assets.map((asset) => asset.uri));
   }
+
+  /** The hero card's "Open camera" path (SCREENS.md Task 5) — a single capture, not a multi-select. */
+  async function handleAddPhotoFromCamera() {
+    setPickError(null);
+
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      setPickError(
+        permission.canAskAgain
+          ? 'Fynd needs camera access to take listing pictures.'
+          : 'Camera access is turned off for Fynd. Enable it in Settings to take pictures.',
+      );
+      return;
+    }
+
+    if (remainingPhotoSlots(persisted.length + localPhotos.length) <= 0) {
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({ quality: 1 });
+    if (result.canceled) {
+      return;
+    }
+
+    enqueuePickedPhotos(result.assets.map((asset) => asset.uri));
+  }
+
+  // Runs the hero card's requested picker exactly once per screen instance.
+  // Guarded by a ref rather than clearing the `autoPick` route param: this
+  // listing id is only ever reached with `autoPick` set via a fresh
+  // navigation from the hero card (a rack tile or back-navigation here never
+  // sets it), so a fresh mount is already the right-sized guarantee — no
+  // need to round-trip through the router to erase it. Intentionally omits
+  // the picker functions from the dependency array: they close over local
+  // state and are recreated every render, and the ref already makes the
+  // body a no-op after the first run.
+  const autoPickHandled = useRef(false);
+  useEffect(() => {
+    if (!editable || !autoPick || autoPickHandled.current) {
+      return;
+    }
+    autoPickHandled.current = true;
+    if (autoPick === 'camera') {
+      handleAddPhotoFromCamera();
+    } else {
+      handleAddPhotos();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editable, autoPick]);
 
   function handleRetry(item: LocalPhotoItem) {
     setLocalPhotos((prev) => setLocalPhotoStatus(prev, item.localId, 'uploading'));
@@ -373,11 +474,20 @@ function PhotoSection({
       </View>
 
       {imagesQuery.isPending ? (
-        <ActivityIndicator />
+        <View style={styles.grid}>
+          {Array.from({ length: 3 }, (_, index) => (
+            <Skeleton key={index} width={CELL_BASIS} aspectRatio={1} radius="sm" />
+          ))}
+        </View>
       ) : imagesQuery.isError ? (
-        <Text variant="caption" color="danger">
-          {mapListingError(imagesQuery.error).message}
-        </Text>
+        <View style={styles.photoError}>
+          <Text variant="caption" color="danger">
+            {mapListingError(imagesQuery.error).message}
+          </Text>
+          <Button variant="secondary" size="sm" onPress={() => imagesQuery.refetch()}>
+            Try again
+          </Button>
+        </View>
       ) : (
         <View style={styles.grid}>
           {cells.map((cell) =>
@@ -442,6 +552,12 @@ const SIZE_SYSTEM_ORDER: SizeSystem[] = ['alpha', 'eu_shoe', 'one_size'];
 // not component state, since the grouping never changes at runtime.
 const SIZE_GROUPS = listingSizesBySystem();
 
+/** "Women › Shoes" for the attribute-removal notice; null until categories load. */
+function categoryBreadcrumb(groups: CategoryGroup[], categoryId: string | null): string | null {
+  const selection = findCategorySelection(groups, categoryId);
+  return selection ? formatCategoryBreadcrumb(selection.group, selection.leaf) : null;
+}
+
 /**
  * The pressable "Category" field, shared between the draft and
  * active/reserved editors (ROADMAP 2.1). Reuses TextField's label-above
@@ -454,11 +570,18 @@ function CategoryField({
   groups,
   disabled,
   onPress,
+  suggested,
 }: {
   categoryId: string | null;
   groups: CategoryGroup[];
   disabled: boolean;
   onPress: () => void;
+  /**
+   * ROADMAP 4.3 "Suggestions in the sell flow". Optional, defaulting to
+   * falsy, so the published-listing editor's call site (which never
+   * applies AI suggestions) is completely unaffected.
+   */
+  suggested?: boolean;
 }) {
   const { colors } = useAppTheme();
   const selection = findCategorySelection(groups, categoryId);
@@ -466,9 +589,12 @@ function CategoryField({
 
   return (
     <View style={styles.categoryField}>
-      <Text variant="label" color="textSecondary">
-        Category
-      </Text>
+      <View style={styles.fieldLabelRow}>
+        <Text variant="label" color="textSecondary">
+          Category
+        </Text>
+        {suggested ? <Chip label="Suggested" /> : null}
+      </View>
       <Pressable
         onPress={onPress}
         disabled={disabled}
@@ -500,14 +626,14 @@ type PendingAction = 'save' | 'publish' | null;
  * `publish_listing` already enforces, so the client side uses the exact
  * same `publishableListingSchema`, not a new one.
  */
-function ListingFieldsSection({ listing }: { listing: ListingRow }) {
+function ListingFieldsSection({ listing, photosInFlight }: { listing: ListingRow; photosInFlight: number }) {
   if (listing.status === 'draft') {
-    return <DraftFieldsSection listing={listing} />;
+    return <DraftFieldsSection listing={listing} photosInFlight={photosInFlight} />;
   }
   return <PublishedFieldsSection listing={listing} />;
 }
 
-function DraftFieldsSection({ listing }: { listing: ListingRow }) {
+function DraftFieldsSection({ listing, photosInFlight }: { listing: ListingRow; photosInFlight: number }) {
   const sellerId = listing.seller_id;
   const updateDraft = useUpdateDraft(listing.id, sellerId);
   const publish = usePublishListing(sellerId);
@@ -559,6 +685,57 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
     imageCount,
   );
 
+  // Structured details (item type, colors, …) live outside the form and save
+  // through their own RPC right after it; see useAttributeEditor.
+  const watchedCategoryId = watched.categoryId ?? null;
+  const attributes = useAttributeEditor(
+    listing.id,
+    watchedCategoryId,
+    categoryBreadcrumb(categoryGroups, watchedCategoryId),
+  );
+  const hasUnsavedChanges = formState.isDirty || attributes.dirty;
+
+  // AI-assisted details (Phase 2): runs when the photo set changes, never
+  // overwrites what the seller entered, and offers disagreements instead.
+  // Manual editing works exactly the same whether or not AI is available.
+  const ai = useAiAnalysis({
+    listingId: listing.id,
+    form,
+    editor: attributes,
+    photoPaths: imagesQuery.data?.map((image) => image.storage_path),
+    photosInFlight,
+    categoryGroups,
+    currency: listing.currency,
+  });
+  const suggestedFields = ai.suggestedFields;
+
+  // One spoken update per AI state change (iOS and Android alike), instead of
+  // a live region per field: "analyzing", the result, or why it's unavailable.
+  const previousAiStatus = useRef(ai.status);
+  useEffect(() => {
+    const previous = previousAiStatus.current;
+    previousAiStatus.current = ai.status;
+    if (ai.status === 'analyzing' && previous !== 'analyzing') {
+      AccessibilityInfo.announceForAccessibility('Analyzing photos. You can keep editing.');
+    } else if (previous === 'analyzing' && ai.status === 'idle' && ai.hasAnalysis) {
+      AccessibilityInfo.announceForAccessibility('Suggestions from your photos are ready next to each field.');
+    } else if (ai.status === 'unavailable' && ai.message) {
+      AccessibilityInfo.announceForAccessibility(ai.message);
+    }
+  }, [ai.status, ai.message, ai.hasAnalysis]);
+
+  function aiOffers(field: AiField, fieldLabel: string) {
+    return (
+      <AiOfferRow
+        offers={offersForField(ai.offers, field)}
+        fieldLabel={fieldLabel}
+        disabled={busy}
+        onApply={(offer: AiOffer) => ai.applyOffer(offer)}
+        onDismiss={() => ai.dismissField(field)}
+      />
+    );
+  }
+
   function applySavedValues(saved: ListingRow) {
     // Resets to the server's canonical values (trimmed title, price
     // reformatted to two decimals, etc.) and clears `isDirty` — the "this is
@@ -573,18 +750,39 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
     });
   }
 
-  async function onSaveDraft(input: DraftListingInput) {
+  /**
+   * Re-analyze: the server reads the SAVED title, description and category,
+   * so unsaved edits are saved first (the same save the button does).
+   * Identical inputs come back from the server's cache with no model call.
+   */
+  async function handleReanalyze() {
+    if (hasUnsavedChanges) {
+      let saved = false;
+      await handleSubmit(async (input) => {
+        saved = await onSaveDraft(input);
+      })();
+      if (!saved) return;
+    }
+    ai.reanalyze();
+  }
+
+  /** Returns whether the form itself saved (details failing is reported separately). */
+  async function onSaveDraft(input: DraftListingInput): Promise<boolean> {
     setFormError(null);
     setShownBlockers([]);
     setPendingAction('save');
     try {
       const saved = await updateDraft.mutateAsync(input);
       applySavedValues(saved);
+      const attributesError = await attributes.save();
+      if (attributesError) setFormError(attributesError);
+      return true;
     } catch (err) {
       if (__DEV__) {
         console.error(err);
       }
       setFormError(mapListingError(err).message);
+      return false;
     } finally {
       setPendingAction(null);
     }
@@ -600,6 +798,13 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
       // server copy from before their last keystroke.
       const saved = await updateDraft.mutateAsync(input);
       applySavedValues(saved);
+      // Stop here if the details didn't save: publishing swaps this editor
+      // out, which would silently discard them along with the message.
+      const attributesError = await attributes.save();
+      if (attributesError) {
+        setFormError(attributesError);
+        return;
+      }
 
       const blockers = publishBlockers(saved, imageCount);
       if (blockers.length > 0) {
@@ -627,36 +832,103 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
 
   return (
     <View style={styles.fields}>
-      <Controller
-        control={control}
-        name="title"
-        render={({ field, fieldState }) => (
-          <TextField
-            label="Title"
-            value={field.value}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            error={fieldState.error?.message}
-            disabled={busy}
-          />
-        )}
-      />
+      {/* Non-blocking: analysis runs in the background while every field stays editable. */}
+      <View style={styles.suggestSection}>
+        <Text variant="caption" color="textSecondary">
+          {ai.status === 'analyzing'
+            ? 'Analyzing photos… You can keep editing.'
+            : ai.message
+              ? ai.message
+              : imageCount === 0
+                ? 'Add photos and we’ll suggest details from them.'
+                : ai.hasAnalysis
+                  ? 'Suggestions from your photos appear next to each field.'
+                  : ' '}
+        </Text>
+        {imageCount > 0 ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            onPress={handleReanalyze}
+            loading={ai.status === 'analyzing'}
+            disabled={busy || !ai.canReanalyze}>
+            {ai.hasAnalysis ? 'Re-analyze' : 'Analyze photos'}
+          </Button>
+        ) : null}
+        {imageCount > 0 && hasUnsavedChanges && ai.canReanalyze ? (
+          <Text variant="caption" color="textTertiary">
+            Saves your changes first, so they are included.
+          </Text>
+        ) : null}
+      </View>
 
-      <Controller
-        control={control}
-        name="price"
-        render={({ field, fieldState }) => (
-          <TextField
-            label={`Price (${currencySymbol(listing.currency)})`}
-            keyboardType="decimal-pad"
-            value={field.value}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            error={fieldState.error?.message}
-            disabled={busy}
-          />
-        )}
-      />
+      <View style={styles.fieldWithLabel}>
+        <View style={styles.fieldLabelRow}>
+          <Text variant="label" color="textSecondary">
+            Title
+          </Text>
+          {suggestedFields.has('title') ? <Chip label="Suggested" /> : null}
+        </View>
+        <Controller
+          control={control}
+          name="title"
+          render={({ field, fieldState }) => (
+            <TextField
+              value={field.value}
+              onChangeText={(text) => {
+                field.onChange(text);
+                ai.clearSuggested('title');
+              }}
+              onBlur={field.onBlur}
+              error={fieldState.error?.message}
+              disabled={busy}
+              accessibilityLabel={['Title', suggestedFields.has('title') ? 'Suggested' : null, fieldState.error?.message]
+                .filter(Boolean)
+                .join(', ')}
+            />
+          )}
+        />
+        {aiOffers('title', 'Title')}
+      </View>
+
+      <View style={styles.fieldWithLabel}>
+        <View style={styles.fieldLabelRow}>
+          <Text variant="label" color="textSecondary">
+            {`Price (${currencySymbol(listing.currency)})`}
+          </Text>
+          {suggestedFields.has('price') ? <Chip label="Suggested" /> : null}
+        </View>
+        <Controller
+          control={control}
+          name="price"
+          render={({ field, fieldState }) => (
+            <TextField
+              keyboardType="decimal-pad"
+              value={field.value}
+              onChangeText={(text) => {
+                field.onChange(text);
+                ai.clearSuggested('price');
+              }}
+              onBlur={field.onBlur}
+              error={fieldState.error?.message}
+              disabled={busy}
+              helperText={
+                suggestedFields.has('price') && ai.priceRange
+                  ? `Suggested range: ${formatMoney(ai.priceRange.minAmount, listing.currency)}–${formatMoney(ai.priceRange.maxAmount, listing.currency)}`
+                  : undefined
+              }
+              accessibilityLabel={[
+                `Price (${currencySymbol(listing.currency)})`,
+                suggestedFields.has('price') ? 'Suggested' : null,
+                fieldState.error?.message,
+              ]
+                .filter(Boolean)
+                .join(', ')}
+            />
+          )}
+        />
+        {aiOffers('price', 'Price')}
+      </View>
 
       <Controller
         control={control}
@@ -668,6 +940,7 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
               groups={categoryGroups}
               disabled={busy}
               onPress={() => setCategoryPickerOpen(true)}
+              suggested={suggestedFields.has('categoryId')}
             />
             <CategoryPickerSheet
               visible={categoryPickerOpen}
@@ -676,16 +949,21 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
               onSelect={(_group: CategoryGroup, leaf: Category) => {
                 field.onChange(leaf.id);
                 setCategoryPickerOpen(false);
+                ai.clearSuggested('categoryId');
               }}
             />
           </>
         )}
       />
+      {aiOffers('categoryId', 'Category')}
 
       <View style={styles.conditionField}>
-        <Text variant="label" color="textSecondary">
-          Condition
-        </Text>
+        <View style={styles.fieldLabelRow}>
+          <Text variant="label" color="textSecondary">
+            Condition
+          </Text>
+          {suggestedFields.has('condition') ? <Chip label="Suggested" /> : null}
+        </View>
         <Controller
           control={control}
           name="condition"
@@ -698,12 +976,16 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
                   selectable
                   selected={field.value === value}
                   disabled={busy}
-                  onPress={() => field.onChange(field.value === value ? null : value)}
+                  onPress={() => {
+                    field.onChange(field.value === value ? null : value);
+                  }}
                 />
               ))}
             </View>
           )}
         />
+        {/* Condition is confirm-only: AI never sets it, it can only be offered here. */}
+        {aiOffers('condition', 'Condition')}
       </View>
 
       <View style={styles.sizeField}>
@@ -739,22 +1021,52 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
         />
       </View>
 
-      <Controller
-        control={control}
-        name="description"
-        render={({ field, fieldState }) => (
-          <TextField
-            label="Description"
-            multiline
-            numberOfLines={4}
-            value={field.value}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            error={fieldState.error?.message}
-            disabled={busy}
-          />
-        )}
+      <ListingDetailsFields
+        editor={attributes}
+        categoryId={watchedCategoryId}
+        disabled={busy}
+        ai={{
+          offers: ai.offers,
+          suggested: ai.suggestedFields,
+          onApply: ai.applyOffer,
+          onDismiss: ai.dismissField,
+        }}
       />
+
+      <View style={styles.fieldWithLabel}>
+        <View style={styles.fieldLabelRow}>
+          <Text variant="label" color="textSecondary">
+            Description
+          </Text>
+          {suggestedFields.has('description') ? <Chip label="Suggested" /> : null}
+        </View>
+        <Controller
+          control={control}
+          name="description"
+          render={({ field, fieldState }) => (
+            <TextField
+              multiline
+              numberOfLines={4}
+              value={field.value}
+              onChangeText={(text) => {
+                field.onChange(text);
+                ai.clearSuggested('description');
+              }}
+              onBlur={field.onBlur}
+              error={fieldState.error?.message}
+              disabled={busy}
+              accessibilityLabel={[
+                'Description',
+                suggestedFields.has('description') ? 'Suggested' : null,
+                fieldState.error?.message,
+              ]
+                .filter(Boolean)
+                .join(', ')}
+            />
+          )}
+        />
+        {aiOffers('description', 'Description')}
+      </View>
 
       {/* shownBlockers only ever fills after a blocked publish attempt — which
           the now-disabled Publish button prevents in the normal case — so in
@@ -793,7 +1105,7 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
             ? 'Saving…'
             : pendingAction === 'publish'
               ? 'Publishing…'
-              : formState.isDirty
+              : hasUnsavedChanges
                 ? 'Unsaved changes'
                 : ' '}
         </Text>
@@ -803,7 +1115,7 @@ function DraftFieldsSection({ listing }: { listing: ListingRow }) {
             size="sm"
             onPress={handleSubmit(onSaveDraft)}
             loading={pendingAction === 'save'}
-            disabled={busy || !formState.isDirty}>
+            disabled={busy || !hasUnsavedChanges}>
             Save draft
           </Button>
           <Button
@@ -866,6 +1178,14 @@ function PublishedFieldsSection({ listing }: { listing: ListingRow }) {
   });
   const { control, handleSubmit, formState } = form;
 
+  const watchedCategoryId = useWatch({ control, name: 'categoryId' });
+  const attributes = useAttributeEditor(
+    listing.id,
+    watchedCategoryId,
+    categoryBreadcrumb(categoryGroups, watchedCategoryId),
+  );
+  const hasUnsavedChanges = formState.isDirty || attributes.dirty;
+
   async function onSave(input: PublishableListingInput) {
     setFormError(null);
     setSaving(true);
@@ -883,6 +1203,8 @@ function PublishedFieldsSection({ listing }: { listing: ListingRow }) {
         size: saved.size!,
         categoryId: saved.category_id!,
       });
+      const attributesError = await attributes.save();
+      if (attributesError) setFormError(attributesError);
     } catch (err) {
       if (__DEV__) {
         console.error(err);
@@ -1007,6 +1329,8 @@ function PublishedFieldsSection({ listing }: { listing: ListingRow }) {
         />
       </View>
 
+      <ListingDetailsFields editor={attributes} categoryId={watchedCategoryId} disabled={saving} />
+
       <Controller
         control={control}
         name="description"
@@ -1032,7 +1356,7 @@ function PublishedFieldsSection({ listing }: { listing: ListingRow }) {
 
       <View style={styles.fieldsFooter}>
         <Text variant="caption" color="textTertiary">
-          {saving ? 'Saving…' : formState.isDirty ? 'Unsaved changes' : ' '}
+          {saving ? 'Saving…' : hasUnsavedChanges ? 'Unsaved changes' : ' '}
         </Text>
         <View style={styles.fieldsActions}>
           <Button
@@ -1040,7 +1364,7 @@ function PublishedFieldsSection({ listing }: { listing: ListingRow }) {
             size="sm"
             onPress={handleSubmit(onSave)}
             loading={saving}
-            disabled={saving || !formState.isDirty}>
+            disabled={saving || !hasUnsavedChanges}>
             Save changes
           </Button>
         </View>
@@ -1195,8 +1519,24 @@ const styles = StyleSheet.create({
   photoSection: {
     gap: space[2],
   },
+  photoError: {
+    alignItems: 'flex-start',
+    gap: space[2],
+  },
   fields: {
     gap: space[4],
+  },
+  suggestSection: {
+    gap: space[2],
+    alignItems: 'flex-start',
+  },
+  fieldWithLabel: {
+    gap: space[1],
+  },
+  fieldLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space[2],
   },
   categoryField: {
     gap: space[1],

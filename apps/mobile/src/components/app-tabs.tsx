@@ -1,87 +1,58 @@
-import { NativeTabs } from 'expo-router/unstable-native-tabs';
+import { NativeTabs } from 'expo-router/native-tabs';
 
 import { getColors } from '@/design/theme';
 
-// The tab bar is pinned to the dark appearance app-wide, independent of the
-// system scheme and independent of any individual screen's own theme —
-// Sell and Profile still render their own content following the system
-// scheme; only Home additionally forces its own content dark on top (via
-// AppThemeProvider). This keeps the chrome around Home's always-dark
-// full-viewport photography from ever showing a light bar underneath it.
+// Bar background stays pinned dark (see git history for the rationale).
 //
-// A plain module-scope constant, not a hook: `getColors('dark')` never
-// changes at runtime, so there is nothing to react to. DESIGN.md §14.1's
-// "single gradient serving both the overlay and the bottom bar" stays
-// deferred to the custom bottom bar (§16); this is the smallest change that
-// stops the bar from clashing with Home in the meantime.
+// Labels and icons are coloured by the native tint only, with no
+// `labelStyle`/`iconColor`. Those two become per-item title text attributes
+// in the bar's UITabBarAppearance, and on iOS 26's glass tab bar that made
+// unselected labels lay out too narrow ("Expl…", "Prof…") until a tap
+// re-laid them out, and left the selected label near-black on the dark glass.
+// With the tint alone, UIKit sizes and colours the labels itself: selected
+// item in accent, the rest in the system's adaptive secondary colour.
 const colors = getColors('dark');
 
-// Measured on device: the native bar's actual rendered material stays light
-// regardless of the `backgroundColor`/`indicatorColor` pin above — those
-// tint the bar but do not flip its underlying (light) text-legibility
-// material. `colors.text` (near-white, meant for a dark surface) is nearly
-// invisible there, which is the exact "selected Sell label is nearly
-// invisible" symptom. The selected label needs a color chosen for that
-// actual light material, so it borrows the light scheme's own `text`
-// (near-black) rather than extending the dark-bar assumption further.
-const selectedLabelColor = getColors('light').text;
-
+// Icon system (DESIGN.md §4): every tab uses an SF Symbol / Material Symbol
+// pair so all five render at the same native tab-icon size and weight.
+// Outline when idle, filled when selected. The only custom asset is the Fynd
+// mark on Home, shipped at 25pt @1x/@2x/@3x so it matches symbol size.
+// All names verified to exist in sf-symbols-typescript and expo-symbols'
+// android/symbols.json.
 export default function AppTabs() {
   return (
     <NativeTabs
       backgroundColor={colors.bg}
       indicatorColor={colors.bgElevated}
-      // Unselected stays on the dark-scheme pin (unaffected — it already read
-      // fine on the actual bar); only the selected label needed the
-      // light-scheme color above.
-      labelStyle={{ default: { color: colors.textSecondary }, selected: { color: selectedLabelColor } }}
-      iconColor={{ default: colors.textSecondary, selected: colors.accent }}>
+      tintColor={colors.accent}>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/home.png')}
+          src={require('@/assets/images/tabIcons/fynd-mark.png')}
           renderingMode="template"
         />
       </NativeTabs.Trigger>
 
-      {/* ROADMAP 2.3 "Explore tab" — 2nd position, between Home and Sell, so
-          the eventual custom bottom bar (DESIGN.md §4/§12.7) stays symmetric
-          once Sell becomes its center gradient action: two triggers either
-          side (Home/Explore, Inbox/Profile). Verified against the installed
-          packages like the Inbox trigger below: 'magnifyingglass' exists in
-          sf-symbols-typescript's types, 'search' in expo-symbols'
-          android/symbols.json — a real icon pair, not a placeholder. */}
       <NativeTabs.Trigger name="explore">
         <NativeTabs.Trigger.Label>Explore</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="magnifyingglass" md="search" />
       </NativeTabs.Trigger>
 
-      {/* Temporary icon: reuses the home PNG rather than sourcing new art,
-          per the approved plan (DESIGN.md §4/§12.7's custom bottom bar with
-          a gradient center action is a later phase). */}
       <NativeTabs.Trigger name="sell">
         <NativeTabs.Trigger.Label>Sell</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/home.png')}
-          renderingMode="template"
-        />
+        <NativeTabs.Trigger.Icon sf={{ default: 'plus.square', selected: 'plus.square.fill' }} md="add_box" />
       </NativeTabs.Trigger>
 
-      {/* Verified against the installed packages, not guessed:
-          'bubble.left.and.bubble.right' exists in sf-symbols-typescript's
-          dist/index.d.ts, and 'chat_bubble_outline' exists in expo-symbols'
-          android/symbols.json. A real icon pair, unlike the two PNG
-          placeholders above. */}
       <NativeTabs.Trigger name="inbox">
         <NativeTabs.Trigger.Label>Inbox</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="bubble.left.and.bubble.right" md="chat_bubble_outline" />
+        <NativeTabs.Trigger.Icon sf={{ default: 'bubble.left', selected: 'bubble.left.fill' }} md="chat_bubble" />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="profile">
         <NativeTabs.Trigger.Label>Profile</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
+          sf={{ default: 'person.crop.circle', selected: 'person.crop.circle.fill' }}
+          md="account_circle"
         />
       </NativeTabs.Trigger>
     </NativeTabs>

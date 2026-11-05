@@ -1,4 +1,4 @@
-import { Platform, StyleSheet, type LinearGradientValue, type RadialGradientValue } from "react-native";
+import { Platform, StyleSheet, type LinearGradientValue } from "react-native";
 
 // Primitive design tokens. Transcribed verbatim from DESIGN.md — no values
 // here are invented; every number/hex traces back to a specific DESIGN.md
@@ -12,7 +12,7 @@ import { Platform, StyleSheet, type LinearGradientValue, type RadialGradientValu
 // test runner — and the contrast/color-vision harness has to assert against
 // the real shipped values. See palette.ts's header for the full reasoning.
 
-export { neutral, oat, olive, rose, teal, crimson, amber } from "@/design/palette";
+export { neutral, paper, ink, teal, magenta, amber } from "@/design/palette";
 
 // DESIGN.md §4 — signature gradient.
 //
@@ -29,9 +29,8 @@ export { neutral, oat, olive, rose, teal, crimson, amber } from "@/design/palett
 // Its first consumer is the Home feed card, behind the price/title/seller
 // overlay at the bottom of each full-bleed photo.
 //
-// Shaped as RN core's own `experimental_backgroundImage` LinearGradientValue
-// (no gradient library needed) — the same mechanism `ambientGlow` already
-// uses for its radial gradients. `direction: '180deg'` is the standard CSS
+// Shaped as RN core's own `experimental_backgroundImage` LinearGradientValue,
+// so no gradient library is needed. `direction: '180deg'` is the standard CSS
 // gradient-angle syntax for top-to-bottom, matching the original numeric
 // `angle: 180` this replaces exactly.
 //
@@ -47,9 +46,52 @@ export const gradientScrim: LinearGradientValue = {
   type: "linear-gradient",
   direction: "180deg",
   colorStops: [
-    { color: "rgba(12,10,11,0)", positions: ["0%"] },
-    { color: "rgba(12,10,11,0.75)", positions: ["45%"] },
-    { color: "rgba(12,10,11,0.75)", positions: ["100%"] },
+    { color: "rgba(20,17,13,0)", positions: ["0%"] },
+    { color: "rgba(20,17,13,0.75)", positions: ["45%"] },
+    { color: "rgba(20,17,13,0.75)", positions: ["100%"] },
+  ],
+};
+
+// Vertical fade from transparent to the DARK scheme's own `bg`
+// (neutral[950], rgb(20,17,13)) — the same ink base as `gradientScrim` above,
+// but ramping to FULL opacity rather than stopping at 0.75.
+//
+// That difference is the whole point. `gradientScrim` backs text over
+// photography that stays visible beneath it; this one dissolves an image into
+// the page so there is no edge at all, which only works if the final stop
+// matches the surface underneath exactly.
+//
+// Consequence, and the reason this is not a semantic color: it is correct ONLY
+// over a dark-scheme `bg`. Its first consumer, the welcome screen, earns that
+// by forcing `scheme="dark"` for its whole subtree. Over light `bg` it would
+// fade to a dark band instead of disappearing — so anything using this must
+// guarantee the dark surface, not merely happen to be on one.
+export const gradientFade: LinearGradientValue = {
+  type: "linear-gradient",
+  direction: "180deg",
+  colorStops: [
+    { color: "rgba(20,17,13,0)", positions: ["0%"] },
+    { color: "rgba(20,17,13,0.65)", positions: ["45%"] },
+    { color: "rgba(20,17,13,1)", positions: ["78%"] },
+    { color: "rgba(20,17,13,1)", positions: ["100%"] },
+  ],
+};
+
+// SCREENS.md Task 9 / the 6a handoff — Listing Detail's gallery header
+// gradient. Same rgb base (20,17,13 — neutral.950, the dark scheme's own
+// `bg`) as gradientScrim/gradientFade above, but the OPPOSITE shape: opaque
+// at the top, fading to fully transparent, so the status bar stays readable
+// over a photo without darkening the photo itself further down. The
+// handoff's own "120px" is the HEIGHT of the box this is applied to
+// (GALLERY_HEADER_GRADIENT_HEIGHT in listing/[id].tsx), not encoded here —
+// same convention gradientScrim/gradientFade already follow, where the
+// caller owns the box the percentages are relative to.
+export const gradientGalleryHeader: LinearGradientValue = {
+  type: "linear-gradient",
+  direction: "180deg",
+  colorStops: [
+    { color: "rgba(20,17,13,0.35)", positions: ["0%"] },
+    { color: "rgba(20,17,13,0)", positions: ["100%"] },
   ],
 };
 
@@ -68,7 +110,9 @@ export const space = {
   16: 64,
 } as const;
 
-// DESIGN.md §7 — radii. Crisp; no pill shapes.
+// DESIGN.md §7 — radii. Crisp. `full` is for avatars, circular icon
+// buttons, and §7's named pill carve-out (PillButton, ReactionPill) —
+// never for chips, which stay square-cornered.
 export const radius = {
   xs: 4,
   sm: 6,
@@ -137,88 +181,30 @@ export const spring = {
   mass: 1,
 } as const;
 
-// DESIGN.md §4a — ambient background. Uses react-native core's own
-// `experimental_backgroundImage` radial-gradient support (no gradient
-// library needed). Each stop fades to full alpha-0 transparency, not just
-// low opacity, so the shape's own geometric boundary is never visible — only
-// a soft interior falloff. Keys are palette-agnostic (primary/secondary, not
-// hue names), which is exactly why the Olive & Oat migration is a value
-// change here rather than a rename across consumers.
+// DESIGN.md §4a's ambient background tokens (`ambientGlow`, `ambientMotion`)
+// were REMOVED with the auth redesign. Their only consumer was
+// `components/ambient-background.tsx`, which the new auth and onboarding
+// screens no longer render; §15 rule 5 says an orphaned component is deleted
+// rather than parked, and these tokens had no other caller.
 //
-// Migrated to olive (primary, olive.500 #6B8A36 lightened toward #6B7F3A for
-// the wash) and oat-gold (secondary, #C9A87A). The previous values were
-// rgba(233,23,19) and rgba(214,84,82) — both within 1 degree of hue of
-// `danger`, so the auth screens were washed in the error color.
-//
-// These alphas are PHYSICAL-DEVICE TUNING VALUES and are deliberately
-// conservative. Olive over oat is far less assertive than red over cream at
-// the same alpha — a low-chroma green reads as a shadow rather than a glow
-// if it is too faint. Expect to retune upward on-device.
-export const ambientGlow: Record<"primary" | "secondary", RadialGradientValue> = {
-  primary: {
-    type: "radial-gradient",
-    shape: "ellipse",
-    size: { x: "90%", y: "70%" },
-    position: { top: "-8%", right: "-8%" },
-    colorStops: [
-      {
-        color: "rgba(107,127,58,0.70)",
-        positions: ["0%"],
-      },
-      {
-        color: "rgba(107,127,58,0.62)",
-        positions: ["30%"],
-      },
-      {
-        color: "rgba(107,127,58,0)",
-        positions: ["58%"],
-      },
-    ],
-  },
-  secondary: {
-    type: "radial-gradient",
-    shape: "ellipse",
-    size: { x: "90%", y: "70%" },
-    position: { bottom: "-8%", left: "-10%" },
-    colorStops: [
-      {
-        color: "rgba(201,168,122,0.90)",
-        positions: ["0%"],
-      },
-      {
-        color: "rgba(201,168,122,0.78)",
-        positions: ["46%"],
-      },
-      {
-        color: "rgba(201,168,122,0.58)",
-        positions: ["56%"],
-      },
-      {
-        color: "rgba(201,168,122,0)",
-        positions: ["78%"],
-      },
-    ],
-  },
-};
+// Worth knowing if a decorative wash is ever wanted again: the alphas were
+// tuned on-device for the LOW-CHROMA Olive & Oat wash and were never re-tuned
+// after Paper & Ink moved the primary stop to the brand ink orange
+// (`ink.500`), which is far more assertive at the same alpha. They would have
+// needed retuning downward, so they are not values to restore verbatim.
 
-// Ambient/decorative background motion — a deliberately separate category
-// from `duration`/`spring` above, which are for interactive feedback
-// (button presses, sheets, transitions) and top out at 320ms. These cycles
-// are seconds, not milliseconds, and are never used for interaction
-// feedback. See DESIGN.md §10.
-export const ambientMotion = {
-  cycleDurationMs: { primary: 16000, secondary: 19000 },
-  translateRange: 20,
-  scaleRange: 0.06,
-  rotateRangeDeg: 4,
-} as const;
-
-// DESIGN.md §5 — font-family strings matching the @expo-google-fonts/manrope
-// import binding names (see use-app-fonts.ts). Only the two weights the type
-// scale actually uses are loaded: heading=600, display/title/price=700.
+// DESIGN.md §5 — font-family strings matching the registration keys in
+// use-app-fonts.ts. Only the weights the type scale actually uses are loaded:
+// Manrope heading=600 and title/price=700, plus the bundled Archivo Expanded
+// Black for `display`/`displaySm`.
 export const fontFamily = {
   displaySemiBold: "Manrope_600SemiBold",
   displayBold: "Manrope_700Bold",
+  // Archivo Expanded Black (900, 125% width) — screen titles and section
+  // headers only. A genuinely different face from Manrope, not a heavier
+  // weight of it: the extra width is the point, and it is why this cannot be
+  // expressed as a `fontWeight` on the existing display face.
+  displayExpanded: "ArchivoExpanded_900Black",
   mono: Platform.select({
     ios: "ui-monospace",
     android: "monospace",

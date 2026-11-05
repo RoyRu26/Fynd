@@ -1,22 +1,83 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { Button, EmptyState, Screen, SkeletonRow, Text, type IconName } from '@/components/ui';
-import { space } from '@/design/tokens';
+import {
+  EmptyState,
+  Icon,
+  ListingImage,
+  PillButton,
+  Screen,
+  Skeleton,
+  Sticker,
+  Text,
+  type IconName,
+  type TextColor,
+} from '@/components/ui';
+import { AppThemeProvider, useAppTheme } from '@/design/theme-provider';
+import { radius, space } from '@/design/tokens';
 import { useAuth } from '@/features/auth/auth-provider';
 import type { ListingRow as ListingRowData } from '@/features/listings/api';
 import { mapListingError } from '@/features/listings/errors';
-import { ListingActionsSheet } from '@/features/listings/listing-actions-sheet';
-import { ListingRow } from '@/features/listings/listing-row';
-import { useCreateDraft, useMyListings } from '@/features/listings/queries';
+import {
+  countRackEligible,
+  selectRackItems,
+  type RackItem,
+  type RackStatusKind,
+} from '@/features/listings/rack';
+import { useCreateDraft, useListingCovers, useMyListings } from '@/features/listings/queries';
 
-// Verified the same way: 'exclamationmark.triangle'/'warning' and
-// 'bag'/'shopping_bag' both exist in sf-symbols-typescript and expo-symbols'
-// android/symbols.json respectively.
+// Verified against the installed packages: 'exclamationmark.triangle'/'warning'
+// exists in sf-symbols-typescript's types and expo-symbols' android/symbols.json.
 const ERROR_ICON: IconName = { ios: 'exclamationmark.triangle', android: 'warning', web: 'warning' };
-const EMPTY_ICON: IconName = { ios: 'bag', android: 'shopping_bag', web: 'shopping_bag' };
+// 'camera.fill' and 'photo_camera' likewise both exist in those packages.
+const CAMERA_ICON: IconName = { ios: 'camera.fill', android: 'photo_camera', web: 'photo_camera' };
 
+/** Diameter of the hero card's camera badge. */
+const CAMERA_BADGE_SIZE = 56;
+/** Rotation of the hero card's corner sticker, per the handoff. */
+const HERO_STICKER_ROTATION = 8;
+
+/**
+ * How many of the seller's rack-eligible listings the horizontal strip
+ * renders. A plain `ScrollView`, not a virtualized list (matching Explore's
+ * own "Drops" row), so this caps render cost for a seller with a large
+ * catalog; "See all" (routed to My Listings) is what reaches the rest.
+ */
+const RACK_PREVIEW_LIMIT = 12;
+const RACK_THUMB_WIDTH = 76;
+const RACK_THUMB_HEIGHT = 96;
+
+/** Stroke width of the "Draft" rack pill's dashed outline, per the handoff. Not `border.thin`/`.thick` (1/2) — a bespoke value for this one badge, same precedent as StoryRing's own local ring-width constants. */
+const RACK_DRAFT_PILL_BORDER_WIDTH = 1.5;
+
+const RACK_STATUS_LABEL: Record<RackStatusKind, string> = {
+  live: 'Live',
+  draft: 'Draft',
+  sold: 'Sold',
+};
+
+/**
+ * Sell tab home (SCREENS.md Task 5) — the hero "snap it. / list it." CTA,
+ * then "your rack" (a glanceable strip of the seller's own listings). Full
+ * listing management (status filters, drafts, the manage/overflow sheet)
+ * lives entirely on My Listings now; "See all" is the one link between them.
+ *
+ * "buzz" is deliberately not built. It needs two things the data cannot
+ * support yet, the same way Explore's own save-count tiles were deliberately
+ * omitted (see explore.tsx's header comment for the identical reasoning):
+ *
+ *   * **Who saved a listing.** `favorites`' RLS is `user_id = auth.uid()`, so
+ *     a seller cannot read who favourited their OWN listings — that needs a
+ *     `SECURITY DEFINER` RPC or a denormalised counter, a schema change out
+ *     of scope for a UI task.
+ *   * **Offers.** There is no offers table or RPC at all yet (README.md:
+ *     "Buy now / Offer have no backend yet").
+ *
+ * Per the task's own "hide section if there's no data" rule, that is this
+ * section hidden until a real data source exists, not a placeholder built
+ * against invented data.
+ */
 export default function SellIndex() {
   const router = useRouter();
   const { session } = useAuth();
@@ -25,57 +86,53 @@ export default function SellIndex() {
   const listingsQuery = useMyListings(sellerId);
   const createDraft = useCreateDraft(sellerId);
 
-  const [createError, setCreateError] = useState<string | null>(null);
-  const [managingListing, setManagingListing] = useState<ListingRowData | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  // Tracks which hero button is in flight so the OTHER one can be disabled
+  // (never both spinning for one shared mutation) and so only the pressed
+  // button shows its own spinner.
+  const [heroAction, setHeroAction] = useState<'camera' | 'gallery' | null>(null);
+  const [heroError, setHeroError] = useState<string | null>(null);
 
   function openListing(listingId: string) {
     router.push({ pathname: '/(app)/(tabs)/sell/[id]', params: { id: listingId } });
   }
 
-  function manageListing(listing: ListingRowData) {
-    setActionError(null);
-    setManagingListing(listing);
-  }
-
-  async function handleNewListing() {
-    setCreateError(null);
+  async function startListing(source: 'camera' | 'gallery') {
+    setHeroError(null);
+    setHeroAction(source);
     try {
       const draft = await createDraft.mutateAsync();
-      openListing(draft.id);
+      // `autoPick` tells the editor to open that same picker immediately —
+      // see sell/[id].tsx's own doc comment on `autoPick`.
+      router.push({ pathname: '/(app)/(tabs)/sell/[id]', params: { id: draft.id, autoPick: source } });
     } catch (err) {
       if (__DEV__) {
         console.error(err);
       }
-      setCreateError(mapListingError(err).message);
+      setHeroError(mapListingError(err).message);
+    } finally {
+      setHeroAction(null);
     }
   }
 
   const listings = listingsQuery.data ?? [];
-  // RLS also scopes this table to "active OR own", but "mine" must never rely
-  // on that alone — useMyListings already filters by seller_id server-side;
-  // this is just the client-side split for the two section headers.
-  const drafts = listings.filter((listing) => listing.status === 'draft');
-  const others = listings.filter((listing) => listing.status !== 'draft');
+  const rackItems = selectRackItems(listings, RACK_PREVIEW_LIMIT);
+  const rackTotal = countRackEligible(listings);
+  const coversQuery = useListingCovers(rackItems.map((item) => item.id));
 
   return (
     <Screen scroll contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text variant="title">Your listings</Text>
-        <Button size="sm" onPress={handleNewListing} loading={createDraft.isPending}>
-          New listing
-        </Button>
-      </View>
+      <Text variant="display">sell</Text>
 
-      {createError ? <ErrorText message={createError} /> : null}
-      {actionError ? <ErrorText message={actionError} /> : null}
+      <HeroCard
+        onOpenCamera={() => startListing('camera')}
+        onFromGallery={() => startListing('gallery')}
+        cameraBusy={heroAction === 'camera' && createDraft.isPending}
+        galleryBusy={heroAction === 'gallery' && createDraft.isPending}
+      />
+      {heroError ? <ErrorText message={heroError} /> : null}
 
       {listingsQuery.isPending ? (
-        <View style={styles.rows}>
-          <SkeletonRow />
-          <SkeletonRow />
-          <SkeletonRow />
-        </View>
+        <RackSkeleton />
       ) : listingsQuery.isError ? (
         <EmptyState
           variant="error"
@@ -85,36 +142,15 @@ export default function SellIndex() {
           actionLabel="Try again"
           onAction={() => listingsQuery.refetch()}
         />
-      ) : listings.length === 0 ? (
-        <EmptyState variant="empty" icon={EMPTY_ICON} title="You haven't listed anything yet." />
-      ) : (
-        <View style={styles.sections}>
-          {drafts.length > 0 ? (
-            <ListingSection
-              title="Drafts"
-              listings={drafts}
-              onPress={(listing) => openListing(listing.id)}
-              onManage={manageListing}
-            />
-          ) : null}
-          {others.length > 0 ? (
-            <ListingSection
-              title="Listed"
-              listings={others}
-              onPress={(listing) => openListing(listing.id)}
-              onManage={manageListing}
-            />
-          ) : null}
-        </View>
-      )}
-
-      <ListingActionsSheet
-        listing={managingListing}
-        sellerId={sellerId}
-        onClose={() => setManagingListing(null)}
-        onEdit={(listing) => openListing(listing.id)}
-        onError={setActionError}
-      />
+      ) : rackItems.length > 0 ? (
+        <RackSection
+          items={rackItems}
+          totalCount={rackTotal}
+          coverUrlByListingId={coversQuery.data ?? {}}
+          onPressItem={openListing}
+          onSeeAll={() => router.push('/(app)/(tabs)/profile/my-listings')}
+        />
+      ) : null}
     </Screen>
   );
 }
@@ -131,30 +167,182 @@ function ErrorText({ message }: { message: string }) {
   );
 }
 
-function ListingSection({
-  title,
-  listings,
-  onPress,
-  onManage,
+// ============================================================
+// Hero card
+// ============================================================
+
+function HeroCard({
+  onOpenCamera,
+  onFromGallery,
+  cameraBusy,
+  galleryBusy,
 }: {
-  title: string;
-  listings: ListingRowData[];
-  onPress: (listing: ListingRowData) => void;
-  onManage: (listing: ListingRowData) => void;
+  onOpenCamera: () => void;
+  onFromGallery: () => void;
+  cameraBusy: boolean;
+  galleryBusy: boolean;
+}) {
+  // Forces the card's own subtree dark regardless of the device scheme — the
+  // same mechanism welcome.tsx and the Home feed use (see welcome.tsx's own
+  // comment): every token inside resolves for a dark surface on its own
+  // (`bg`, `PillButton`'s outline border/label, `Text`'s default color), so
+  // "From gallery"'s outline reads cream-on-dark exactly as the handoff
+  // specifies without hand-picking a color at the call site.
+  return (
+    <AppThemeProvider scheme="dark">
+      <HeroCardContent
+        onOpenCamera={onOpenCamera}
+        onFromGallery={onFromGallery}
+        cameraBusy={cameraBusy}
+        galleryBusy={galleryBusy}
+      />
+    </AppThemeProvider>
+  );
+}
+
+function HeroCardContent({
+  onOpenCamera,
+  onFromGallery,
+  cameraBusy,
+  galleryBusy,
+}: {
+  onOpenCamera: () => void;
+  onFromGallery: () => void;
+  cameraBusy: boolean;
+  galleryBusy: boolean;
+}) {
+  const { colors } = useAppTheme();
+  const busy = cameraBusy || galleryBusy;
+
+  return (
+    <View style={[styles.hero, { backgroundColor: colors.bg }]}>
+      <View style={styles.heroSticker}>
+        <Sticker label="2 min to list" tone="accent" rotate={HERO_STICKER_ROTATION} />
+      </View>
+
+      <View
+        style={[styles.heroBadge, { backgroundColor: colors.accent }]}
+        // Decorative: the headline right below already says what this
+        // screen is for.
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants">
+        <Icon name={CAMERA_ICON} size="xl" color={colors.onAccent} />
+      </View>
+
+      <View style={styles.heroCopy}>
+        <Text variant="display">{'snap it.\nlist it.'}</Text>
+        <Text variant="body" style={styles.heroBody}>
+          Start with photos. Add the price and details after.
+        </Text>
+      </View>
+
+      <View style={styles.heroActions}>
+        <PillButton
+          onPress={onOpenCamera}
+          loading={cameraBusy}
+          disabled={busy && !cameraBusy}
+          style={styles.heroPrimaryButton}>
+          Open camera
+        </PillButton>
+        <PillButton
+          variant="outline"
+          onPress={onFromGallery}
+          loading={galleryBusy}
+          disabled={busy && !galleryBusy}>
+          From gallery
+        </PillButton>
+      </View>
+    </View>
+  );
+}
+
+// ============================================================
+// "Your rack"
+// ============================================================
+
+function RackSection({
+  items,
+  totalCount,
+  coverUrlByListingId,
+  onPressItem,
+  onSeeAll,
+}: {
+  items: RackItem<ListingRowData>[];
+  totalCount: number;
+  coverUrlByListingId: Record<string, string>;
+  onPressItem: (listingId: string) => void;
+  onSeeAll: () => void;
 }) {
   return (
-    <View style={styles.section}>
-      <Text variant="label" color="textSecondary">
-        {title}
+    <View style={styles.rack}>
+      <View style={styles.rackHeader}>
+        <Text variant="displaySm">your rack</Text>
+        <Pressable onPress={onSeeAll} accessibilityRole="button">
+          <Text variant="label" color="accentText">
+            See all {totalCount}
+          </Text>
+        </Pressable>
+      </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.rackRow}
+        // The screen's own Screen is the only VERTICAL scroller; this one is
+        // purely horizontal, same precedent as Explore's Drops row.
+        keyboardShouldPersistTaps="handled">
+        {items.map((item) => (
+          <Pressable
+            key={item.id}
+            onPress={() => onPressItem(item.id)}
+            accessibilityRole="button"
+            accessibilityLabel={`${item.title ?? 'Untitled draft'}, ${RACK_STATUS_LABEL[item.statusKind]}`}
+            style={({ pressed }) => [styles.rackTile, { opacity: pressed ? 0.7 : 1 }]}>
+            <ListingImage
+              uri={coverUrlByListingId[item.id]}
+              style={[styles.rackThumb, item.statusKind === 'sold' ? styles.rackThumbSold : null]}
+              recyclingKey={item.id}
+            />
+            <RackStatusPill kind={item.statusKind} />
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+function RackStatusPill({ kind }: { kind: RackStatusKind }) {
+  const { colors } = useAppTheme();
+
+  if (kind === 'draft') {
+    return (
+      <View style={[styles.rackPill, styles.rackPillOutline, { borderColor: colors.text }]}>
+        <Text variant="micro" color="text" style={styles.rackPillLabel}>
+          {RACK_STATUS_LABEL.draft}
+        </Text>
+      </View>
+    );
+  }
+
+  const fill = kind === 'live' ? colors.accent : colors.bgInverse;
+  const labelColor: TextColor = kind === 'live' ? 'onAccent' : 'textInverse';
+
+  return (
+    <View style={[styles.rackPill, { backgroundColor: fill }]}>
+      <Text variant="micro" color={labelColor} style={styles.rackPillLabel}>
+        {RACK_STATUS_LABEL[kind]}
       </Text>
-      <View style={styles.rows}>
-        {listings.map((listing) => (
-          <ListingRow
-            key={listing.id}
-            listing={listing}
-            onPress={() => onPress(listing)}
-            onManage={() => onManage(listing)}
-          />
+    </View>
+  );
+}
+
+function RackSkeleton() {
+  return (
+    <View style={styles.rack}>
+      <Skeleton height={24} width={120} radius="xs" />
+      <View style={styles.rackRow}>
+        {Array.from({ length: 4 }, (_, index) => (
+          <Skeleton key={index} width={RACK_THUMB_WIDTH} height={RACK_THUMB_HEIGHT} radius="lg" />
         ))}
       </View>
     </View>
@@ -167,19 +355,73 @@ const styles = StyleSheet.create({
     gap: space[6],
     paddingTop: space[6],
   },
-  header: {
+
+  hero: {
+    borderRadius: radius.lg,
+    padding: space[6],
+    gap: space[5],
+  },
+  heroSticker: {
+    position: 'absolute',
+    top: -space[2],
+    right: space[4],
+    zIndex: 1,
+  },
+  heroBadge: {
+    width: CAMERA_BADGE_SIZE,
+    height: CAMERA_BADGE_SIZE,
+    borderRadius: CAMERA_BADGE_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroCopy: {
+    gap: space[3],
+  },
+  heroBody: {
+    opacity: 0.75,
+  },
+  heroActions: {
+    flexDirection: 'row',
+    gap: space[3],
+  },
+  heroPrimaryButton: {
+    flex: 1,
+  },
+
+  rack: {
+    gap: space[3],
+  },
+  rackHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  rackRow: {
+    flexDirection: 'row',
     gap: space[3],
   },
-  sections: {
-    gap: space[6],
-  },
-  section: {
+  rackTile: {
+    alignItems: 'center',
     gap: space[2],
   },
-  rows: {
-    gap: space[2],
+  rackThumb: {
+    width: RACK_THUMB_WIDTH,
+    height: RACK_THUMB_HEIGHT,
+    borderRadius: radius.lg,
+  },
+  rackThumbSold: {
+    opacity: 0.55,
+  },
+  rackPill: {
+    paddingHorizontal: space[2],
+    paddingVertical: space[1] / 2,
+    borderRadius: radius.full,
+  },
+  rackPillOutline: {
+    borderWidth: RACK_DRAFT_PILL_BORDER_WIDTH,
+    borderStyle: 'dashed',
+  },
+  rackPillLabel: {
+    textTransform: 'uppercase',
   },
 });

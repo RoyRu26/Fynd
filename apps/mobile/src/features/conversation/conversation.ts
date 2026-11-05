@@ -1,3 +1,4 @@
+import type { ConversationMessage } from '@/features/conversation/optimistic';
 import type { Database } from '@/types/database';
 
 /**
@@ -128,4 +129,104 @@ export function createMessageNonce(): string {
  */
 export function isValidMessageBody(body: string): boolean {
   return body.trim().length > 0 && body.length <= 2000;
+}
+
+// ============================================================
+// Day separators + message grouping (SCREENS.md Task 8)
+// ============================================================
+// Hand-rolled day-boundary math, not Intl.DateTimeFormat — same reasoning
+// as features/listings/price.ts's formatMoney and features/inbox/inbox.ts's
+// formatInboxTimestamp: Hermes delegates Intl to the platform (Apple
+// Foundation on iOS, android.icu on Android), while tests run on Node's own
+// ICU, so a test can only ever assert one of three real implementations. A
+// hand-rolled formatter is identical everywhere.
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MONTH_LABELS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+] as const;
+
+function startOfLocalDay(ms: number): number {
+  const date = new Date(ms);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+/** A stable per-calendar-day grouping key (local time) — for comparison only, never shown. */
+function localDayKey(iso: string): string {
+  const date = new Date(iso);
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+/**
+ * A day separator's label — "Today", "Yesterday", or a bare date. Compares
+ * LOCAL CALENDAR DAYS, not a 24h-elapsed window, same reasoning
+ * `formatInboxTimestamp` documents: a message from 11:58pm yesterday must
+ * read "Yesterday" even though under two minutes have elapsed. Clamped at 0
+ * so a clock-skewed future timestamp reads as "Today" rather than a
+ * nonsensical negative day count, and a malformed `createdAt` returns `''`
+ * rather than "NaN" or throwing — the same "garbage never badges"
+ * philosophy `isJustDropped` documents.
+ */
+export function formatDaySeparatorLabel(createdAt: string, now: number = Date.now()): string {
+  const date = new Date(createdAt);
+  const timestamp = date.getTime();
+  if (Number.isNaN(timestamp)) {
+    return '';
+  }
+  const dayIndex = Math.max(0, Math.floor((startOfLocalDay(now) - startOfLocalDay(timestamp)) / DAY_MS));
+  if (dayIndex === 0) return 'Today';
+  if (dayIndex === 1) return 'Yesterday';
+  return `${MONTH_LABELS[date.getMonth()]} ${date.getDate()}`;
+}
+
+export type ChatListItem =
+  | { kind: 'message'; message: ConversationMessage; showTime: boolean }
+  | { kind: 'separator'; id: string; label: string };
+
+/**
+ * Interleaves day separators into `messages` (already newest-first — exactly
+ * what `useMessageHistory` returns, and what an `inverted` FlatList wants)
+ * and marks each message with whether it is the newest in its own
+ * consecutive-same-sender, same-day run — the one bubble in a burst that
+ * gets a timestamp under it.
+ *
+ * Walking newest-to-oldest, a separator is inserted the moment a message's
+ * calendar day differs from the one just seen. In this newest-first array,
+ * that means the separator lands immediately BEFORE (in array order) the
+ * first message of an OLDER day — and since the FlatList rendering this is
+ * `inverted`, "before" in array order is "above" on screen, so each
+ * separator correctly sits above its own day's message group.
+ *
+ * `showTime` is true exactly when this message is the newest of a run: the
+ * very first message overall, or whenever the PREVIOUS array entry (one
+ * step NEWER, since the array is newest-first) is a different sender or a
+ * different day. A day boundary always ends a group even for the same
+ * sender — the separator between them already carries the date.
+ */
+export function buildChatListItems(
+  messages: ConversationMessage[],
+  now: number = Date.now(),
+): ChatListItem[] {
+  const items: ChatListItem[] = [];
+  let lastDayKey: string | null = null;
+
+  messages.forEach((message, index) => {
+    const dayKey = localDayKey(message.createdAt);
+    if (dayKey !== lastDayKey) {
+      items.push({
+        kind: 'separator',
+        id: `day:${dayKey}`,
+        label: formatDaySeparatorLabel(message.createdAt, now),
+      });
+      lastDayKey = dayKey;
+    }
+
+    const newer = index > 0 ? messages[index - 1] : undefined;
+    const showTime =
+      newer === undefined || newer.senderId !== message.senderId || localDayKey(newer.createdAt) !== dayKey;
+    items.push({ kind: 'message', message, showTime });
+  });
+
+  return items;
 }

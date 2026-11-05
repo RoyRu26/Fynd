@@ -1,11 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import type { BrandSelection } from '@/features/brands/brands';
 import {
   attachListingImage,
   createDraft,
   createListingImageUrls,
   deleteDraft,
+  fetchAttributeVocabulary,
   fetchListing,
+  fetchListingAttributes,
+  fetchListingConversationBuyers,
+  fetchListingCovers,
   fetchListingImages,
   fetchMyListings,
   markListingActive,
@@ -15,10 +20,16 @@ import {
   removeListing,
   removeListingImage,
   reorderListingImages,
+  setListingAttributes,
   updateDraft,
   updateListingDetails,
   type ListingImageRow,
 } from '@/features/listings/api';
+import {
+  fetchLatestListingAnalysis,
+  suggestListingFromPhotos,
+  type ListingAnalysis,
+} from '@/features/listings/ai-suggestions';
 import { uploadAndAttachListingImage } from '@/features/listings/images';
 import type { DraftListingInput, PublishableListingInput } from '@/features/listings/schemas';
 import { listingDetailKeys } from '@/features/listing-detail/queries';
@@ -28,7 +39,56 @@ export const listingKeys = {
   mine: (sellerId: string | undefined) => [...listingKeys.all, 'mine', sellerId] as const,
   detail: (listingId: string | undefined) => [...listingKeys.all, 'detail', listingId] as const,
   images: (listingId: string | undefined) => [...listingKeys.all, 'images', listingId] as const,
+  covers: (listingIds: string[]) => [...listingKeys.all, 'covers', listingIds] as const,
+  conversationBuyers: (listingId: string | undefined) =>
+    [...listingKeys.all, 'conversationBuyers', listingId] as const,
+  attributeVocabulary: () => [...listingKeys.all, 'attributeVocabulary'] as const,
+  attributes: (listingId: string | undefined) => [...listingKeys.all, 'attributes', listingId] as const,
+  aiAnalysis: (listingId: string | undefined) => [...listingKeys.all, 'aiAnalysis', listingId] as const,
 };
+
+// ============================================================
+// Structured attributes (AI listing metadata plan, Phase 1a)
+// ============================================================
+
+/** Reference data, changed only by migrations — same 24h staleTime as categories. */
+export function useAttributeVocabulary() {
+  return useQuery({
+    queryKey: listingKeys.attributeVocabulary(),
+    queryFn: fetchAttributeVocabulary,
+    staleTime: 24 * 60 * 60 * 1000,
+  });
+}
+
+export function useListingAttributes(listingId: string | undefined) {
+  return useQuery({
+    queryKey: listingKeys.attributes(listingId),
+    queryFn: () => fetchListingAttributes(listingId as string),
+    enabled: !!listingId,
+  });
+}
+
+export function useSetListingAttributes(listingId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: { termIds: string[]; keywords: string[]; brand: BrandSelection }) => {
+      if (!listingId) {
+        throw new Error('Cannot save attributes without a listing id');
+      }
+      await setListingAttributes(listingId, input);
+      // Re-read what the server actually stored: typed brand text may have
+      // been resolved to a catalog brand.
+      return fetchListingAttributes(listingId);
+    },
+    // Written into the cache before mutateAsync resolves: an editor mounting
+    // right after (the draft -> published swap on Publish) must never see the
+    // pre-save values.
+    onSuccess: (saved) => {
+      queryClient.setQueryData(listingKeys.attributes(listingId), saved);
+    },
+  });
+}
 
 // Images are keyed separately from the listing detail on purpose: photo churn
 // during editing must not invalidate the detail query and reset form state
@@ -71,6 +131,21 @@ export function useListingImageUrls(storagePaths: string[]) {
     enabled: storagePaths.length > 0,
     // Signed URLs are minted for 1 hour (see createListingImageUrls); staying
     // well under that avoids ever rendering with one that expired mid-session.
+    staleTime: 45 * 60 * 1000,
+  });
+}
+
+/**
+ * Cover photo URLs for the Sell tab's "your rack" strip (SCREENS.md Task 5),
+ * keyed by listing id. Mirrors `useListingImageUrls`'s own staleTime
+ * reasoning: signed URLs are minted for 1 hour, so 45 minutes keeps every
+ * render well clear of one expiring mid-session.
+ */
+export function useListingCovers(listingIds: string[]) {
+  return useQuery({
+    queryKey: listingKeys.covers(listingIds),
+    queryFn: () => fetchListingCovers(listingIds),
+    enabled: listingIds.length > 0,
     staleTime: 45 * 60 * 1000,
   });
 }
@@ -201,6 +276,50 @@ export function usePublishListing(sellerId: string | undefined) {
   });
 }
 
+/**
+ * AI listing metadata, Phase 2. Runs (or re-uses, from the server's cache) an
+ * analysis of the draft's photos. `suggestListingFromPhotos` never throws —
+ * it maps every failure into an `{ok:false}` result — so callers branch on
+ * `result.ok`. A successful result also becomes the cached "latest
+ * analysis", which is what restores suggestions when the draft reopens.
+ */
+export function useSuggestListingFromPhotos(listingId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => {
+      if (!listingId) {
+        throw new Error('Cannot analyze a listing without an id');
+      }
+      return suggestListingFromPhotos(listingId);
+    },
+    onSuccess: (result) => {
+      if (result.ok) {
+        const latest: ListingAnalysis = {
+          analysisId: result.analysisId,
+          imagePaths: result.imagePaths,
+          suggestion: result.suggestion,
+        };
+        queryClient.setQueryData(listingKeys.aiAnalysis(listingId), latest);
+      }
+    },
+  });
+}
+
+/**
+ * The draft's latest succeeded analysis (owner-only via RLS). Read once when
+ * the editor opens so suggestions survive closing the app; it never calls
+ * the model. Kept fresh by useSuggestListingFromPhotos's cache write.
+ */
+export function useLatestListingAnalysis(listingId: string | undefined) {
+  return useQuery({
+    queryKey: listingKeys.aiAnalysis(listingId),
+    queryFn: () => fetchLatestListingAnalysis(listingId as string),
+    enabled: !!listingId,
+    staleTime: Infinity,
+  });
+}
+
 // ============================================================
 // Post-publish lifecycle (ROADMAP 1.6 "Manage a listing")
 // ============================================================
@@ -240,12 +359,27 @@ export function useMarkListingSold(sellerId: string | undefined) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (listingId: string) => markListingSold(listingId),
-    onSuccess: (_listing, listingId) => {
+    mutationFn: ({ listingId, buyerId }: { listingId: string; buyerId: string | null }) =>
+      markListingSold(listingId, buyerId),
+    onSuccess: (_listing, { listingId }) => {
       queryClient.invalidateQueries({ queryKey: listingKeys.detail(listingId) });
       queryClient.invalidateQueries({ queryKey: listingKeys.mine(sellerId) });
       queryClient.invalidateQueries({ queryKey: listingDetailKeys.byId(listingId) });
     },
+  });
+}
+
+/**
+ * ROADMAP 5.3: the candidate buyers for the "Mark as sold" picker --
+ * everyone who messaged about this listing, most-recent-first. `enabled:
+ * !!listingId` mirrors every other listing-scoped query in this file
+ * (`useListing`, `useListingImages`).
+ */
+export function useListingConversationBuyers(listingId: string | undefined) {
+  return useQuery({
+    queryKey: listingKeys.conversationBuyers(listingId),
+    queryFn: () => fetchListingConversationBuyers(listingId as string),
+    enabled: !!listingId,
   });
 }
 

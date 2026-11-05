@@ -117,7 +117,28 @@ function getVariantStyle({
     case 'ghost':
       return { backgroundColor: 'transparent', opacity };
     case 'danger':
-      return { backgroundColor: colors.danger, opacity };
+      // Tonal, not solid — DESIGN.md §8: destructive actions must differ
+      // from `primary` by SILHOUETTE, never by hue alone, so a dichromat
+      // can still tell "Save" from "Delete" apart. `dangerBg` fill +
+      // `danger` border mirrors `secondary`'s own bordered shape, just in
+      // the danger palette instead of neutral.
+      return {
+        backgroundColor: colors.dangerBg,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: colors.danger,
+        opacity,
+      };
+    case 'inverse':
+      // Solid, borderless and unbevelled: the fill is already the highest-
+      // contrast surface available against the page, so it needs no stroke
+      // to separate it, and the bevel's job (lifting accent off the page)
+      // is redundant here. Raised elevation still applies — it is a solid
+      // primary-weight control, not a tonal one.
+      return {
+        backgroundColor: colors.bgInverse,
+        opacity,
+        ...elevation.raised,
+      };
   }
 }
 

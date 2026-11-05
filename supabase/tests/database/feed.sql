@@ -16,7 +16,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(60);
+select plan(66);
 
 -- ============================================================
 -- FIXTURES
@@ -426,6 +426,77 @@ select is(
 );
 
 -- ============================================================
+-- 3b. feed_listings -- blocks (ROADMAP 5.2)
+-- ============================================================
+-- Still viewer C, who follows A (not p_following_only here -- the default
+-- "for you" scope). feed_fixture is exactly A's 4 feed-eligible listings
+-- (section 1's own scope), so an exact total count through that join is
+-- the same discipline this file's own header insists on for any
+-- aggregating assertion -- not just "this one listing is missing", which
+-- is exactly the assert-presence-only mistake this suite's header warns
+-- against repeating.
+
+-- 1. C blocks A (the seller of every feed_fixture row) -- A's listings
+-- must disappear from C's feed entirely.
+insert into public.blocks (blocker_id, blocked_id)
+values ('f3000000-0000-0000-0000-00000000000c', 'f3000000-0000-0000-0000-00000000000a');
+
+select is(
+  (select count(*)::int from public.feed_listings(50) f
+    join feed_fixture ff on ff.listing_id = f.listing_id),
+  0,
+  'after C blocks A, none of A''s feed-eligible listings appear in C''s feed'
+);
+
+-- 2. Unblocking restores visibility.
+delete from public.blocks
+ where blocker_id = 'f3000000-0000-0000-0000-00000000000c'
+   and blocked_id = 'f3000000-0000-0000-0000-00000000000a';
+
+select is(
+  (select count(*)::int from public.feed_listings(50) f
+    join feed_fixture ff on ff.listing_id = f.listing_id),
+  4,
+  'unblocking A restores all 4 of C''s feed-eligible listings from them'
+);
+
+-- 3. The REVERSE direction: A blocks C (not the other way around). C is
+-- still the viewer running the query -- suppression must hold from C's
+-- side even though C never blocked anyone. Act as A only long enough to
+-- write the row (blocks' own INSERT policy is owner-scoped to
+-- blocker_id = auth.uid(), same as every other write in this table).
+set local request.jwt.claims = '{"sub":"f3000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+insert into public.blocks (blocker_id, blocked_id)
+values ('f3000000-0000-0000-0000-00000000000a', 'f3000000-0000-0000-0000-00000000000c');
+
+set local request.jwt.claims = '{"sub":"f3000000-0000-0000-0000-00000000000c","role":"authenticated"}';
+
+select is(
+  (select count(*)::int from public.feed_listings(50) f
+    join feed_fixture ff on ff.listing_id = f.listing_id),
+  0,
+  'A blocking C ALSO suppresses A''s listings from C''s feed -- has_block_between is symmetric, not blocker-scoped'
+);
+
+-- 4. Unblocking (from A's side, since A is the blocker this time) restores
+-- visibility again.
+set local request.jwt.claims = '{"sub":"f3000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+delete from public.blocks
+ where blocker_id = 'f3000000-0000-0000-0000-00000000000a'
+   and blocked_id = 'f3000000-0000-0000-0000-00000000000c';
+
+set local request.jwt.claims = '{"sub":"f3000000-0000-0000-0000-00000000000c","role":"authenticated"}';
+
+select is(
+  (select count(*)::int from public.feed_listings(50) f
+    join feed_fixture ff on ff.listing_id = f.listing_id),
+  4,
+  'unblocking from the blocker''s side restores visibility again'
+);
+
+-- ============================================================
 -- 4. feed_listings -- ordering, limit, cursor
 -- ============================================================
 
@@ -655,6 +726,35 @@ select is(
     where e.user_id = 'f3000000-0000-0000-0000-00000000000a'),
   0,
   'another user''s events are not readable'
+);
+
+-- ============================================================
+-- 6a. listing_events_id_seq -- identity sequence lockdown (ROADMAP 6.4)
+-- ============================================================
+-- Same bug class as reports_id_seq/reviews_id_seq (both already fixed and
+-- tested elsewhere): `generated always as identity` backs this column with
+-- its OWN sequence, granted rwU to anon/authenticated by pg_default_acl
+-- INDEPENDENTLY of the table's own grants above -- the table-level revoke
+-- never reaches it. RLS scopes SELECT on the table to the caller's own
+-- rows, but `last_value` on the raw sequence bypasses RLS entirely,
+-- leaking global impression-volume platform-wide. Fixed in
+-- 20261021101950_identity_sequence_privilege_cleanup.sql.
+
+set local role anon;
+
+select throws_ok(
+  $$select last_value from public.listing_events_id_seq$$,
+  '42501', null,
+  'anon cannot read the listing_events_id_seq identity sequence -- no row-count inference'
+);
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"f3000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+select throws_ok(
+  $$select last_value from public.listing_events_id_seq$$,
+  '42501', null,
+  'authenticated cannot read listing_events_id_seq either -- the revoke is not owner-scoped, it is total'
 );
 
 -- ============================================================

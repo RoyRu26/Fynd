@@ -1,18 +1,29 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import { Avatar, Button, Icon, IconButton, Screen, Text, TextField, type IconName } from '@/components/ui';
+import {
+  Avatar,
+  Button,
+  EmptyState,
+  Icon,
+  IconButton,
+  Screen,
+  SkeletonRow,
+  Text,
+  TextField,
+  type IconName,
+} from '@/components/ui';
 import { radius, space } from '@/design/tokens';
 import { useAppTheme } from '@/design/theme-provider';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useUsernameAvailability } from '@/features/profile/availability';
 import { mapProfileError } from '@/features/profile/errors';
 import { normalizeBio } from '@/features/profile/profile';
-import { useAvatarUrl, useProfile, useUpdateAvatar, useUpdateProfile } from '@/features/profile/queries';
+import { useAvatarUrl, useProfile, useUpdateProfile } from '@/features/profile/queries';
+import { useAvatarPicker } from '@/features/profile/use-avatar-picker';
 import { editProfileSchema, type EditProfileInput } from '@/features/profile/schemas';
 
 /**
@@ -40,10 +51,11 @@ const CAMERA_ICON: IconName = { ios: 'camera.fill', android: 'photo_camera', web
 // available/taken indicator.
 const AVAILABLE_ICON: IconName = { ios: 'checkmark.circle.fill', android: 'check_circle', web: 'check_circle' };
 const TAKEN_ICON: IconName = { ios: 'xmark.circle.fill', android: 'cancel', web: 'cancel' };
+// Same shape as explore.tsx/inbox/index.tsx's own ERROR_ICON constants.
+const ERROR_ICON: IconName = { ios: 'exclamationmark.triangle', android: 'warning', web: 'warning' };
 
 export default function EditProfile() {
   const router = useRouter();
-  const { colors } = useAppTheme();
   const { session } = useAuth();
   const userId = session?.user.id;
 
@@ -54,8 +66,10 @@ export default function EditProfile() {
     return (
       <Screen contentContainerStyle={styles.content}>
         <BackRow onPress={() => router.back()} />
-        <View style={styles.centered}>
-          <ActivityIndicator color={colors.textTertiary} />
+        <View style={styles.skeletonRows}>
+          <SkeletonRow />
+          <SkeletonRow />
+          <SkeletonRow />
         </View>
       </Screen>
     );
@@ -65,14 +79,14 @@ export default function EditProfile() {
     return (
       <Screen contentContainerStyle={styles.content}>
         <BackRow onPress={() => router.back()} />
-        <View style={styles.centered}>
-          <Text variant="body" color="danger">
-            Something went wrong loading your profile.
-          </Text>
-          <Button variant="secondary" size="sm" onPress={() => profileQuery.refetch()}>
-            Try again
-          </Button>
-        </View>
+        <EmptyState
+          variant="error"
+          icon={ERROR_ICON}
+          title="Something went wrong"
+          body={profileQuery.error ? mapProfileError(profileQuery.error).message : undefined}
+          actionLabel="Try again"
+          onAction={() => profileQuery.refetch()}
+        />
       </Screen>
     );
   }
@@ -105,9 +119,8 @@ function EditProfileForm({
   const { colors } = useAppTheme();
   const [formError, setFormError] = useState<string | null>(null);
 
-  const updateAvatar = useUpdateAvatar(userId);
+  const avatarPicker = useAvatarPicker(userId);
   const avatarUrlQuery = useAvatarUrl(profile.avatar_path);
-  const [avatarPickError, setAvatarPickError] = useState<string | null>(null);
 
   const displayName = profile.display_name ?? '';
 
@@ -129,44 +142,6 @@ function EditProfileForm({
   // Excludes the viewer's own id, so re-saving an unchanged username never
   // shows "taken" — it matches their own row.
   const availability = useUsernameAvailability(username, userId);
-
-  async function handlePickAvatar() {
-    setAvatarPickError(null);
-
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setAvatarPickError(
-        permission.canAskAgain
-          ? 'Fynd needs access to your photos to set a profile picture.'
-          : 'Photo access is turned off for Fynd. Enable it in Settings to set a profile picture.',
-      );
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 1,
-    });
-    if (result.canceled) {
-      return;
-    }
-
-    const asset = result.assets[0];
-    if (!asset) {
-      return;
-    }
-
-    try {
-      await updateAvatar.mutateAsync(asset.uri);
-    } catch (err) {
-      if (__DEV__) {
-        console.error(err);
-      }
-      setAvatarPickError(mapProfileError(err).message);
-    }
-  }
 
   async function onSubmit(input: EditProfileInput) {
     setFormError(null);
@@ -204,26 +179,26 @@ function EditProfileForm({
             <IconButton
               icon={CAMERA_ICON}
               accessibilityLabel="Change profile picture"
-              onPress={handlePickAvatar}
-              disabled={updateAvatar.isPending}
+              onPress={avatarPicker.pick}
+              disabled={avatarPicker.isUploading}
               variant="onMedia"
               size="sm"
             />
           </View>
-          {updateAvatar.isPending ? (
+          {avatarPicker.isUploading ? (
             <View
               style={[StyleSheet.absoluteFill, styles.avatarUploadingOverlay, { backgroundColor: colors.overlayScrim }]}>
               <ActivityIndicator color={colors.textOnMedia} />
             </View>
           ) : null}
         </View>
-        {avatarPickError ? (
+        {avatarPicker.error ? (
           <Text
             variant="caption"
             color="danger"
             accessibilityLiveRegion="polite"
             accessibilityRole="alert">
-            {avatarPickError}
+            {avatarPicker.error}
           </Text>
         ) : null}
       </View>
@@ -326,12 +301,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: space[3],
-    paddingHorizontal: space[6],
+  skeletonRows: {
+    gap: space[2],
   },
   avatarSection: {
     alignItems: 'center',

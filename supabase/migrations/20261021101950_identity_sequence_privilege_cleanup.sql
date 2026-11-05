@@ -1,0 +1,26 @@
+-- ROADMAP 6.4 "Security audit" -- a High finding from the full-schema
+-- review: the identity-sequence-privilege-leak bug class, already found
+-- and fixed twice in this schema's own history (reports_id_seq in
+-- 20261020050442, reviews_id_seq in 20261020113819), was never retroactively
+-- applied to the two tables that predate both fixes.
+--
+-- `generated always as identity` gives a column its OWN backing sequence,
+-- and `pg_default_acl` grants that sequence `rwU` to `anon`/`authenticated`
+-- INDEPENDENTLY of the owning table's own grants -- a table-level `revoke
+-- all` never reaches it. Confirmed live via `pg_class.relacl`:
+-- `ai_suggestion_calls_id_seq` and `listing_events_id_seq` both still carry
+-- `anon=rwU, authenticated=rwU`, the exact shape `reports_id_seq`/
+-- `reviews_id_seq` were deliberately revoked down to `postgres`/
+-- `service_role` only.
+--
+-- Both tables' own RLS already scopes SELECT to the caller's own rows
+-- (`user_id = auth.uid()`), but `last_value` on the raw sequence bypasses
+-- RLS entirely -- a direct read leaks global, platform-wide row-count/
+-- velocity: total feed-impression volume, and total AI-suggestion-call
+-- volume, to anyone who can reach the sequence. Both owning functions
+-- (`record_listing_impression`, `record_ai_suggestion_attempt`) are
+-- already `security definer`, so revoking these grants from `anon`/
+-- `authenticated` has zero effect on the legitimate insert path -- the
+-- INSERT runs as the function owner, not the caller.
+revoke all on public.listing_events_id_seq      from anon, authenticated;
+revoke all on public.ai_suggestion_calls_id_seq from anon, authenticated;

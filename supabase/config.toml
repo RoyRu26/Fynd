@@ -370,6 +370,27 @@ authorization_url_path = "/oauth/consent"
 # Allow dynamic client registration
 allow_dynamic_registration = false
 
+# Supabase's first Edge Function (ROADMAP 4.2). Explicit, though it matches
+# the CLI's own default: the platform gateway rejects any request with no
+# valid JWT before this function's code ever runs, so index.ts can assume
+# `Authorization` carries a real (if possibly unauthorized-for-this-row)
+# caller.
+[functions.suggest-listing]
+verify_jwt = true
+
+# ROADMAP 6.1b "Settings: account deletion" -- this repo's second Edge
+# Function, and the first that calls the Admin API with the service role
+# key (see delete-account/index.ts's own header for why that's safe: the
+# key is read once, used once, and never leaves this function's process).
+# `verify_jwt = true` is a gateway-level check -- the platform rejects any
+# request with no valid JWT before this function's code ever runs -- which
+# is REDUNDANT with the function's own `userClient.auth.getUser()` call, by
+# design: the same defense-in-depth suggest-listing already has. Do not
+# "simplify" this away as dead code -- it is the first of two independent
+# checks, not a leftover of one.
+[functions.delete-account]
+verify_jwt = true
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

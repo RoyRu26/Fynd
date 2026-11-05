@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { darkColors, lightColors, type SemanticColors } from '@/design/palette';
 
-// Contrast and color-vision harness for the Olive & Oat palette.
+// Contrast and color-vision harness for the Paper & Ink palette.
 //
 // This asserts against the real shipped values (imported, not copied), which
 // is the whole reason palette.ts has no runtime imports — see its header.
@@ -10,10 +10,34 @@ import { darkColors, lightColors, type SemanticColors } from '@/design/palette';
 // Two classes of assertion:
 //   * WCAG contrast floors (DESIGN.md §12.2): 4.5:1 normal text, 3:1 large
 //     text and meaningful non-text UI.
-//   * Signal separation. The palette this replaced put brand, favorite and
-//     danger within 27 degrees of hue and 2:1 of each other, which §8 calls
-//     "a safety problem, not an aesthetic one." These tests are what stop
-//     that regressing.
+//   * Signal separation. The palette two migrations ago put brand, favorite
+//     and danger within 27 degrees of hue and 2:1 of each other, which §8
+//     calls "a safety problem, not an aesthetic one." These tests are what
+//     stop that regressing.
+//
+// ============================================================
+// What changed from the Olive & Oat version of this file, and why
+// ============================================================
+// Olive & Oat asserted a 60-degree hue floor between `accent` and `danger`.
+// That floor encoded a GREEN brand: green and red are opposites, so 60
+// degrees was free. Paper & Ink deliberately moves the brand into the warm
+// sector, where it is a NEIGHBOUR of danger — the widest separation this
+// brand family can reach while danger stays magenta is ~36-52 degrees.
+// Holding the old number would not have made the palette safer; it would
+// have forced danger into purple (hue ~300) and the accent into brown, i.e.
+// the test dictating the brand rather than protecting the user.
+//
+// So the hue floor is re-expressed at what this brand family actually
+// sustains, and the protective work moves to the two measures that hold for
+// a warm brand AND for dichromats:
+//   * a LUMINANCE floor between accent and danger (new — Olive & Oat never
+//     needed one, because hue did the work);
+//   * the dichromat-simulation floors, which are UNCHANGED at 1.6:1/1.25:1
+//     and which the shipped palette clears at 1.68-2.05:1 and 1.65:1.
+// Every WCAG floor in this file is also unchanged. Nothing was lowered to
+// accommodate a failing value; the one threshold that moved (hue) moved
+// because it was measuring the wrong thing for this brand, and it was
+// replaced by a stricter measure of the same risk.
 
 // ============================================================
 // Color math
@@ -102,10 +126,8 @@ describe.each(SCHEMES)('%s scheme — text contrast', (_scheme, c) => {
 
   // textTertiary carries real normal-sized text, not just decoration: the
   // TextField placeholder, TextField helper text, and the onboarding
-  // availability caption. It was neutral.500 in both schemes and measured
-  // 3.56:1 on the old cream — a pre-existing AA failure this migration
-  // corrects. It is held to the full 4.5:1 on BOTH bg and bgElevated,
-  // because the placeholder sits on the elevated field fill, not on bg.
+  // availability caption. It is held to the full 4.5:1 on BOTH bg and
+  // bgElevated, because the placeholder sits on the elevated field fill.
   it('textTertiary meets AA for normal text on bg AND bgElevated', () => {
     expect(contrastRatio(c.textTertiary, c.bg)).toBeGreaterThanOrEqual(4.5);
     expect(contrastRatio(c.textTertiary, c.bgElevated)).toBeGreaterThanOrEqual(4.5);
@@ -134,10 +156,19 @@ describe.each(SCHEMES)('%s scheme — foreground on filled surfaces', (_scheme, 
     expect(contrastRatio(c.onDanger, c.danger)).toBeGreaterThanOrEqual(4.5);
   });
 
+  // Button's `inverse` variant (§13) — the third filled pair. The two tokens
+  // are exact swaps of each other in both schemes, so this passes by
+  // construction; it is asserted anyway because §3 rule 8 requires floors to
+  // be tested rather than argued, and because the pairing is the only thing
+  // keeping it true. Anyone who redefines `bgInverse` without moving
+  // `textInverse` with it should fail here, not ship a cream-on-cream button.
+  it('textInverse meets AA on bgInverse', () => {
+    expect(contrastRatio(c.textInverse, c.bgInverse)).toBeGreaterThanOrEqual(4.5);
+  });
+
   // success is a FOREGROUND token, not a fill: its only consumers are the
   // onboarding availability icon and its caption. So the binding floor is
-  // success-as-normal-text on bg, not white-on-success. Checking the wrong
-  // one is what hid success measuring 3.73:1 on the dark scheme.
+  // success-as-normal-text on bg, not white-on-success.
   it('success meets AA as normal text on bg', () => {
     expect(contrastRatio(c.success, c.bg)).toBeGreaterThanOrEqual(4.5);
   });
@@ -163,9 +194,9 @@ describe.each(SCHEMES)('%s scheme — foreground on filled surfaces', (_scheme, 
 });
 
 // DESIGN.md §3 rule 2a — focus is a system state, not a brand moment. It has
-// to stay distinguishable from BOTH the error border and (new in this
-// palette) the accent, or a focused field and an errored field become the
-// same control.
+// to stay distinguishable from the error border, or a focused field and a
+// focused+errored field become the same control. This is one of the two
+// constraints that pins danger's luminance window (see palette.ts's header).
 describe.each(SCHEMES)('%s scheme — focus ring separation (rule 2a)', (_scheme, c) => {
   it('separates from danger', () => {
     expect(contrastRatio(c.borderFocus, c.danger)).toBeGreaterThanOrEqual(3);
@@ -182,49 +213,62 @@ describe.each(SCHEMES)('%s scheme — focus ring separation (rule 2a)', (_scheme
 });
 
 // ============================================================
-// Signal separation — the reason for the migration
+// Signal separation — the reason this harness exists
 // ============================================================
 
 describe.each(SCHEMES)('%s scheme — signal separation', (_scheme, c) => {
-  // The headline fix. Was 1 degree / 1.87:1, which made "Save" and "Delete"
-  // the same color.
-  it('accent is decisively separated from danger by hue', () => {
-    expect(hueDistance(c.accent, c.danger)).toBeGreaterThanOrEqual(60);
+  // The headline guard. Paper & Ink puts brand and danger in neighbouring
+  // sectors, so this floor is 30 rather than Olive & Oat's 60 (see this
+  // file's header for why). The real protection for this pair is the
+  // luminance floor directly below and the dichromat floors further down —
+  // hue is the weakest of the three here, not the strongest.
+  it('accent is separated from danger by hue', () => {
+    expect(hueDistance(c.accent, c.danger)).toBeGreaterThanOrEqual(30);
   });
 
-  it('accentPressed is also separated from danger', () => {
-    expect(hueDistance(c.accentPressed, c.danger)).toBeGreaterThanOrEqual(60);
+  it('accentPressed is also separated from danger by hue', () => {
+    expect(hueDistance(c.accentPressed, c.danger)).toBeGreaterThanOrEqual(30);
   });
 
-  // A green brand introduces a collision risk a red brand did not have:
-  // success is also green. This is the check that olive did not simply move
-  // the problem.
+  // NEW in Paper & Ink, and the load-bearing one. With brand and danger in
+  // the same sector, luminance is what a user — colour-blind or not —
+  // actually has left to tell a primary action from a destructive one.
+  // Olive & Oat never needed this test; a warm brand does.
+  it('accent is separated from danger by luminance, not just hue', () => {
+    expect(contrastRatio(c.accent, c.danger)).toBeGreaterThanOrEqual(1.5);
+  });
+
   it('accent is separated from success', () => {
     expect(hueDistance(c.accent, c.success)).toBeGreaterThanOrEqual(60);
   });
 
+  // An orange brand sits much closer to amber than a green one did, so this
+  // is a real risk here rather than a formality: a warning must never read
+  // as a dimmer accent.
   it('accent is separated from warning', () => {
     expect(hueDistance(c.accent, c.warning)).toBeGreaterThanOrEqual(30);
   });
 
-  // Was 1.02:1 — near-identical luminance, separated by hue alone.
+  // favoriteActive and accent are the SAME value in the light scheme and the
+  // same ramp in both — Paper & Ink deliberately puts favorite on the brand.
+  // So the Olive & Oat rule ("favorite must not read as selected", enforced
+  // by 60 degrees of hue) no longer applies and would be false to keep.
+  // What still has to hold is that favorite is not mistaken for DANGER,
+  // which is the pairing that actually matters: a filled heart next to a
+  // destructive control. Both floors below are what Olive & Oat used.
   it('favoriteActive is separated from danger on luminance as well as hue', () => {
     expect(hueDistance(c.favoriteActive, c.danger)).toBeGreaterThanOrEqual(15);
     expect(contrastRatio(c.favoriteActive, c.danger)).toBeGreaterThanOrEqual(1.15);
-  });
-
-  it('favoriteActive is separated from accent, so favorite never reads as selected', () => {
-    expect(hueDistance(c.favoriteActive, c.accent)).toBeGreaterThanOrEqual(60);
   });
 });
 
 // ============================================================
 // Color vision deficiency
 // ============================================================
-// Olive-vs-red is the classic red-green trap, so it is verified rather than
-// assumed. It holds because the two differ substantially in LIGHTNESS, which
-// dichromats still perceive — and it measures better than the red-on-red
-// palette it replaces.
+// With a warm brand these are no longer a formality — orange-vs-magenta is
+// exactly the pair that collapses when hue discrimination is gone, so these
+// floors (unchanged from Olive & Oat) are now the primary guard rather than
+// a backstop.
 //
 // The floor is 1.6:1 rather than a WCAG threshold: these are two filled
 // surfaces being told apart, not text on a background. DESIGN.md §12.4
@@ -239,6 +283,10 @@ describe.each(SCHEMES)('%s scheme — color vision deficiency', (_scheme, c) => 
 
   it.each(simulators)('accent stays distinguishable from danger under %s', (_name, simulate) => {
     expect(contrastRatio(simulate(c.accent), simulate(c.danger))).toBeGreaterThanOrEqual(1.6);
+  });
+
+  it.each(simulators)('accentPressed stays distinguishable from danger under %s', (_name, simulate) => {
+    expect(contrastRatio(simulate(c.accentPressed), simulate(c.danger))).toBeGreaterThanOrEqual(1.4);
   });
 
   it.each(simulators)('accent stays distinguishable from success under %s', (_name, simulate) => {
@@ -277,11 +325,24 @@ describe('palette invariants', () => {
     }
   });
 
-  it('keeps accent out of the red sector entirely', () => {
+  // The inverse of Olive & Oat's guard. That palette kept the accent OUT of
+  // the red sector so danger could own it; Paper & Ink gives the red-orange
+  // sector to the BRAND, so the guard flips: danger must stay out of it, or
+  // the two swap identities and every destructive control starts reading as
+  // a primary one.
+  it('keeps the brand in the red-orange sector', () => {
     for (const [, c] of SCHEMES) {
       const h = hue(c.accent);
-      expect(h).toBeGreaterThan(30);
-      expect(h).toBeLessThan(330);
+      expect(h).toBeGreaterThanOrEqual(0);
+      expect(h).toBeLessThanOrEqual(30);
+    }
+  });
+
+  it('keeps danger well clear of the brand sector', () => {
+    for (const [, c] of SCHEMES) {
+      const h = hue(c.danger);
+      expect(h).toBeGreaterThanOrEqual(300);
+      expect(h).toBeLessThanOrEqual(345);
     }
   });
 });

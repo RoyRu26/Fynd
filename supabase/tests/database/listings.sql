@@ -10,6 +10,11 @@
 --                RPCs (mark_listing_reserved, mark_listing_active,
 --                mark_listing_sold, remove_listing, update_listing_details)
 --                and the full transition matrix each one enforces.
+-- Section  24a   ROADMAP 5.3 "Mark sold to a buyer": `mark_listing_sold`'s
+--                new optional `p_buyer_id`, the listing-scoped (not
+--                seller-scoped) conversation check, and the deliberate
+--                "a blocked buyer can still be recorded" case.
+-- Section  27    ROADMAP 5.3: the new `listing_conversation_buyers` RPC.
 --
 -- Two recurring conventions worth stating once:
 --
@@ -24,7 +29,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(138);
+select plan(156);
 
 -- ============================================================
 -- FIXTURES
@@ -33,6 +38,11 @@ select plan(138);
 -- profiles.sql fixtures so there is no collision risk even though each
 -- test file runs in its own rolled-back transaction.
 
+-- c/d/e/f are ROADMAP 5.3 buyer fixtures (section 24a/27 below): c is a
+-- buyer who genuinely messages about a listing, d never messages anything
+-- at all, e messages a DIFFERENT listing owned by the same seller (a), and
+-- f is messaged, then blocked by a, to prove a block does not retroactively
+-- disqualify a real buyer.
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password, created_at, updated_at
 )
@@ -40,7 +50,15 @@ values
   ('f2000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-000000000000',
    'authenticated', 'authenticated', 'pgtap-listings-a@test.dev', 'x', now(), now()),
   ('f2000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-000000000000',
-   'authenticated', 'authenticated', 'pgtap-listings-b@test.dev', 'x', now(), now());
+   'authenticated', 'authenticated', 'pgtap-listings-b@test.dev', 'x', now(), now()),
+  ('f2000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'pgtap-listings-c@test.dev', 'x', now(), now()),
+  ('f2000000-0000-0000-0000-00000000000d', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'pgtap-listings-d@test.dev', 'x', now(), now()),
+  ('f2000000-0000-0000-0000-00000000000e', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'pgtap-listings-e@test.dev', 'x', now(), now()),
+  ('f2000000-0000-0000-0000-00000000000f', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'pgtap-listings-f@test.dev', 'x', now(), now());
 
 -- Act as user A via RLS from here on. Rows are located throughout by a
 -- unique marker in `description` (not `title`, which some tests rename,
@@ -1191,7 +1209,31 @@ values
   ('eeee0005-0000-0000-0000-000000000006', 'f2000000-0000-0000-0000-00000000000a',
    'UD invalid', 'UD_INVALID', 2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
   ('eeee0005-0000-0000-0000-000000000007', 'f2000000-0000-0000-0000-00000000000b',
-   'UD B active','UD_B_ACTIVE',2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active');
+   'UD B active','UD_B_ACTIVE',2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
+  -- ROADMAP 5.3 "Mark sold to a buyer" fixtures -- section 24a
+  -- (mark_listing_sold's new p_buyer_id) and section 27
+  -- (listing_conversation_buyers), all owned by seller a unless noted.
+  ('eeee0003-0000-0000-0000-000000000010', 'f2000000-0000-0000-0000-00000000000a',
+   'MSB regression',    'MSB_REGRESSION',   2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
+  ('eeee0003-0000-0000-0000-000000000011', 'f2000000-0000-0000-0000-00000000000a',
+   'MSB valid buyer',   'MSB_VALID_BUYER',  2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
+  -- Buyer e's conversation lives on THIS listing, never on 0013 below --
+  -- what makes the cross-listing rejection test meaningful.
+  ('eeee0003-0000-0000-0000-000000000012', 'f2000000-0000-0000-0000-00000000000a',
+   'MSB other listing', 'MSB_OTHER_LISTING',2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
+  ('eeee0003-0000-0000-0000-000000000013', 'f2000000-0000-0000-0000-00000000000a',
+   'MSB cross target',  'MSB_CROSS_TARGET', 2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
+  ('eeee0003-0000-0000-0000-000000000014', 'f2000000-0000-0000-0000-00000000000a',
+   'MSB never msgd',    'MSB_NEVER_MSGD',   2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
+  ('eeee0003-0000-0000-0000-000000000015', 'f2000000-0000-0000-0000-00000000000a',
+   'MSB self buyer',    'MSB_SELF_BUYER',   2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
+  ('eeee0003-0000-0000-0000-000000000016', 'f2000000-0000-0000-0000-00000000000a',
+   'MSB blocked buyer', 'MSB_BLOCKED_BUYER',2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
+  -- listing_conversation_buyers fixtures.
+  ('eeee0003-0000-0000-0000-000000000020', 'f2000000-0000-0000-0000-00000000000a',
+   'LCB two buyers',    'LCB_TWO_BUYERS',   2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
+  ('eeee0003-0000-0000-0000-000000000021', 'f2000000-0000-0000-0000-00000000000a',
+   'LCB zero buyers',   'LCB_ZERO_BUYERS',  2500, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active');
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000a","role":"authenticated"}';
@@ -1362,6 +1404,112 @@ select throws_ok(
 );
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+-- ============================================================
+-- 24a. ROADMAP 5.3 "Mark sold to a buyer" -- mark_listing_sold(listing, buyer)
+-- ============================================================
+-- Conversation fixtures first: buyer c messages about 0011 (the listing it
+-- will legitimately be recorded as having bought), buyer e messages about
+-- 0012 only (a DIFFERENT listing owned by the same seller a -- never about
+-- 0013), buyer f messages about 0016, and buyer d messages about nothing
+-- at all. Created via the real RPC, exactly like chat.sql's own fixture
+-- setup, rather than a direct INSERT -- `conversations` has no client
+-- INSERT grant at all (get_or_create_listing_conversation is the sole
+-- writer), so this is also the only way these rows could ever come to
+-- exist.
+
+set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000c","role":"authenticated"}';
+select public.get_or_create_listing_conversation('eeee0003-0000-0000-0000-000000000011');
+
+set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000e","role":"authenticated"}';
+select public.get_or_create_listing_conversation('eeee0003-0000-0000-0000-000000000012');
+
+set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000f","role":"authenticated"}';
+select public.get_or_create_listing_conversation('eeee0003-0000-0000-0000-000000000016');
+
+set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+-- Regression: omitting p_buyer_id entirely (the pre-5.3 call shape) still
+-- works exactly as before -- succeeds, and sold_to_user_id stays null.
+select is(
+  (select l.status from public.mark_listing_sold('eeee0003-0000-0000-0000-000000000010') l),
+  'sold'::listing_status,
+  'mark_listing_sold with p_buyer_id omitted still succeeds, unchanged from before ROADMAP 5.3'
+);
+
+select is(
+  (select sold_to_user_id from public.listings where id = 'eeee0003-0000-0000-0000-000000000010'),
+  null,
+  'omitting p_buyer_id leaves sold_to_user_id null'
+);
+
+-- A real buyer who actually messaged about THIS listing is recorded.
+select is(
+  (select l.status from public.mark_listing_sold(
+     'eeee0003-0000-0000-0000-000000000011', 'f2000000-0000-0000-0000-00000000000c') l),
+  'sold'::listing_status,
+  'mark_listing_sold with a buyer who messaged about this listing succeeds'
+);
+
+select is(
+  (select sold_to_user_id from public.listings where id = 'eeee0003-0000-0000-0000-000000000011'),
+  'f2000000-0000-0000-0000-00000000000c'::uuid,
+  'sold_to_user_id is set to the selected buyer'
+);
+
+-- THE single most important new case: buyer e messaged seller a about a
+-- DIFFERENT listing (0012), never about 0013. The check must be scoped to
+-- THIS listing's own conversations, not to "has this buyer ever messaged
+-- this seller about anything".
+select throws_ok(
+  $$select public.mark_listing_sold('eeee0003-0000-0000-0000-000000000013', 'f2000000-0000-0000-0000-00000000000e')$$,
+  'P0001', null,
+  'a buyer who messaged a DIFFERENT listing owned by the same seller is rejected -- the check is listing-scoped, not seller-scoped'
+);
+
+-- An arbitrary user who never messaged about anything at all.
+select throws_ok(
+  $$select public.mark_listing_sold('eeee0003-0000-0000-0000-000000000014', 'f2000000-0000-0000-0000-00000000000d')$$,
+  'P0001', null,
+  'a buyer who never messaged about this listing at all is rejected'
+);
+
+-- The seller cannot name themselves as the buyer.
+select throws_ok(
+  $$select public.mark_listing_sold('eeee0003-0000-0000-0000-000000000015', 'f2000000-0000-0000-0000-00000000000a')$$,
+  'P0001', null,
+  'the seller cannot be recorded as their own buyer'
+);
+
+set local role anon;
+select throws_ok(
+  $$select public.mark_listing_sold('cccc0000-0000-0000-0000-00000000dead', 'f2000000-0000-0000-0000-00000000000c')$$,
+  '42501', null,
+  'anon cannot execute the 2-arg mark_listing_sold overload'
+);
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+-- The deliberate, documented ROADMAP 5.2-consistency design decision: a
+-- buyer who has since been BLOCKED by the seller can still be recorded as
+-- the sold-to buyer, because the sale already happened and 5.2 only stops
+-- future contact, never erases the past. Actually tested here, not merely
+-- asserted in a comment.
+insert into public.blocks (blocker_id, blocked_id)
+values ('f2000000-0000-0000-0000-00000000000a', 'f2000000-0000-0000-0000-00000000000f');
+
+select is(
+  (select l.status from public.mark_listing_sold(
+     'eeee0003-0000-0000-0000-000000000016', 'f2000000-0000-0000-0000-00000000000f') l),
+  'sold'::listing_status,
+  'a buyer who has since been blocked by the seller can still be recorded as the sold-to buyer'
+);
+
+select is(
+  (select sold_to_user_id from public.listings where id = 'eeee0003-0000-0000-0000-000000000016'),
+  'f2000000-0000-0000-0000-00000000000f'::uuid,
+  'the blocked buyer is genuinely recorded, not silently dropped to null'
+);
 
 -- ============================================================
 -- 25. remove_listing
@@ -1542,6 +1690,87 @@ select throws_ok(
   $$select public.update_listing_details('eeee0005-0000-0000-0000-000000000001', 'x', '', 1000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001')$$,
   '42501', null,
   'anon cannot execute update_listing_details'
+);
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+-- ============================================================
+-- 27. listing_conversation_buyers
+-- ============================================================
+-- Two buyers (c, d) message about listing 0020; buyer e's conversation
+-- lives entirely on 0012 (section 24a's fixture, a different listing
+-- owned by the same seller a) and must never show up here. Listing 0021
+-- has zero conversations at all.
+
+set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000c","role":"authenticated"}';
+select public.get_or_create_listing_conversation('eeee0003-0000-0000-0000-000000000020');
+
+set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000d","role":"authenticated"}';
+select public.get_or_create_listing_conversation('eeee0003-0000-0000-0000-000000000020');
+
+set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+select is(
+  (select count(*)::int from public.listing_conversation_buyers('eeee0003-0000-0000-0000-000000000020')),
+  2,
+  'listing_conversation_buyers returns exactly the distinct buyers who messaged about this listing'
+);
+
+select ok(
+  exists(
+    select 1 from public.listing_conversation_buyers('eeee0003-0000-0000-0000-000000000020')
+     where buyer_id = 'f2000000-0000-0000-0000-00000000000c'
+  ),
+  'buyer c, who messaged about 0020, is included'
+);
+
+select ok(
+  exists(
+    select 1 from public.listing_conversation_buyers('eeee0003-0000-0000-0000-000000000020')
+     where buyer_id = 'f2000000-0000-0000-0000-00000000000d'
+  ),
+  'buyer d, who also messaged about 0020, is included'
+);
+
+select ok(
+  not exists(
+    select 1 from public.listing_conversation_buyers('eeee0003-0000-0000-0000-000000000020')
+     where buyer_id = 'f2000000-0000-0000-0000-00000000000e'
+  ),
+  'buyer e, who only messaged about a DIFFERENT listing (0012) owned by the same seller, is excluded'
+);
+
+select is(
+  (select count(*)::int from public.listing_conversation_buyers('eeee0003-0000-0000-0000-000000000021')),
+  0,
+  'a listing with zero conversations returns an empty set, with no error'
+);
+
+set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000b","role":"authenticated"}';
+select throws_ok(
+  $$select * from public.listing_conversation_buyers('eeee0003-0000-0000-0000-000000000020')$$,
+  '42501', null,
+  'a non-owner caller with no relationship to the listing at all is rejected'
+);
+
+-- A stronger non-owner case than the one above: buyer c is not just an
+-- unrelated third party, they are a genuine PARTICIPANT in one of this
+-- listing's own conversations. The ownership check must still reject
+-- them -- "I messaged the seller about this" is never "I may see every
+-- buyer who messaged the seller about this," only the seller gets that.
+set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000c","role":"authenticated"}';
+select throws_ok(
+  $$select * from public.listing_conversation_buyers('eeee0003-0000-0000-0000-000000000020')$$,
+  '42501', null,
+  'a genuine buyer on this listing (not its seller) cannot call listing_conversation_buyers either'
+);
+set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+
+set local role anon;
+select throws_ok(
+  $$select * from public.listing_conversation_buyers('eeee0003-0000-0000-0000-000000000020')$$,
+  '42501', null,
+  'anon cannot execute listing_conversation_buyers'
 );
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"f2000000-0000-0000-0000-00000000000a","role":"authenticated"}';
