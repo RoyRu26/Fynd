@@ -385,8 +385,9 @@ export function FeedCard({ listing }: FeedCardProps) {
             {/* §14.1 tier 2 + §3 rule 2's named exception: the price is the
                 one element allowed to be loud, and the only solid accent fill
                 on the card besides the tag. Opaque, so it never depends on
-                the photo underneath (onAccent on accent is 7.5:1, enforced by
-                palette.test.ts). `flexShrink: 0` pins the plate to its
+                the photo underneath (the feed is forced dark: onAccent on the
+                dark accent is 7.5:1, enforced by palette.test.ts).
+                `flexShrink: 0` pins the plate to its
                 content width so the CTA's `flex: 1` absorbs the remainder
                 rather than the two fighting over it; a long price therefore
                 squeezes the CTA, whose label wraps and grows the row taller

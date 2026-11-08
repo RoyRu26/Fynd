@@ -40,7 +40,7 @@ export function Switch({ value, onValueChange, disabled, accessibilityLabel }: S
       onValueChange={onValueChange}
       disabled={disabled}
       trackColor={{ false: colors.borderStrong, true: colors.accent }}
-      thumbColor={colors.onAccent}
+      thumbColor={colors.switchThumb}
       ios_backgroundColor={colors.borderStrong}
       accessibilityRole="switch"
       accessibilityLabel={accessibilityLabel}

@@ -89,7 +89,7 @@ const MORE_ICON: IconName = { ios: 'ellipsis', android: 'more_vert', web: 'more_
 // Verified the same way: 'bubble.left.and.bubble.right.fill' and
 // 'chat_bubble' both exist in sf-symbols-typescript and expo-symbols'
 // android/symbols.json respectively — filled, not outline, to match the
-// sticky bar's own solid accent fill.
+// sticky bar's own solid `buttonPrimary` fill.
 const MESSAGE_ICON: IconName = {
   ios: 'bubble.left.and.bubble.right.fill',
   android: 'chat_bubble',
@@ -488,16 +488,16 @@ function MessageSellerButton({ loading, onPress }: { loading: boolean; onPress: 
         style={({ pressed }) => [
           styles.messageButton,
           {
-            backgroundColor: pressed ? colors.accentPressed : colors.accent,
+            backgroundColor: pressed ? colors.buttonPrimaryPressed : colors.buttonPrimary,
             opacity: loading ? 0.7 : 1,
           },
         ]}>
         {loading ? (
-          <ActivityIndicator color={colors.onAccent} />
+          <ActivityIndicator color={colors.onButtonPrimary} />
         ) : (
           <>
-            <Icon name={MESSAGE_ICON} size="sm" color={colors.onAccent} />
-            <Text variant="bodyStrong" color="onAccent">
+            <Icon name={MESSAGE_ICON} size="sm" color={colors.onButtonPrimary} />
+            <Text variant="bodyStrong" color="onButtonPrimary">
               Message seller
             </Text>
           </>

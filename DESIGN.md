@@ -87,7 +87,7 @@ Paper surfaces (light scheme only — the neutral steps above are near-white gre
 
 | Token | Hex | Role |
 |---|---|---|
-| `paper.50` | `#FAF7F0` | light `bgElevated` |
+| `paper.50` | `#FAF7F0` | light `bgElevated`, light `switchThumb` |
 | `paper.100` | `#F4EFE4` | **swatch anchor** — light `bg` |
 | `paper.200` | `#E6E0D2` | light `bgSunken` |
 
@@ -105,9 +105,9 @@ Ink brand ramp (hue ≈8–20°):
 
 **The one exception is primary buttons** (Roy, 2026-11-08: buttons match the logo). `Button` and `PillButton` `primary` fill with the swatch itself, in both schemes, through their own tokens (`buttonPrimary` / `buttonPrimaryPressed` / `onButtonPrimary`) so `accent` keeps every constraint above. Two things make it safe: the label is **ink**, not white (**4.8:1**; pressed lightens to `ink.400`, **6.2:1**, because darkening would drop the ink label below 4.5:1), and a primary button never meets `danger` as a same-shape fill — §8 keeps every destructive control outlined/tonal, so the dark-scheme danger-window collision is resolved by silhouette, not colour. Against `bg` the fill measures ≈3.4:1 on paper and ≈4.8:1 on ink, clearing 3:1 for a UI component.
 
-The two schemes move in **opposite directions** from it, which is the part most likely to look like a mistake and is not:
+The light scheme's `accent` **is** the swatch; the dark scheme's goes **brighter** than it. That asymmetry is the part most likely to look like a mistake and is not:
 
-- **Light** is the swatch itself (`ink.500`), with an ink label (4.8:1) and a press state that *lightens* to `ink.400` (ink 6.2:1) because darkening would drop the ink label below 4.5:1. It sits above paper's `danger` window; to keep a dichromat-safe gap, light `danger` moved to the bottom of its window (`magenta.700` `#D0116A` → `#BC0C60`, 0.148 → 0.118 luminance; still 5.4:1 on `bg` and 3.0:1 against `borderFocus`).
+- **Light** is the swatch itself (`ink.500`), with an ink label (4.8:1) and a press state that *lightens* to `ink.400` (ink 6.2:1) because darkening would drop the ink label below 4.5:1. It sits above paper's `danger` window; to keep a dichromat-safe gap, light `danger` sits at the bottom of its window (`magenta.700` `#BC0C60`, 0.118 luminance; 5.4:1 on `bg`, 3.0:1 against `borderFocus`), which keeps accent-vs-danger at **1.79/1.91:1** under deuteranopia/protanopia.
 - **Dark** goes *brighter* (`ink.300`). On near-black the accent must clear `danger`'s window to stay separable, and the only direction with room is up — a darker orange fails 3:1 against the background instead. Measured: **8.1:1** against `bg`, with an **ink** label at **7.5:1** (see rule 6).
 
 There is no `ink.600`. The ramp is numbered by lightness position and nothing needs a step between the swatch and `ink.700`; an unused step is a value someone eventually reaches for by accident.
@@ -123,7 +123,7 @@ Signal ramps. Each is a per-scheme pair for the same reason `accent` is (rule 1)
 
 **`danger` is pinned, not chosen.** Two constraints squeeze it from both sides: it is a *foreground* token (error captions), so it needs 4.5:1 on its own background; and it is the error *border*, so it needs 3:1 against `borderFocus` (rule 2a). Together those leave a narrow luminance window — roughly **0.117–0.153** on paper, **0.201–0.266** on ink. Both magenta steps sit in their window, and `accent` is placed outside it. That window is also why `danger` is saturated rather than a calmer dusty rose: magenta's blue channel is the only thing left to separate it from an orange accent once hue collapses, and desaturating either step drops accent-vs-danger below **1.6:1** under simulation.
 
-`amber` moved from hue ≈34° to ≈46°. Against an *orange* brand the old amber sat 14–20° away — close enough to read as a dimmer accent. The golder hue restores **31–40°** while staying unmistakably amber, not chartreuse. `teal` is unchanged from Olive & Oat: it was already chosen to sit far from a warm accent and still measures **1.65:1** from `accent` under both simulations.
+`amber` moved from hue ≈34° to ≈46°. Against an *orange* brand the old amber sat 14–20° away — close enough to read as a dimmer accent. The golder hue restores **31–40°** while staying unmistakably amber, not chartreuse. `teal` is unchanged from Olive & Oat: it was already chosen to sit far from a warm accent and still measures at least **1.65:1** from `accent` under both simulations (dark protanopia is the tightest).
 
 ### Semantic tokens
 
@@ -150,6 +150,7 @@ Screens read **only** these. Never a primitive directly.
 | `buttonPrimary` | `ink.500` | `ink.500` |
 | `buttonPrimaryPressed` | `ink.400` | `ink.400` |
 | `onButtonPrimary` | `neutral.950` | `neutral.950` |
+| `switchThumb` | `paper.50` | `neutral.950` |
 | `favoriteActive` | `ink.500` | `ink.400` |
 | `danger` / `dangerBg` | `magenta.700` / `#FBEAF2` | `magenta.400` / `#3A1528` |
 | `onDanger` | `#FFFFFF` | `neutral.950` |
@@ -164,7 +165,7 @@ Screens read **only** these. Never a primitive directly.
 2. **`accent` is reserved** for: the active tab, selected chips/filters, links, and — the one deliberate addition to this list — the Home feed card's **price plate and recency tag** (§14.1). Nothing else. (Primary buttons used to be on this list; they now fill with the brand swatch through `buttonPrimary`, see above.) Those two are non-interactive accent *fills* rather than accent *text*, always paired with `onAccent`, which is what keeps them legible over arbitrary photography where accent-coloured text would measure ≈1.1:1. This restraint matters more under Paper & Ink than it did under Olive & Oat: the accent is now high-chroma, so the places it is *not* allowed are what keep §1's "the interface recedes" true.
 2a. **Focus rings are NOT an accent use.** `borderFocus` is achromatic (`neutral.950` light / `neutral.50` dark), deliberately decoupled from the brand. An accent-colored focus ring would make `TextField`'s focused and focused+error states hard to separate, and the ring must also not read as a brand moment on a control the user is merely typing in. It separates from `danger` on two axes at once — luminance (3.56:1 light / 3.70:1 dark) and chroma (achromatic vs. saturated) — while reading 18.1:1 / 15.3:1 against the field fill. This rule is also one half of what pins `danger`'s luminance window (see the signal ramps above). **Do not "restore" this to the accent color.** Focus is a system state, not a brand moment.
 3. **`textOnMedia` is white in both schemes** and is only valid over a scrim. Text over user photography without a scrim is a defect — arbitrary images cannot guarantee contrast.
-4. **`favoriteActive` is the brand ramp, and that is a deliberate reversal.** Olive & Oat gave favorite its own hue (rose) specifically so it could not read as "selected." Paper & Ink puts favorite *on* the brand — in the light scheme it is the same value as `accent`. The old rule's protection is therefore gone by choice, and what replaces it is **shape**: the heart's filled/outline change is what communicates the state, never colour (§12.4). What still holds, and is still tested, is separation from `danger` — a filled heart must never read as a destructive control (1.79:1 light / 1.34:1 dark, plus ≥15° of hue).
+4. **`favoriteActive` is the brand ramp, and that is a deliberate reversal.** Olive & Oat gave favorite its own hue (rose) specifically so it could not read as "selected." Paper & Ink puts favorite *on* the brand — in the light scheme it is the same value as `accent`. The old rule's protection is therefore gone by choice, and what replaces it is **shape**: the heart's filled/outline change is what communicates the state, never colour (§12.4). What still holds, and is still tested, is separation from `danger` — a filled heart must never read as a destructive control (1.60:1 light / 1.34:1 dark, plus ≥15° of hue).
 5. Never introduce a new color without adding it here first.
 6. **`onAccent` and `onDanger` are each their own token.** `onDanger` has always been ink on dark. `onAccent` is ink in **both** schemes: the dark accent carries white at only 3.1:1 (ink 7.5:1), and the light accent, the brand swatch, at 3.9:1 (ink 4.8:1). A color surface must never assume another surface's foreground token happens to work for it too — and must not assume its *own* foreground is the same in both schemes.
 7. **`bgElevated` is never pure `#FFFFFF`/`#000000`** — light `bgElevated` is `paper.50`, dark is `neutral.900`. Enforced by `palette.test.ts`, not by review.
@@ -309,11 +310,11 @@ Each is a platform-split object (iOS `shadow*`, Android `elevation`). Shadows ar
 This rule was written when `accent` and `danger` were hue-identical (1° apart, 1.87:1) and a user could not tell "Save" from "Delete" by color alone. Olive & Oat removed that specific collision by moving the brand to the opposite sector (82°). **Paper & Ink gives part of it back on purpose**, and the rule is correspondingly *more* load-bearing now, not less:
 
 - §12.4 forbids color-only status outright. Color may reinforce a destructive action; it may never be the only thing carrying it.
-- `accent` and `danger` are now **neighbours** (36–52°), not opposites. The separation is carried by luminance and verified under deuteranopia/protanopia (1.68–2.05:1) rather than by hue — see §3. That is enough to tell two surfaces apart; it is *not* enough to let colour alone mark one of them destructive.
+- `accent` and `danger` are now **neighbours** (41° light / 52° dark), not opposites. The separation is carried by luminance and verified under deuteranopia/protanopia (1.79/1.91:1 light, 1.68/2.05:1 dark) rather than by hue — see §3. That is enough to tell two surfaces apart; it is *not* enough to let colour alone mark one of them destructive.
 
 The required resolution is structural:
 
-- **primary** — solid `accent` fill, white label (current behavior, unchanged)
+- **primary** — solid `buttonPrimary` fill (the brand swatch), `onButtonPrimary` (ink) label
 - **destructive** — outlined/tonal: transparent or `dangerBg` fill, `danger` border and label
 
 This makes the two differ in shape, so the distinction never depends on color vision. **This remains a prerequisite for shipping any destructive action.** Until it lands, no solid-filled danger button should reach a user-facing screen.
@@ -409,7 +410,7 @@ The smallest useful set. Under `src/components/ui/`, one file each.
 | `ListRow` | Leading slot / title + subtitle / trailing slot. |
 | `Sheet` | Detents, drag handle, scrim, keyboard avoidance. The only bottom-sheet implementation. Its scroll area sets `keyboardShouldPersistTaps="handled"`, so with a field focused the first tap on a chip or button inside the sheet acts instead of only dismissing the keyboard. Optional `footer` slot: pinned below the scroll area, inside the sheet's safe-area padding and the keyboard-avoiding region, separated by a hairline `border` rule — for actions that must stay visible however long the content is (Explore's Clear/Apply). When content outgrows the sheet, the scroll area shrinks; the footer never does. |
 | `Skeleton` | Shimmer block, plus composed `SkeletonListingCard` / `SkeletonRow`. |
-| `Switch` | Controlled on/off toggle. Thin tokenizing wrapper around RN's native `Switch`: `accent` track when on, `borderStrong` when off, `onAccent` thumb. Touch target and thumb animation are the native control's own. `accessibilityRole="switch"`. |
+| `Switch` | Controlled on/off toggle. Thin tokenizing wrapper around RN's native `Switch`: `accent` track when on, `borderStrong` when off, `switchThumb` thumb — its own token, because `onAccent` is ink in both schemes now. Light is near-white `paper.50`, the native look (3.6:1 on the swatch track); dark stays ink, since a near-white thumb on the brighter `ink.300` track measures only ~2.4:1 (ink: 7.5:1). `palette.test.ts` holds thumb-vs-`accent` to 3:1; there is deliberately no floor against the off track, because on/off is carried by the thumb's position, not thumb-vs-track contrast (the stock control's thumb sits at ~1.6–2.0:1 on its off track too). Touch target and thumb animation are the native control's own. `accessibilityRole="switch"`. |
 | `EmptyState` | Icon + title + body + action. Backs `ErrorState` via a `variant`. |
 | `StoryRing` | Circular image in a ring — the Explore "Drops" row. Rings showing a person (seller, Inbox stories, chat header) pass `person`, so a missing photo shows the shared person glyph; category and highlight rings stay a plain toned circle. `size` is the OUTER diameter and the ring grows INWARD, so selecting a ring never resizes it and the row cannot shift as selection moves. Active is both thicker (2.5 vs 1.5) and `accent`, so the state survives a greyscale reading (§12.4). Presentational: no press behaviour of its own, so the caller owns the role, state and accessible name. |
 | `Sticker` | Small rotated uppercase label stuck onto media. Tones `accent` / `inverse` / `paper`, each a contrast-asserted fill + on-colour pair, which is what lets one sit over arbitrary photography without a per-photo check. The hard drop shadow is a real offset View, not a platform shadow — iOS could do it with `shadowRadius: 0` but Android's `elevation` is always blurred, so one backing node renders identically on both. |

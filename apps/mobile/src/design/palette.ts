@@ -61,7 +61,7 @@ export const neutral = {
 
 // Paper surface ramp — light scheme only.
 export const paper = {
-  50: '#FAF7F0', // light bgElevated
+  50: '#FAF7F0', // light bgElevated, light switchThumb
   100: '#F4EFE4', // light bg
   200: '#E6E0D2', // light bgSunken
 } as const;
@@ -96,7 +96,8 @@ export const ink = {
 
 // Success ramp — teal, ~155-165 degrees off the ink accent. Unchanged from
 // Olive & Oat: it was already chosen to sit far from a warm accent, and it
-// still measures 1.65:1 from `accent` under both dichromat simulations.
+// still measures at least 1.65:1 from `accent` under both dichromat
+// simulations (dark protanopia is the tightest).
 export const teal = {
   400: '#63CDBC', // dark success
   700: '#0B5F55', // light success
@@ -165,6 +166,10 @@ export type SemanticColors = {
   buttonPrimaryPressed: string;
   // Ink, not white — white on the swatch measures 3.9:1.
   onButtonPrimary: string;
+  // Switch thumb. Its own token because `onAccent` is ink in both schemes
+  // now, and the native control's look is a light thumb. Defined by its
+  // contrast against the ON track (`accent`) — see palette.test.ts.
+  switchThumb: string;
   favoriteActive: string;
   danger: string;
   dangerBg: string;
@@ -192,17 +197,13 @@ export const lightColors: SemanticColors = {
   borderStrong: neutral[300],
   // Achromatic — focus is a system state, not a brand moment (§3 rule 2a).
   borderFocus: neutral[950],
-  // A deep burnt red-orange, not the brand swatch, and it has to be: on
-  // paper the accent fill must clear 4.5:1 for its white label AND sit far
-  // enough below danger's luminance window (0.117-0.153) that the two do not
-  // collapse under dichromat simulation. Measured: white 9.5:1, 11.5:1
-  // against bg, 1.90/1.76:1 from danger under deuteranopia/protanopia.
   // The logo's own brand swatch (Roy, 2026-11-08: the app's orange matches
   // the logo). It clears paper's danger window (0.117-0.153) at 0.219, but a
   // white label on it measures 3.9:1, so the label is ink (4.8:1). Pressed
   // LIGHTENS to ink.400 (ink 6.2:1); darkening would drop the ink label
   // below 4.5:1. `accentText` stays ink.700: as normal text on paper the
-  // swatch is only 3.4:1.
+  // swatch is only 3.4:1. Measured: 1.79/1.91:1 from danger under
+  // deuteranopia/protanopia.
   accent: ink[500],
   accentPressed: ink[400],
   onAccent: neutral[950],
@@ -210,6 +211,8 @@ export const lightColors: SemanticColors = {
   buttonPrimary: ink[500],
   buttonPrimaryPressed: ink[400],
   onButtonPrimary: neutral[950],
+  // Near-white, the native look: 3.6:1 on the ink.500 track.
+  switchThumb: paper[50],
   // Same value as `accent` by design (Paper & Ink puts favorite on the brand
   // ramp). §12.4 is satisfied by the icon's own filled/outline shape change,
   // never by colour alone — see DESIGN.md §4.
@@ -257,6 +260,9 @@ export const darkColors: SemanticColors = {
   buttonPrimary: ink[500],
   buttonPrimaryPressed: ink[400],
   onButtonPrimary: neutral[950],
+  // Ink, NOT a light paper value: a near-white thumb on the brighter ink.300
+  // track measures only ~2.4:1, under the 3:1 floor. Ink measures 7.5:1.
+  switchThumb: neutral[950],
   favoriteActive: ink[400],
   danger: magenta[400],
   dangerBg: '#3A1528',

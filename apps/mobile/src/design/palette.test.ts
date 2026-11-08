@@ -33,7 +33,8 @@ import { darkColors, lightColors, type SemanticColors } from '@/design/palette';
 //   * a LUMINANCE floor between accent and danger (new — Olive & Oat never
 //     needed one, because hue did the work);
 //   * the dichromat-simulation floors, which are UNCHANGED at 1.6:1/1.25:1
-//     and which the shipped palette clears at 1.68-2.05:1 and 1.65:1.
+//     and which the shipped palette clears at 1.68-2.05:1 (accent/danger) and
+//     1.65:1 or more (accent/success).
 // Every WCAG floor in this file is also unchanged. Nothing was lowered to
 // accommodate a failing value; the one threshold that moved (hue) moved
 // because it was measuring the wrong thing for this brand, and it was
@@ -155,6 +156,17 @@ describe.each(SCHEMES)('%s scheme — foreground on filled surfaces', (_scheme, 
   it('onButtonPrimary meets AA on both buttonPrimary and buttonPrimaryPressed', () => {
     expect(contrastRatio(c.onButtonPrimary, c.buttonPrimary)).toBeGreaterThanOrEqual(4.5);
     expect(contrastRatio(c.onButtonPrimary, c.buttonPrimaryPressed)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // The Switch thumb sits on the `accent` track when ON, so it must clear
+  // 3:1 there (meaningful non-text UI). There is deliberately no floor
+  // against the OFF track (`borderStrong`): the off/on state is carried by
+  // the thumb's POSITION (plus the track colour change), not by thumb-vs-
+  // track contrast, and the native thumb carries its own shadow/outline. A
+  // light thumb on light borderStrong is ~1.6:1 and an ink thumb on dark
+  // borderStrong ~2.0:1, exactly as the stock iOS/Android switch.
+  it('switchThumb is visible on the accent (on) track', () => {
+    expect(contrastRatio(c.switchThumb, c.accent)).toBeGreaterThanOrEqual(3);
   });
 
   it('onDanger meets AA on danger', () => {

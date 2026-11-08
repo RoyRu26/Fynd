@@ -18,6 +18,7 @@ import Animated, {
 import { Button, Logo, Screen, Text } from '@/components/ui';
 import { AppThemeProvider, useAppTheme } from '@/design/theme-provider';
 import { gradientFade, radius, space } from '@/design/tokens';
+import { getCollagePhotoSlots } from '@/features/auth/welcome-collage';
 
 /**
  * Bundled collage photography for the entry screen.
@@ -90,20 +91,11 @@ const COLLAGE_COLUMNS: readonly CollageColumn[] = [
   { offset: -space[10] * 2, aspectRatios: [0.92, 1.0, 1.1, 0.95], drift: -22, startDelayMs: 1400 },
 ];
 
-// Photo slot for each tile, numbered row by row across the columns and
-// skipping rows a column doesn't have (the middle column is one tile longer),
-// so every tile gets its own photo and the list fills across, not down.
-const COLLAGE_PHOTO_SLOTS: readonly (readonly number[])[] = (() => {
-  const slots: number[][] = COLLAGE_COLUMNS.map(() => []);
-  const rows = Math.max(...COLLAGE_COLUMNS.map((column) => column.aspectRatios.length));
-  let next = 0;
-  for (let row = 0; row < rows; row += 1) {
-    COLLAGE_COLUMNS.forEach((column, columnIndex) => {
-      if (row < column.aspectRatios.length) slots[columnIndex].push(next++);
-    });
-  }
-  return slots;
-})();
+// Photo slot for each tile, filled row by row across the columns (pure logic
+// lives in features/auth/welcome-collage.ts).
+const COLLAGE_PHOTO_SLOTS: readonly (readonly number[])[] = getCollagePhotoSlots(
+  COLLAGE_COLUMNS.map((column) => column.aspectRatios.length),
+);
 
 export default function Welcome() {
   // Forced dark for the whole subtree, the same mechanism the Home feed uses.
@@ -168,7 +160,9 @@ function WelcomeContent() {
 }
 
 function Collage({ animate }: { animate: boolean }) {
-  // Reduce Motion: the collage stays still at its resting layout.
+  // Reduce Motion: the collage stays still at its resting layout. Note that
+  // reanimated's useReducedMotion reads the system setting once, at mount — it
+  // does not update if the user toggles Reduce Motion while this is mounted.
   const reducedMotion = useReducedMotion();
   const drifting = animate && !reducedMotion;
 

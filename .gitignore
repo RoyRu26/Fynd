@@ -31,3 +31,5 @@ pnpm-debug.log*
 
 # Local build artifacts
 *.tsbuildinfo
+supabase/functions/.env
+

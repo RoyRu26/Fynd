@@ -10,7 +10,7 @@ import { useAppTheme } from '@/design/theme-provider';
  * The thread's sticky composer (SCREENS.md Task 8 / the 5a handoff,
  * replacing Task 6's 2d-spec styling): a pill `TextField` (DESIGN.md §7's
  * carve-out — `shape="pill"`, unchanged from Explore's own search field)
- * plus a circular accent send button, optionally preceded by a quick-reply
+ * plus a circular `buttonPrimary` send button, optionally preceded by a quick-reply
  * row for a brand-new thread.
  *
  * No camera/photo button: the handoff marks it "NEW — hide if image
@@ -104,12 +104,12 @@ export function Composer({ onSend, isSending = false, messageCount }: ComposerPr
         />
         {isSending ? (
           <View
-            style={[styles.sendButton, { backgroundColor: colors.accent }]}
+            style={[styles.sendButton, { backgroundColor: colors.buttonPrimary }]}
             accessible
             accessibilityRole="button"
             accessibilityLabel="Send message"
             accessibilityState={{ disabled: true, busy: true }}>
-            <ActivityIndicator size="small" color={colors.onAccent} />
+            <ActivityIndicator size="small" color={colors.onButtonPrimary} />
           </View>
         ) : (
           <View style={styles.sendButtonWrap}>
@@ -128,11 +128,11 @@ export function Composer({ onSend, isSending = false, messageCount }: ComposerPr
               style={({ pressed }) => [
                 styles.sendButton,
                 {
-                  backgroundColor: colors.accent,
+                  backgroundColor: colors.buttonPrimary,
                   opacity: !canSend ? DISABLED_OPACITY : pressed ? 0.8 : 1,
                 },
               ]}>
-              <Icon name={SEND_ICON} size="md" color={colors.onAccent} />
+              <Icon name={SEND_ICON} size="md" color={colors.onButtonPrimary} />
             </Pressable>
           </View>
         )}

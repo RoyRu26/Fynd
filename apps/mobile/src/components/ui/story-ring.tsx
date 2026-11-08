@@ -78,6 +78,9 @@ export function StoryRing({ size, uri, active = false, person = false, label, ac
           {uri ? (
             <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" />
           ) : person ? (
+            // Sits on the ring's own toned image well (`skeleton`), not
+            // Avatar's `bgSunken`: the well is shared with category rings and
+            // photo loading, and in dark `bgSunken` would vanish into `bg`.
             <PersonGlyph diameter={metrics.imageSize} />
           ) : null}
         </View>
