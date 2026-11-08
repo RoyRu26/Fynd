@@ -78,10 +78,17 @@ import {
   COLLAGE_GAP,
 } from '@/features/search/collage';
 import { shuffleWithSeed } from '@/features/search/shuffle';
-import { useSearch } from '@/features/search/queries';
+import { useRecognisedTerms, useSearch } from '@/features/search/queries';
+import {
+  applyQueryChip,
+  queryChipAnnouncement,
+  visibleQueryChipOffers,
+  type QueryChipOffer,
+} from '@/features/search/query-chips';
 import {
   categoryScope,
   clearTermKind,
+  MAX_SEARCH_QUERY_LENGTH,
   pruneTermFiltersForScope,
   SEARCH_SORT_LABELS,
   SEARCH_SORT_ORDER,
@@ -96,7 +103,8 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value';
 
 /**
  * Explore — DESIGN.md §14.2's collage wall. Reuses the existing search backend
- * (`features/search/`) exactly as built: no new RPC, no new table.
+ * (`features/search/`) exactly as built: no new table. Query chips (7.5b)
+ * add one read-only RPC, `recognise_search_terms` (see `query-chips.ts`).
  *
  * The grid is a `FlatList` whose rows are 9-item BLOCKS, not listings. The
  * handoff's layout spans columns and rows, which no masonry list can express,
@@ -149,6 +157,8 @@ const RECENT_SEARCH_ICON: IconName = { ios: 'clock', android: 'history', web: 'h
 // sf-symbols-typescript's types and expo-symbols' android/symbols.json.
 const SEARCH_ICON: IconName = { ios: 'magnifyingglass', android: 'search', web: 'search' };
 const SORT_SELECTED_ICON: IconName = { ios: 'checkmark', android: 'check', web: 'check' };
+// Same names as onboarding's add-photo icon, already verified there.
+const ADD_FILTER_ICON: IconName = { ios: 'plus', android: 'add', web: 'add' };
 
 /** Mirrors `Screen`'s own `padded` horizontal inset (space[5]); see `collageWidth`. */
 const SCREEN_HORIZONTAL_PADDING = space[5];
@@ -275,6 +285,47 @@ export default function ExploreScreen() {
     [committedFilters, committedCategoryLabel, vocab],
   );
   const filtersOrQueryActive = hasActiveFilters(committedFilters) || searchFilters.query !== null;
+
+  // ============================================================
+  // Query chips (ROADMAP 7.5b)
+  // ============================================================
+
+  // Words in the query that name a real filter ("black nike hoodie" ->
+  // Color: Black, Brand: Nike, Item type: Hoodie). Gating (settled input,
+  // loading / failed recognition shows nothing) lives in
+  // visibleQueryChipOffers.
+  const recognisedQuery = useRecognisedTerms(effectiveQuery);
+  const committedScope = useMemo(
+    () => categoryScope(categoryGroups, committedFilters.categoryId),
+    [categoryGroups, committedFilters.categoryId],
+  );
+  const queryChipOffers = useMemo(
+    () =>
+      visibleQueryChipOffers(queryInput, effectiveQuery, recognisedQuery.data, committedFilters, vocab, committedScope),
+    [queryInput, effectiveQuery, recognisedQuery.data, committedFilters, vocab, committedScope],
+  );
+
+  // Adds the filter and, when the words come out cleanly, drops them from the
+  // query — run immediately, the same path a recent-search tap uses. Not
+  // recorded as a recent search: those stay text-only (Roy's D6).
+  function handleApplyQueryChip(offer: QueryChipOffer) {
+    const next = applyQueryChip(offer, committedFilters, queryInput, vocab);
+    if (next.filters === committedFilters) return;
+    setCommittedFilters(next.filters);
+    if (next.query !== queryInput) {
+      setQueryInput(next.query);
+      // Deliberately NOT recent.record(next.query), unlike a recent-search
+      // tap: the remaining text is a by-product of the chip, and recent
+      // searches stay untouched by chips (Roy's D6). Setting immediateQuery
+      // also makes handleSearchBlur skip recording it until the user edits
+      // the text.
+      setImmediateQuery(next.query);
+      // A focused, now-empty field would swap the results for recent
+      // searches right as the new filter applies.
+      if (next.query.trim().length === 0) Keyboard.dismiss();
+    }
+    AccessibilityInfo.announceForAccessibility(queryChipAnnouncement(offer));
+  }
 
   // ============================================================
   // Filter Sheet draft state
@@ -583,6 +634,8 @@ export default function ExploreScreen() {
         placeholder="Brands, vibes, sizes…"
         accessibilityLabel="Search listings"
         value={queryInput}
+        // The server reads only this much of a query (fynd_search_tokens).
+        maxLength={MAX_SEARCH_QUERY_LENGTH}
         onChangeText={handleQueryInputChange}
         onFocus={() => setSearchFocused(true)}
         onBlur={handleSearchBlur}
@@ -621,6 +674,24 @@ export default function ExploreScreen() {
   // search bar above. It scrolls away with the results, which is the point.
   const gridHeader = (
     <View style={styles.gridHeader}>
+      {queryChipOffers.length > 0 ? (
+        <View style={styles.chipRow}>
+          {queryChipOffers.map((offer) => (
+            <Chip
+              key={offer.key}
+              label={offer.label}
+              icon={ADD_FILTER_ICON}
+              // Quiet default tone: an OFFER to pick, not a filter in effect
+              // (those are the inverse chips below the Drops row).
+              selectable
+              selected={false}
+              accessibilityLabel={offer.accessibilityLabel}
+              onPress={() => handleApplyQueryChip(offer)}
+            />
+          ))}
+        </View>
+      ) : null}
+
       <DropsRow
         groups={categoryGroups}
         activeGroupId={activeCategoryGroupId}

@@ -87,18 +87,24 @@ export type Database = {
           alias_key: string
           brand_id: string
           created_at: string
+          first_forms: string[] | null
+          search_key: string | null
         }
         Insert: {
           alias: string
           alias_key: string
           brand_id: string
           created_at?: string
+          first_forms?: string[] | null
+          search_key?: string | null
         }
         Update: {
           alias?: string
           alias_key?: string
           brand_id?: string
           created_at?: string
+          first_forms?: string[] | null
+          search_key?: string | null
         }
         Relationships: [
           {
@@ -1160,6 +1166,17 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      recognise_search_terms: {
+        Args: { p_query: string }
+        Returns: {
+          brand_id: string
+          kind: string
+          label: string
+          matched_text: string
+          query_without_match: string
+          term_id: string
+        }[]
       }
       record_ai_suggestion_attempt: {
         Args: { p_listing_id: string }

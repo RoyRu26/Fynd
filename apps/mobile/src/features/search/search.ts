@@ -63,6 +63,13 @@ export type SearchFilters = {
  */
 export const MAX_FILTER_IDS_PER_KIND = 20;
 
+/**
+ * The search box's length cap. Mirrors the server: `search_listings` and
+ * `recognise_search_terms` read only the first 200 characters of a query
+ * (`fynd_search_tokens`), so text past it could never match anything.
+ */
+export const MAX_SEARCH_QUERY_LENGTH = 200;
+
 export type AttributeTermFilters = Readonly<Record<AttributeKind, readonly string[]>>;
 
 export const EMPTY_TERM_FILTERS: AttributeTermFilters = {

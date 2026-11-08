@@ -1,6 +1,6 @@
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
-import { fetchSearchPage } from '@/features/search/api';
+import { fetchRecognisedTerms, fetchSearchPage } from '@/features/search/api';
 import {
   deriveNextSearchCursor,
   type SearchCursor,
@@ -14,6 +14,7 @@ export const SEARCH_PAGE_SIZE = 24;
 export const searchKeys = {
   all: ['search'] as const,
   list: (filters: SearchFilters) => [...searchKeys.all, 'list', filters] as const,
+  recognise: (query: string) => [...searchKeys.all, 'recognise', query] as const,
 };
 
 /**
@@ -42,5 +43,24 @@ export function useSearch(filters: SearchFilters) {
     initialPageParam: null as SearchCursor,
     getNextPageParam: (lastPage: SearchListing[]) =>
       deriveNextSearchCursor(lastPage, SEARCH_PAGE_SIZE, filters.sort),
+  });
+}
+
+/** Recognition depends only on the alias seed, which changes by migration. */
+const RECOGNISE_STALE_TIME_MS = 60 * 60 * 1000;
+
+/**
+ * Query chips (ROADMAP 7.5b) for the given effective (debounced, trimmed)
+ * query. Disabled for an empty query. No `placeholderData`: data is only
+ * ever the response for THIS query, so a chip never offers a word from the
+ * previous one. Errors are left to the caller, which shows nothing.
+ */
+export function useRecognisedTerms(query: string) {
+  const trimmed = query.trim();
+  return useQuery({
+    queryKey: searchKeys.recognise(trimmed),
+    queryFn: () => fetchRecognisedTerms(trimmed),
+    enabled: trimmed.length > 0,
+    staleTime: RECOGNISE_STALE_TIME_MS,
   });
 }

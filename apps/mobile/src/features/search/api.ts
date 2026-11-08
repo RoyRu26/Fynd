@@ -1,4 +1,5 @@
 import { createListingImageUrls } from '@/features/listings/api';
+import { normalizeRecognisedRow, type RecognisedTerm } from '@/features/search/query-chips';
 import {
   associateSearchCoverUrls,
   buildSearchParams,
@@ -51,4 +52,26 @@ export async function fetchSearchPage(params: {
 
   const coverUrlsByPath = await createListingImageUrls(rows.map((row) => row.coverStoragePath));
   return associateSearchCoverUrls(rows, coverUrlsByPath);
+}
+
+/**
+ * Query chips (ROADMAP 7.5b): the active attribute terms and brands the
+ * search text names, via `recognise_search_terms` (SECURITY INVOKER,
+ * read-only; authenticated only). At most 6 rows, in query order. Rows of a
+ * kind this client doesn't know, or that break the RPC's contract, are
+ * dropped one by one (see `normalizeRecognisedRow`); the latter warn in
+ * development.
+ */
+export async function fetchRecognisedTerms(query: string): Promise<RecognisedTerm[]> {
+  const { data, error } = await supabase.rpc('recognise_search_terms', { p_query: query });
+  if (error) throw error;
+  return data
+    .map((row) => normalizeRecognisedRow(row, warnMalformedRecognisedRow))
+    .filter((row): row is RecognisedTerm => row !== null);
+}
+
+function warnMalformedRecognisedRow(reason: string) {
+  if (__DEV__) {
+    console.warn(`[search] skipped ${reason}`);
+  }
 }
