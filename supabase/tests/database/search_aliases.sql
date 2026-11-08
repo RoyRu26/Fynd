@@ -15,7 +15,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(88);
+select plan(119);
 
 -- ============================================================
 -- Helpers
@@ -58,7 +58,7 @@ $$;
 -- ============================================================
 -- Fixtures (privileged)
 -- ============================================================
--- Seller A, seller B, viewer V. Category ids (20261018100200_categories.sql):
+-- Seller A, seller B, viewer V, seller D. Category ids (20261018100200_categories.sql):
 -- Women > Tops c0000001-...-0001, Women > Shoes c0000001-...-0005.
 --
 --   L1 A Shoes  'Vintage trainers'      untagged
@@ -68,6 +68,9 @@ $$;
 --   L5 A Tops   'Basic T-shirt'         untagged
 --   L6 A Tops   'חור בכיס'               untagged (negative for "black")
 --   L7 B Shoes  'Vintage trainers'      untagged (blocks)
+--   L8 D Shoes  'Vintage trainers'      untagged (D blocks V)
+--   L9/L10/L11 A Shoes 'Vintage trainers' draft / removed / sold
+--   L12 A Shoes 'Dress shoes alpha ... foxtrot' (8-term cap superset)
 -- Every description is the nonce 'qzalias'.
 
 insert into auth.users (
@@ -79,7 +82,9 @@ values
   ('a7500000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-000000000000',
    'authenticated', 'authenticated', 'pgtap-salias-b@test.dev', 'x', now(), now()),
   ('a7500000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-000000000000',
-   'authenticated', 'authenticated', 'pgtap-salias-v@test.dev', 'x', now(), now());
+   'authenticated', 'authenticated', 'pgtap-salias-v@test.dev', 'x', now(), now()),
+  ('a7500000-0000-0000-0000-00000000000d', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'pgtap-salias-d@test.dev', 'x', now(), now());
 
 insert into public.listings
   (id, seller_id, title, description, price_amount, condition, size, category_id, status)
@@ -97,7 +102,18 @@ values
   ('a75a0000-0000-0000-0000-000000000006', 'a7500000-0000-0000-0000-00000000000a',
    'חור בכיס', 'qzalias', 3000, 'good', 'alpha_m', 'c0000001-0000-4000-8000-000000000001', 'active'),
   ('a75a0000-0000-0000-0000-000000000007', 'a7500000-0000-0000-0000-00000000000b',
-   'Vintage trainers', 'qzalias', 3000, 'good', 'one_size', 'c0000001-0000-4000-8000-000000000005', 'active');
+   'Vintage trainers', 'qzalias', 3000, 'good', 'one_size', 'c0000001-0000-4000-8000-000000000005', 'active'),
+  ('a75a0000-0000-0000-0000-000000000008', 'a7500000-0000-0000-0000-00000000000d',
+   'Vintage trainers', 'qzalias', 3000, 'good', 'one_size', 'c0000001-0000-4000-8000-000000000005', 'active'),
+  ('a75a0000-0000-0000-0000-000000000009', 'a7500000-0000-0000-0000-00000000000a',
+   'Vintage trainers', 'qzalias', 3000, 'good', 'one_size', 'c0000001-0000-4000-8000-000000000005', 'draft'),
+  ('a75a0000-0000-0000-0000-000000000010', 'a7500000-0000-0000-0000-00000000000a',
+   'Vintage trainers', 'qzalias', 3000, 'good', 'one_size', 'c0000001-0000-4000-8000-000000000005', 'removed'),
+  ('a75a0000-0000-0000-0000-000000000011', 'a7500000-0000-0000-0000-00000000000a',
+   'Vintage trainers', 'qzalias', 3000, 'good', 'one_size', 'c0000001-0000-4000-8000-000000000005', 'sold'),
+  ('a75a0000-0000-0000-0000-000000000012', 'a7500000-0000-0000-0000-00000000000a',
+   'Dress shoes alpha bravo charlie delta echo foxtrot', 'qzalias', 3000, 'good', 'one_size',
+   'c0000001-0000-4000-8000-000000000005', 'active');
 
 insert into public.listing_images (listing_id, storage_path, "position")
 select l.id, format('%s/%s/a.jpg', l.seller_id, l.id), 0
@@ -147,11 +163,25 @@ select is(
   array['trainer', 'trainers'],
   'first_forms is stored for each alias'
 );
+-- Stored generated columns: any change to fynd_token_variants,
+-- fynd_match_forms, fynd_alias_word_forms, fynd_member_token_query or
+-- fynd_alias_tsquery must recompute them (UPDATE ... SET alias_key = alias_key).
 select is_empty(
   $$select alias_key from public.listing_attribute_term_aliases
      where member_query is distinct from public.fynd_alias_tsquery(alias_key)
-        or first_forms is distinct from public.fynd_match_forms(split_part(alias_key, ' ', 1), false)$$,
+        or first_forms is distinct from public.fynd_alias_word_forms(split_part(alias_key, ' ', 1), exact_first)$$,
   'every stored first_forms / member_query equals its computed value'
+);
+select col_not_null('public', 'listing_attribute_term_aliases', 'exact_first', 'exact_first is NOT NULL');
+select is(
+  (select first_forms from public.listing_attribute_term_aliases where alias_key = 'shorts'),
+  array['shorts'],
+  'an exact_first alias stores only its own first word'
+);
+select is_empty(
+  $$select p from unnest(array['TRUNCATE', 'REFERENCES', 'TRIGGER', 'INSERT', 'UPDATE', 'DELETE']) as p
+     where has_table_privilege('authenticated', 'public.listing_attribute_term_aliases', p)$$,
+  'authenticated has no TRUNCATE / REFERENCES / TRIGGER / write privilege on term aliases'
 );
 
 -- ============================================================
@@ -175,6 +205,22 @@ select is_empty(
   $$select a.alias_key from public.listing_attribute_term_aliases a
       join public.brand_aliases b on public.fynd_text_normalize(b.alias) = a.alias_key$$,
   'no term alias equals a brand alias'
+);
+-- Pinned seed. After an intended seed change, recompute with the query below
+-- (run it against the migrated database) and paste the new md5 here.
+select is(
+  (select md5(string_agg(a.alias_key || '|' || t.kind || '|' || t.slug, E'\n'
+                         order by a.alias_key collate "C"))
+     from public.listing_attribute_term_aliases a
+     join public.listing_attribute_terms t on t.id = a.term_id),
+  '093945be7bafaabe60479af85309359f',
+  'the alias seed (alias_key, kind, slug) matches the pinned md5'
+);
+select is(
+  (select array_agg(alias_key order by alias_key collate "C")
+     from public.listing_attribute_term_aliases where exact_first),
+  array['flats', 'kicks', 'leggings', 'oxfords', 'pumps', 'shorts', 'slides', 'tights'],
+  'exactly the stem-colliding aliases are exact_first'
 );
 select is((select count(*)::int from public.listing_attribute_term_aliases), 311,
   'the seed has 311 alias rows (82 label/slug keys + 229 approved)');
@@ -210,6 +256,17 @@ select is(public.fynd_match_forms('שחור', false), array['שחור'], 'Hebrew
 select is(public.fynd_match_forms('שמלה', false), array['שמלה', 'שמל'], 'Hebrew alias token keeps its stem');
 select is(public.fynd_match_forms('', true), '{}'::text[], 'empty token has no forms');
 select is(public.fynd_match_forms(null, false), '{}'::text[], 'NULL token has no forms');
+select is(public.fynd_match_forms(repeat('a', 1000000), true), '{}'::text[], 'a token over 200 characters has no forms');
+select is_empty(
+  $$select 1 from public.fynd_search_spans(array[repeat('a', 1000000)], false)$$,
+  'fynd_search_spans ignores a 1M-character token'
+);
+select is(
+  (select array[count(*), max(first_token)]::int[]
+     from public.fynd_search_spans(array_fill('black'::text, array[200000]), false)),
+  array[24, 24],
+  'fynd_search_spans reads only the first 24 elements of a 200k-element array'
+);
 
 select is(public.fynd_member_token_query('t')::text, '''t''', 'a stopword alias token is kept via simple');
 select is(public.fynd_member_token_query('שחור')::text, '''שחור''', 'a Hebrew alias token never yields its prefix-stripped form');
@@ -242,6 +299,32 @@ select is(pg_temp.best_span('שחורות', 1), 'color:black/1', 'שחורות -
 select is(pg_temp.best_span('מלה', 1), null, 'מלה (a variant of שמלה) does not match dress');
 select is(pg_temp.best_span('חור', 1), null, 'חור does not match black');
 select is(pg_temp.best_span('iphone', 1), null, 'a word with no alias has no span');
+select is(pg_temp.best_span('dress boots', 1), 'item_type:dress/1', '"dress boots": second word does not match -> dress, 1 token');
+select isnt(pg_temp.best_span('short dress', 1), 'item_type:shorts/1', '"short dress": short is not shorts (exact_first)');
+select is(pg_temp.best_span('shorts', 1), 'item_type:shorts/1', 'shorts -> shorts');
+select is_empty(
+  $$select 1 from public.fynd_search_spans(public.fynd_search_tokens('wide leg jeans'), false) s
+     where s.term_id = pg_temp.term('item_type', 'leggings')$$,
+  '"wide leg jeans" does not hit leggings'
+);
+select is(pg_temp.best_span('leggings', 1), 'item_type:leggings/1', 'leggings -> leggings');
+
+-- exact desc beats kind order: 'qzexacts' on belt (item_type, kind 0) also
+-- matches the query 'qzexact' through its stem; 'qzexact' (fit, kind 5) is
+-- the exact one and wins.
+insert into public.listing_attribute_term_aliases (alias_key, term_id, term_kind, alias)
+values ('qzexacts', pg_temp.term('item_type', 'belt'), 'item_type', 'qzexacts'),
+       ('qzexact', pg_temp.term('fit', 'relaxed'), 'fit', 'qzexact');
+select is(pg_temp.best_span('qzexact', 1), 'fit:relaxed/1', 'tie on length: the exact alias wins over kind order');
+select is(pg_temp.best_span('qzexacts', 1), 'item_type:belt/1', 'tie on length: exact qzexacts -> belt');
+
+update public.brands set retired_at = now() where key = 'adidas';
+select is_empty(
+  $$select 1 from public.fynd_search_spans(public.fynd_search_tokens('adidas'), true) s
+      join public.brands b on b.id = s.brand_id
+     where b.key = 'adidas'$$,
+  'p_include_brands = true excludes a retired brand'
+);
 select is_empty(
   $$select 1 from public.fynd_search_spans(public.fynd_search_tokens('nike'), false)$$,
   'brand aliases are not spans when p_include_brands is false'
@@ -305,10 +388,35 @@ select is_empty(
   $$select l.id, v.q
       from public.listings l
      cross join (values ('trainers'), ('black t-shirt'), ('שחורות'), ('gray hoodie'), ('tee'),
-                        ('dress shoes'), ('מעיל'), ('nike hoodie')) as v(q)
+                        ('dress shoes'), ('מעיל'), ('nike hoodie'),
+                        ('dress shoes alpha bravo charlie delta echo foxtrot golf')) as v(q)
      where l.search_tsv @@ public.fynd_search_query(v.q)
        and not l.search_tsv @@ public.fynd_search_query_expanded(v.q)$$,
   'superset: every listing (dev data included) matched by the 7.2 query is matched by the expanded one'
+);
+select ok(
+  public.fynd_search_query_expanded('dress shoes alpha bravo charlie delta echo foxtrot golf')::text not like '%golf%',
+  '8-term cap: a span''s words count as 7.2 terms, so golf is not required'
+);
+select is(
+  public.fynd_search_query_expanded('dress shoes alpha bravo charlie delta echo foxtrot golf'),
+  public.fynd_search_query_expanded('dress shoes alpha bravo charlie delta echo foxtrot'),
+  '8-term cap: the expansion stops where 7.2 stops'
+);
+select is(
+  public.fynd_search_query_expanded('black t-shirt alpha bravo charlie delta echo foxtrot golf'),
+  public.fynd_search_query_expanded('black t-shirt alpha bravo charlie delta echo foxtrot'),
+  '8-term cap: a span''s stopword (t) is not counted, its other word is'
+);
+select is(
+  (select count(*)::int from regexp_matches(public.fynd_search_query_expanded('שחורה')::text, '''שחור''', 'g')),
+  1,
+  'a one-word member lexeme already in the 7.2 sub-query is not repeated'
+);
+select is(
+  (select count(*)::int from regexp_matches(public.fynd_search_query_expanded('plaid')::text, '(^|\| )''check''( \||$)', 'g')),
+  1,
+  '''check'' appears once among the top-level OR parts of "plaid"'
 );
 select is_empty(
   $$select q from (values ('trainers'), ('black t-shirt'), ('הקפוצ''ונים'), ('dress shoes'),
@@ -406,6 +514,26 @@ select ok(
   pg_temp.found('trainers qzalias') @> array['a75a0000-0000-0000-0000-000000000007']::uuid[],
   'before blocking, B''s "Vintage trainers" is found'
 );
+select ok(
+  pg_temp.found('trainers qzalias') @> array['a75a0000-0000-0000-0000-000000000008']::uuid[],
+  'before D blocks V, D''s "Vintage trainers" is found'
+);
+select ok(
+  not (pg_temp.found('sneakers qzalias') && array['a75a0000-0000-0000-0000-000000000009', 'a75a0000-0000-0000-0000-000000000010', 'a75a0000-0000-0000-0000-000000000011']::uuid[]),
+  'draft / removed / sold listings matching only via an alias are never returned'
+);
+select is(
+  (select array_agg(s.listing_id) from public.search_listings(p_query := 'sneakers qzalias', p_sort := 'price', p_limit := 1) s),
+  array['a75a0000-0000-0000-0000-000000000001']::uuid[],
+  'alias query, sort = price: first page'
+);
+select is(
+  (select array_agg(s.listing_id) from public.search_listings(
+     p_query := 'sneakers qzalias', p_sort := 'price', p_limit := 1,
+     p_cursor_price := 3000, p_cursor_id := 'a75a0000-0000-0000-0000-000000000001') s),
+  array['a75a0000-0000-0000-0000-000000000002']::uuid[],
+  'alias query, sort = price: cursor page'
+);
 select throws_ok(
   $$select * from public.search_listings(p_query := 'trainers', p_color_ids := array[null]::uuid[])$$,
   '22023', null,
@@ -422,6 +550,16 @@ select ok(
 select ok(
   pg_temp.found('trainers qzalias') @> array['a75a0000-0000-0000-0000-000000000001']::uuid[],
   'V blocks B: A''s listing is still found'
+);
+
+reset role;
+insert into public.blocks (blocker_id, blocked_id)
+values ('a7500000-0000-0000-0000-00000000000d', 'a7500000-0000-0000-0000-00000000000c');
+set local role authenticated;
+
+select ok(
+  not (pg_temp.found('sneakers qzalias') @> array['a75a0000-0000-0000-0000-000000000008']::uuid[]),
+  'D blocks V: D''s alias-only match is hidden from V'
 );
 
 -- ============================================================
@@ -466,6 +604,16 @@ select throws_ok(
   '42501', null,
   'anon cannot execute fynd_search_query_expanded'
 );
+select throws_ok(
+  $$select * from public.search_listings(p_query := 'trainers')$$,
+  '42501', null,
+  'anon cannot execute search_listings'
+);
+select throws_ok(
+  $$select * from public.fynd_search_spans(array['trainers'], false)$$,
+  '42501', null,
+  'anon cannot execute fynd_search_spans'
+);
 reset role;
 
 -- ============================================================
@@ -476,6 +624,7 @@ select is_empty(
   $$select f from unnest(array[
        'public.fynd_match_forms(text, boolean)', 'public.fynd_member_token_query(text)',
        'public.fynd_alias_tsquery(text)', 'public.fynd_search_tokens(text)',
+       'public.fynd_alias_word_forms(text, boolean)', 'public.fynd_alias_term_limit()',
        'public.fynd_search_spans(text[], boolean)', 'public.fynd_search_query_expanded(text)']) as f
      where has_function_privilege('anon', f, 'execute')$$,
   'anon cannot execute any of the new search functions'
@@ -503,6 +652,30 @@ select ok(
   (select prosrc like '%public.fynd_search_query_expanded(p_query)%'
      from pg_proc where oid = 'public.search_listings(text, uuid, public.listing_condition, public.listing_size, bigint, bigint, public.search_sort, timestamptz, bigint, uuid, integer, uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[])'::regprocedure),
   'search_listings uses fynd_search_query_expanded'
+);
+
+-- ============================================================
+-- 9. <= 16 aliases per term (constraint trigger)
+-- ============================================================
+-- belt has 2 rows (+ qzexacts above = 3): 13 more reach 16, one more fails.
+select lives_ok(
+  $$insert into public.listing_attribute_term_aliases (alias_key, term_id, term_kind, alias)
+    select 'qzbelt' || g, pg_temp.term('item_type', 'belt'), 'item_type', 'qzbelt' || g
+      from generate_series(1, 13) g$$,
+  'a term can have 16 aliases'
+);
+select throws_ok(
+  $$insert into public.listing_attribute_term_aliases (alias_key, term_id, term_kind, alias)
+    values ('qzbelt99', pg_temp.term('item_type', 'belt'), 'item_type', 'qzbelt99')$$,
+  '23514', null,
+  'a 17th alias for a term is rejected'
+);
+select throws_ok(
+  $$update public.listing_attribute_term_aliases
+       set term_id = pg_temp.term('item_type', 'belt'), term_kind = 'item_type'
+     where alias_key = 'qzexact'$$,
+  '23514', null,
+  'moving an alias onto a full term is rejected'
 );
 
 select * from finish();

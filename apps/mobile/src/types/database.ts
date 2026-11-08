@@ -405,6 +405,7 @@ export type Database = {
           alias: string
           alias_key: string
           created_at: string
+          exact_first: boolean
           first_forms: string[] | null
           member_query: unknown
           term_id: string
@@ -414,6 +415,7 @@ export type Database = {
           alias: string
           alias_key: string
           created_at?: string
+          exact_first?: boolean
           first_forms?: string[] | null
           member_query?: unknown
           term_id: string
@@ -423,6 +425,7 @@ export type Database = {
           alias?: string
           alias_key?: string
           created_at?: string
+          exact_first?: boolean
           first_forms?: string[] | null
           member_query?: unknown
           term_id?: string
@@ -962,6 +965,10 @@ export type Database = {
         }[]
       }
       fynd_alias_tsquery: { Args: { p_alias_key: string }; Returns: unknown }
+      fynd_alias_word_forms: {
+        Args: { p_exact: boolean; p_token: string }
+        Returns: string[]
+      }
       fynd_match_forms: {
         Args: { p_is_query: boolean; p_token: string }
         Returns: string[]
