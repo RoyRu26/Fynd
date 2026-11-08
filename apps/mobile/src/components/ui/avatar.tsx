@@ -1,8 +1,7 @@
 import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
 import { StyleSheet, View } from 'react-native';
 
-import type { IconName } from '@/components/ui/icon';
+import { PersonGlyph } from '@/components/ui/person-glyph';
 import { useAppTheme } from '@/design/theme-provider';
 
 export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
@@ -24,14 +23,6 @@ export type AvatarProps = {
 // would visibly resize the instant a photo was chosen.
 const DIAMETER: Record<AvatarSize, number> = { xs: 24, sm: 32, md: 40, lg: 56, xl: 84 };
 
-// No photo: a generic person glyph rather than initials, so every
-// photo-less user reads as "no picture yet" in one consistent way. The glyph
-// scales with the circle (the shared `iconSize` scale tops out at 28, below
-// the larger avatars), so it is sized locally for the same second-caller
-// reason as DIAMETER.
-const PLACEHOLDER_ICON: IconName = { ios: 'person.fill', android: 'person', web: 'person' };
-const PLACEHOLDER_GLYPH: Record<AvatarSize, number> = { xs: 14, sm: 18, md: 22, lg: 32, xl: 48 };
-
 export function Avatar({ size = 'md', source, name, accessibilityLabel }: AvatarProps) {
   const { colors } = useAppTheme();
   const diameter = DIAMETER[size];
@@ -48,7 +39,9 @@ export function Avatar({ size = 'md', source, name, accessibilityLabel }: Avatar
       {source ? (
         <Image source={{ uri: source }} style={StyleSheet.absoluteFill} contentFit="cover" />
       ) : (
-        <SymbolView name={PLACEHOLDER_ICON} size={PLACEHOLDER_GLYPH[size]} tintColor={colors.textTertiary} />
+        // No photo: a person glyph rather than initials, so every photo-less
+        // user reads as "no picture yet" the same way.
+        <PersonGlyph diameter={diameter} />
       )}
     </View>
   );

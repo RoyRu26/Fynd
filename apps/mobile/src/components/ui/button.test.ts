@@ -28,7 +28,7 @@ describe('isButtonInteractive', () => {
 
 describe('getButtonForegroundColor', () => {
   it('maps each variant to its own foreground token', () => {
-    expect(getButtonForegroundColor('primary')).toBe('onAccent');
+    expect(getButtonForegroundColor('primary')).toBe('onButtonPrimary');
     expect(getButtonForegroundColor('secondary')).toBe('text');
     expect(getButtonForegroundColor('ghost')).toBe('accentText');
     // 'danger', not 'onDanger' — the variant is tonal (dangerBg fill), not a

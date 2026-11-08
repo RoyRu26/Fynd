@@ -10,7 +10,7 @@ export const PILL_BUTTON_HEIGHT = 46;
 /**
  * Foreground token per variant.
  *
- * `primary` is a solid accent fill, so it takes `onAccent` — the pairing
+ * `primary` is a solid `buttonPrimary` fill, so it takes `onButtonPrimary` — the pairing
  * `palette.test.ts` holds to 4.5:1. `outline` has no fill, so its label sits
  * on the page and takes `text`, NOT `accentText`: the outline already carries
  * the accent, and tinting the label too would make a secondary action compete
@@ -23,7 +23,7 @@ export const PILL_BUTTON_HEIGHT = 46;
 export function getPillButtonForegroundColor(variant: PillButtonVariant): TextColor {
   switch (variant) {
     case 'primary':
-      return 'onAccent';
+      return 'onButtonPrimary';
     case 'outline':
       return 'text';
     case 'inverse':
@@ -33,7 +33,7 @@ export function getPillButtonForegroundColor(variant: PillButtonVariant): TextCo
 
 /**
  * Disabled always wins. `primary` does not dim on press — it swaps its fill
- * to `accentPressed` instead, exactly as `Button`'s own primary does, so the
+ * to `buttonPrimaryPressed` instead, exactly as `Button`'s own primary does, so the
  * two feel like one family under the finger.
  */
 export function getPillButtonOpacity({

@@ -68,29 +68,30 @@ export const paper = {
 
 // Ink brand ramp — orange-red, hue ~8-20.
 //
-// 500 is the brand swatch: it is the colour the brand IS, and it ships as
-// large-type brand ink. (It also backed `ambientGlow.primary` until that token
-// was removed with the auth redesign.) It is deliberately NOT either scheme's
-// `accent` fill, because it cannot be one:
-//   * white on it measures 3.9:1 (fails AA for button labels);
-//   * as normal-size text on paper it measures 3.4:1 (fails AA);
+// 500 is the brand swatch: the colour the brand IS. Since 2026-11-08 (Roy:
+// the app's orange matches the logo) it is the LIGHT scheme's `accent` and
+// every scheme's primary button fill (`buttonPrimary`). Its limits:
+//   * white on it measures 3.9:1, so its label (`onAccent`,
+//     `onButtonPrimary`) is ink, 4.8:1;
+//   * as normal-size text on paper it measures 3.4:1, so light `accentText`
+//     stays ink.700;
 //   * its luminance (0.219) sits INSIDE the dark scheme's danger window
-//     (0.201-0.266), so on near-black it is the one orange that cannot be
-//     told apart from the magenta danger by a dichromat.
-// So the two schemes each take the step that clears their own constraints,
-// and the brand swatch stays the brand swatch.
+//     (0.201-0.266), so on near-black it is the one orange a dichromat cannot
+//     tell apart from the magenta danger. The dark `accent` therefore keeps
+//     the brighter ink.300. Primary buttons still use the swatch in dark,
+//     because §8 keeps every destructive control outlined/tonal, so a primary
+//     button never meets danger as a same-shape fill.
 //
 // There is no 600 step. The ramp is numbered by lightness position, and
-// nothing currently needs a value between the brand swatch and the light
-// scheme's accent — an unused step is a value someone will eventually reach
+// nothing currently needs a value between the brand swatch and ink.700 —
+// an unused step is a value someone will eventually reach
 // for by accident.
 export const ink = {
   200: '#FFA385', // dark accentPressed
   300: '#FF7D52', // dark accent
-  400: '#F06A45', // dark accentText, dark favoriteActive
-  500: '#E8481F', // BRAND SWATCH — large-type brand ink
-  700: '#8B1604', // light accent, light accentText, light favoriteActive
-  800: '#6B1103', // light accentPressed
+  400: '#F06A45', // dark accentText, dark favoriteActive, light accentPressed, buttonPrimaryPressed
+  500: '#E8481F', // BRAND SWATCH — light accent + favoriteActive, buttonPrimary
+  700: '#8B1604', // light accentText
 } as const;
 
 // Success ramp — teal, ~155-165 degrees off the ink accent. Unchanged from
@@ -112,9 +113,12 @@ export const teal = {
 // calls "a safety problem, not an aesthetic one."
 //
 // Dark step is light enough for text on near-black, so onDanger is ink there.
+// The light step sits at the BOTTOM of paper's window (0.118, 3.0:1 against
+// borderFocus) since the light accent became the brighter brand swatch: that
+// is what keeps accent-vs-danger at 1.6:1 under dichromat simulation.
 export const magenta = {
   400: '#F00094', // dark danger
-  700: '#D0116A', // light danger
+  700: '#BC0C60', // light danger
 } as const;
 
 // Warning ramp — amber, pushed from hue ~34 to ~46 (light) / ~46 (dark).
@@ -152,6 +156,15 @@ export type SemanticColors = {
   // contrast against `accent`, exactly like `onDanger` is against `danger`.
   onAccent: string;
   accentText: string;
+  // Primary button fill: the logo's own brand swatch in BOTH schemes, so
+  // buttons match the logo. Separate from `accent` because the swatch fails
+  // accent's other jobs (text on paper, danger separation on near-black).
+  buttonPrimary: string;
+  // Pressed LIGHTENS in both schemes: darkening would drop the ink label
+  // below 4.5:1.
+  buttonPrimaryPressed: string;
+  // Ink, not white — white on the swatch measures 3.9:1.
+  onButtonPrimary: string;
   favoriteActive: string;
   danger: string;
   dangerBg: string;
@@ -184,14 +197,23 @@ export const lightColors: SemanticColors = {
   // enough below danger's luminance window (0.117-0.153) that the two do not
   // collapse under dichromat simulation. Measured: white 9.5:1, 11.5:1
   // against bg, 1.90/1.76:1 from danger under deuteranopia/protanopia.
-  accent: ink[700],
-  accentPressed: ink[800],
-  onAccent: '#FFFFFF',
+  // The logo's own brand swatch (Roy, 2026-11-08: the app's orange matches
+  // the logo). It clears paper's danger window (0.117-0.153) at 0.219, but a
+  // white label on it measures 3.9:1, so the label is ink (4.8:1). Pressed
+  // LIGHTENS to ink.400 (ink 6.2:1); darkening would drop the ink label
+  // below 4.5:1. `accentText` stays ink.700: as normal text on paper the
+  // swatch is only 3.4:1.
+  accent: ink[500],
+  accentPressed: ink[400],
+  onAccent: neutral[950],
   accentText: ink[700],
+  buttonPrimary: ink[500],
+  buttonPrimaryPressed: ink[400],
+  onButtonPrimary: neutral[950],
   // Same value as `accent` by design (Paper & Ink puts favorite on the brand
   // ramp). §12.4 is satisfied by the icon's own filled/outline shape change,
   // never by colour alone — see DESIGN.md §4.
-  favoriteActive: ink[700],
+  favoriteActive: ink[500],
   danger: magenta[700],
   dangerBg: '#FBEAF2',
   onDanger: '#FFFFFF',
@@ -232,6 +254,9 @@ export const darkColors: SemanticColors = {
   // measures 7.5:1. This is why §3 rule 6 keeps onAccent its own token.
   onAccent: neutral[950],
   accentText: ink[400],
+  buttonPrimary: ink[500],
+  buttonPrimaryPressed: ink[400],
+  onButtonPrimary: neutral[950],
   favoriteActive: ink[400],
   danger: magenta[400],
   dangerBg: '#3A1528',

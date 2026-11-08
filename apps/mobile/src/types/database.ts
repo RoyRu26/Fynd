@@ -400,6 +400,44 @@ export type Database = {
         }
         Relationships: []
       }
+      listing_attribute_term_aliases: {
+        Row: {
+          alias: string
+          alias_key: string
+          created_at: string
+          first_forms: string[] | null
+          member_query: unknown
+          term_id: string
+          term_kind: string
+        }
+        Insert: {
+          alias: string
+          alias_key: string
+          created_at?: string
+          first_forms?: string[] | null
+          member_query?: unknown
+          term_id: string
+          term_kind: string
+        }
+        Update: {
+          alias?: string
+          alias_key?: string
+          created_at?: string
+          first_forms?: string[] | null
+          member_query?: unknown
+          term_id?: string
+          term_kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "listing_attribute_term_aliases_term_fkey"
+            columns: ["term_id", "term_kind"]
+            isOneToOne: false
+            referencedRelation: "listing_attribute_terms"
+            referencedColumns: ["id", "kind"]
+          },
+        ]
+      }
       listing_attribute_terms: {
         Row: {
           created_at: string
@@ -923,7 +961,30 @@ export type Database = {
           title: string
         }[]
       }
+      fynd_alias_tsquery: { Args: { p_alias_key: string }; Returns: unknown }
+      fynd_match_forms: {
+        Args: { p_is_query: boolean; p_token: string }
+        Returns: string[]
+      }
+      fynd_member_token_query: { Args: { p_token: string }; Returns: unknown }
       fynd_search_query: { Args: { p_query: string }; Returns: unknown }
+      fynd_search_query_expanded: {
+        Args: { p_query: string }
+        Returns: unknown
+      }
+      fynd_search_spans: {
+        Args: { p_include_brands: boolean; p_tokens: string[] }
+        Returns: {
+          alias: string
+          brand_id: string
+          exact: boolean
+          first_token: number
+          kind: string
+          term_id: string
+          token_count: number
+        }[]
+      }
+      fynd_search_tokens: { Args: { p_query: string }; Returns: string[] }
       fynd_text_normalize: { Args: { p_text: string }; Returns: string }
       fynd_text_tsvector: { Args: { p_text: string }; Returns: unknown }
       fynd_token_variants: { Args: { p_token: string }; Returns: string[] }

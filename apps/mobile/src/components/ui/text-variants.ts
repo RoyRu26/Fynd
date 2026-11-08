@@ -39,6 +39,7 @@ export type TextColor = Extract<
   | 'textOnMedia'
   | 'accentText'
   | 'onAccent'
+  | 'onButtonPrimary'
   | 'danger'
   | 'onDanger'
   | 'success'

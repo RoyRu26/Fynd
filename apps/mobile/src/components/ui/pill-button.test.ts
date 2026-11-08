@@ -8,7 +8,7 @@ import {
 
 describe('getPillButtonForegroundColor', () => {
   it('pairs the solid accent fill with its asserted on-colour', () => {
-    expect(getPillButtonForegroundColor('primary')).toBe('onAccent');
+    expect(getPillButtonForegroundColor('primary')).toBe('onButtonPrimary');
   });
 
   // The outline already carries the accent. Tinting the label too would make

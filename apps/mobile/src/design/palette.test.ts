@@ -152,6 +152,11 @@ describe.each(SCHEMES)('%s scheme — foreground on filled surfaces', (_scheme, 
     expect(contrastRatio(c.onAccent, c.accentPressed)).toBeGreaterThanOrEqual(4.5);
   });
 
+  it('onButtonPrimary meets AA on both buttonPrimary and buttonPrimaryPressed', () => {
+    expect(contrastRatio(c.onButtonPrimary, c.buttonPrimary)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(c.onButtonPrimary, c.buttonPrimaryPressed)).toBeGreaterThanOrEqual(4.5);
+  });
+
   it('onDanger meets AA on danger', () => {
     expect(contrastRatio(c.onDanger, c.danger)).toBeGreaterThanOrEqual(4.5);
   });
@@ -186,6 +191,10 @@ describe.each(SCHEMES)('%s scheme — foreground on filled surfaces', (_scheme, 
 
   it('accent is visible against bg as a meaningful UI element', () => {
     expect(contrastRatio(c.accent, c.bg)).toBeGreaterThanOrEqual(3);
+  });
+
+  it('buttonPrimary is visible against bg as a meaningful UI element', () => {
+    expect(contrastRatio(c.buttonPrimary, c.bg)).toBeGreaterThanOrEqual(3);
   });
 
   it('favoriteActive is visible against bg as a meaningful icon', () => {
@@ -295,6 +304,10 @@ describe.each(SCHEMES)('%s scheme — color vision deficiency', (_scheme, c) => 
 
   it.each(simulators)('body text keeps its AA margin under %s', (_name, simulate) => {
     expect(contrastRatio(simulate(c.text), simulate(c.bg))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it.each(simulators)('onButtonPrimary stays legible on buttonPrimary under %s', (_name, simulate) => {
+    expect(contrastRatio(simulate(c.onButtonPrimary), simulate(c.buttonPrimary))).toBeGreaterThanOrEqual(4.5);
   });
 
   it.each(simulators)('onAccent stays legible on accent under %s', (_name, simulate) => {

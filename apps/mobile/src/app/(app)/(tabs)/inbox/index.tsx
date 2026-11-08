@@ -245,7 +245,7 @@ function StoriesRow({
             already owns the name and state, same reasoning Explore's own
             DropsRow documents for the identical shape.
           */}
-          <StoryRing size={STORY_RING_SIZE} uri={partner.avatarUrl ?? undefined} active={partner.hasUnread} />
+          <StoryRing size={STORY_RING_SIZE} uri={partner.avatarUrl ?? undefined} active={partner.hasUnread} person />
           <Text
             variant="micro"
             color={partner.hasUnread ? 'text' : 'textSecondary'}

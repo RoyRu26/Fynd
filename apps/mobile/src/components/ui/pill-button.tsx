@@ -31,7 +31,7 @@ function getPillButtonFillStyle({
 }): ViewStyle {
   switch (variant) {
     case 'primary':
-      return { backgroundColor: pressed ? colors.accentPressed : colors.accent };
+      return { backgroundColor: pressed ? colors.buttonPrimaryPressed : colors.buttonPrimary };
     case 'inverse':
       // Solid and borderless, same reasoning as Button's own inverse
       // variant: the fill is already the highest-contrast surface

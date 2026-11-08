@@ -44,7 +44,7 @@ export function isButtonInteractive({
 export function getButtonForegroundColor(variant: ButtonVariant): TextColor {
   switch (variant) {
     case 'primary':
-      return 'onAccent';
+      return 'onButtonPrimary';
     case 'secondary':
       return 'text';
     case 'ghost':
@@ -65,7 +65,7 @@ export function getButtonForegroundColor(variant: ButtonVariant): TextColor {
 
 // Disabled always wins regardless of press state; primary never dims on
 // press because it signals press via a background-color swap
-// (accent -> accentPressed) instead of opacity, unlike every other variant.
+// (buttonPrimary -> buttonPrimaryPressed) instead of opacity, unlike every other variant.
 export function getButtonOpacity({
   disabled,
   pressed,

@@ -119,6 +119,7 @@ const ACTION_BUTTON_SIZE = 52;
 const CONDITION_STICKER_ROTATION = 3;
 const PRICE_FONT_SIZE = 40;
 const PRICE_LETTER_SPACING = -0.02 * PRICE_FONT_SIZE;
+const PRICE_LINE_HEIGHT_RATIO = 1.2;
 const BADGE_GAP = space[2]; // 8
 
 /** The sticky bar's own content height (padding + button), for the scroll content's bottom padding — see this file's own `Screen edges={[]}` note. */
@@ -319,7 +320,7 @@ export default function ListingDetailScreen() {
                   minHeight plus the card's own padding reaches 44pt with no
                   side effect on the rest of the sheet. "View closet" is a
                   purely visual pill, not a second tap target. */}
-              <StoryRing size={SELLER_AVATAR_SIZE} uri={listing.sellerAvatarUrl ?? undefined} active />
+              <StoryRing size={SELLER_AVATAR_SIZE} uri={listing.sellerAvatarUrl ?? undefined} active person />
               <View style={styles.sellerCardMain}>
                 <Text variant="bodyStrong" numberOfLines={1}>
                   {sellerName}
@@ -607,7 +608,9 @@ const styles = StyleSheet.create({
   },
   priceText: {
     fontSize: PRICE_FONT_SIZE,
-    lineHeight: PRICE_FONT_SIZE,
+    // Not equal to the font size: a line box that tight clips the tops of the
+    // digits and the ₪ sign on iOS. Same ≈1.2 leading as the `price` variant.
+    lineHeight: Math.round(PRICE_FONT_SIZE * PRICE_LINE_HEIGHT_RATIO),
     letterSpacing: PRICE_LETTER_SPACING,
   },
   titleText: {

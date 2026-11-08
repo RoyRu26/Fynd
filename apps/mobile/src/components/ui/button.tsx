@@ -98,7 +98,7 @@ function getVariantStyle({
       // to press, per shouldShowButtonBevel.
       const showBevel = shouldShowButtonBevel({ variant, pressed });
       return {
-        backgroundColor: pressed ? colors.accentPressed : colors.accent,
+        backgroundColor: pressed ? colors.buttonPrimaryPressed : colors.buttonPrimary,
         opacity,
         ...elevation.raised,
         borderTopWidth: showBevel ? border.thin : 0,

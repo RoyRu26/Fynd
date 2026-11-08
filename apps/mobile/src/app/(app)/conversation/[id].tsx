@@ -242,7 +242,7 @@ export default function ConversationScreen() {
     body = (
       <View style={styles.body}>
         <View style={styles.identity}>
-          <StoryRing size={HEADER_AVATAR_SIZE} uri={header.otherAvatarUrl ?? undefined} active />
+          <StoryRing size={HEADER_AVATAR_SIZE} uri={header.otherAvatarUrl ?? undefined} active person />
           <View style={styles.identityText}>
             <Text variant="bodyStrong">{name}</Text>
             {captionParts.length > 0 ? (

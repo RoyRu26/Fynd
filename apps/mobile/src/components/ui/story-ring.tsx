@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
 import { StyleSheet, View } from 'react-native';
 
+import { PersonGlyph } from '@/components/ui/person-glyph';
 import { getStoryRingMetrics } from '@/components/ui/story-ring-state';
 import { Text } from '@/components/ui/text';
 import { space } from '@/design/tokens';
@@ -12,6 +13,13 @@ export type StoryRingProps = {
   /** Image URI. Omitted renders the toned empty circle, which is a valid resting state, not an error. */
   uri?: string;
   active?: boolean;
+  /**
+   * The ring shows a person (a user's profile photo). With no `uri` it then
+   * shows the shared person glyph instead of an empty toned circle. Off for
+   * non-person rings (Explore's category Drops, Profile highlights), where a
+   * person glyph would be wrong.
+   */
+  person?: boolean;
   /** Optional caption under the ring. */
   label?: string;
   /** Overrides the accessible name; falls back to `label`. */
@@ -28,7 +36,7 @@ export type StoryRingProps = {
  * accessible name. That keeps one component from guessing whether it is a
  * button, a tab, or decoration.
  */
-export function StoryRing({ size, uri, active = false, label, accessibilityLabel }: StoryRingProps) {
+export function StoryRing({ size, uri, active = false, person = false, label, accessibilityLabel }: StoryRingProps) {
   const { colors } = useAppTheme();
   const metrics = getStoryRingMetrics({ size, active });
 
@@ -64,9 +72,13 @@ export function StoryRing({ size, uri, active = false, label, accessibilityLabel
             borderRadius: metrics.imageRadius,
             backgroundColor: colors.skeleton,
             overflow: 'hidden',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}>
           {uri ? (
             <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" />
+          ) : person ? (
+            <PersonGlyph diameter={metrics.imageSize} />
           ) : null}
         </View>
       </View>
